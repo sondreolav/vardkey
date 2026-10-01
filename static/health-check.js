@@ -6,6 +6,8 @@ const toolChecks = document.querySelector("#tool-checks");
 const securityChecks = document.querySelector("#security-checks");
 const reviewPanel = document.querySelector("#review-panel");
 const reviewSummary = document.querySelector("#review-summary");
+const saveButton = document.querySelector("#save-check");
+const saveStatus = document.querySelector("#save-status");
 const generalStatuses = [
   ["IKKJE_VURDERT", "Not assessed"],
   ["OK", "OK"],
@@ -14,6 +16,7 @@ const generalStatuses = [
 const booleanOptions = [["", "Not assessed"], ["1", "Yes"], ["0", "No"]];
 const productNames = ["SeedSigner", "Blockstream Jade", "Nunchuk", "Sparrow Wallet"];
 const securityStatuses = ["TRYGG", "PATCHA", "SÅRBAR", "KOMPROMITTERT"];
+let keyProfiles = [];
 
 function makeField(labelText, name, control) {
   const label = document.createElement("label");
@@ -73,6 +76,10 @@ function makeCard(title, subtitle) {
   return card;
 }
 
+function productPrefix(kind, product) {
+  return `${kind}_${product.toLowerCase().replaceAll(" ", "_")}_`;
+}
+
 function renderKeyChecks(keys) {
   keyChecks.replaceChildren();
   for (const key of keys) {
@@ -103,7 +110,7 @@ function renderToolChecks() {
   toolChecks.replaceChildren();
   for (const product of productNames) {
     const card = makeCard(product, "Record support status and the product version checked.");
-    const prefix = `tool_${product.toLowerCase().replaceAll(" ", "_")}_`;
+    const prefix = productPrefix("tool", product);
     card.append(makeField("BIP327 status", `${prefix}bip327_status`, makeSelect(generalStatuses)));
     card.append(makeField("SLIP39 status", `${prefix}slip39_status`, makeSelect(generalStatuses)));
     card.append(makeField("Version checked", `${prefix}version`, makeTextInput(`${prefix}version`, 100)));
@@ -119,7 +126,7 @@ function renderSecurityChecks() {
   securityChecks.replaceChildren();
   for (const product of productNames) {
     const card = makeCard(product, "Enter the result of external research; do not include credentials or secrets.");
-    const prefix = `security_${product.toLowerCase().replaceAll(" ", "_")}_`;
+    const prefix = productPrefix("security", product);
     const options = securityStatuses.map((status) => [status, status]);
     card.append(makeField("Security status", `${prefix}status`, makeSelect(options, "", true)));
     card.append(makeField("Comment", `${prefix}comments`, makeTextarea("", 1000)));
@@ -178,6 +185,8 @@ function buildReview() {
   fragment.append(dates);
   reviewSummary.replaceChildren(fragment);
   reviewPanel.hidden = false;
+  saveStatus.textContent = "";
+  saveButton.disabled = false;
   reviewPanel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -193,13 +202,102 @@ function appendSummaryList(parent, title, items) {
   parent.append(heading, list);
 }
 
+function flagValue(data, name) {
+  const value = data.get(name);
+  return value === "1" || value === "0" ? Number(value) : null;
+}
+
+function textValue(data, name) {
+  const value = data.get(name);
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function statusValue(data, name) {
+  const value = data.get(name);
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+function collectPayload() {
+  const data = new FormData(form);
+  return {
+    checked_at: textValue(data, "checked_at"),
+    next_check_due: textValue(data, "next_check_due"),
+    software_compatibility_status: data.get("software_compatibility_status"),
+    sparrow_version: textValue(data, "sparrow_version"),
+    nunchuk_version: textValue(data, "nunchuk_version"),
+    software_comments: textValue(data, "software_comments"),
+    contact_info_verified: flagValue(data, "contact_info_verified"),
+    comments: textValue(data, "comments"),
+    key_checks: keyProfiles.map((key) => {
+      const prefix = `key_${key.id}_`;
+      return {
+        key_id: key.id,
+        available: flagValue(data, `${prefix}available`),
+        hardware_works: flagValue(data, `${prefix}hardware_works`),
+        firmware_version: textValue(data, `${prefix}firmware_version`),
+        seed_backup_status: statusValue(data, `${prefix}seed_backup_status`),
+        seed_backup_verified: flagValue(data, `${prefix}seed_backup_verified`),
+        cloud_health_status: statusValue(data, `${prefix}cloud_health_status`),
+        cloud_provider_operational: flagValue(data, `${prefix}cloud_provider_operational`),
+        address_verified: flagValue(data, `${prefix}address_verified`),
+        derivation_height: textValue(data, `${prefix}derivation_height`),
+        address_path_verified: flagValue(data, `${prefix}address_path_verified`),
+        address_path: textValue(data, `${prefix}address_path`),
+        comments: textValue(data, `${prefix}comments`),
+      };
+    }),
+    tool_checks: productNames.map((product) => {
+      const prefix = productPrefix("tool", product);
+      return {
+        product,
+        bip327_status: data.get(`${prefix}bip327_status`),
+        slip39_status: data.get(`${prefix}slip39_status`),
+        version: textValue(data, `${prefix}version`),
+        checked_at: textValue(data, `${prefix}checked_at`),
+        notes: textValue(data, `${prefix}notes`),
+      };
+    }),
+    ai_security_checks: productNames.map((product) => {
+      const prefix = productPrefix("security", product);
+      return {
+        provider: product,
+        status: statusValue(data, `${prefix}status`),
+        comments: textValue(data, `${prefix}comments`),
+      };
+    }),
+  };
+}
+
+async function saveHealthCheck() {
+  saveButton.disabled = true;
+  saveStatus.textContent = "Saving…";
+  try {
+    const response = await fetch("/api/health-checks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(collectPayload()),
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || "The health check could not be saved.");
+    }
+    const saved = await response.json();
+    saveStatus.textContent = "Health check saved.";
+    window.location.assign(`/history?id=${encodeURIComponent(saved.id)}`);
+  } catch (error) {
+    saveStatus.textContent = error.message;
+    saveButton.disabled = false;
+  }
+}
+
 async function loadKeys() {
   try {
     const response = await fetch("/api/keys", { headers: { Accept: "application/json" } });
     if (!response.ok) {
       throw new Error("Key profiles are unavailable.");
     }
-    renderKeyChecks(await response.json());
+    keyProfiles = await response.json();
+    renderKeyChecks(keyProfiles);
   } catch {
     keyChecks.replaceChildren();
     const message = document.createElement("p");
@@ -212,8 +310,11 @@ async function loadKeys() {
 renderToolChecks();
 renderSecurityChecks();
 setSuggestedDates();
+saveButton.addEventListener("click", saveHealthCheck);
 form.addEventListener("input", () => {
   reviewPanel.hidden = true;
+  saveStatus.textContent = "";
+  saveButton.disabled = true;
 });
 form.addEventListener("submit", (event) => {
   event.preventDefault();
