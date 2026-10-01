@@ -5,6 +5,11 @@ import sqlite3
 
 
 SCHEMA_VERSION = 1
+FIXED_KEYS = (
+    (1, "SeedSigner", "hardware", "SeedSigner"),
+    (2, "Blockstream Jade", "hardware", "Blockstream Jade"),
+    (3, "Nunchuk", "cloud", "Nunchuk"),
+)
 SCHEMA_STATEMENTS = (
     """
     CREATE TABLE IF NOT EXISTS keys (
@@ -103,3 +108,40 @@ def initialize_database(database_path="data/helsesjekk.sqlite3"):
         connection.close()
 
     return path
+
+
+def seed_fixed_keys(database_path="data/helsesjekk.sqlite3"):
+    """Ensure the three fixed key profiles exist without overwriting custom names."""
+    connection = sqlite3.connect(database_path, timeout=5)
+    try:
+        with connection:
+            for key_number, name, key_type, device in FIXED_KEYS:
+                connection.execute(
+                    """
+                    INSERT INTO keys (key_number, name, type, device)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(key_number) DO UPDATE SET
+                        type = excluded.type,
+                        device = excluded.device
+                    """,
+                    (key_number, name, key_type, device),
+                )
+    finally:
+        connection.close()
+
+
+def list_keys(database_path="data/helsesjekk.sqlite3"):
+    """Return the configured key profiles in display order."""
+    connection = sqlite3.connect(database_path, timeout=5)
+    connection.row_factory = sqlite3.Row
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, key_number, name, type, device, created_at
+            FROM keys
+            ORDER BY key_number
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        connection.close()
