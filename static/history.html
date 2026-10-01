@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f4f6f2">
+    <title>History — Helsesjekk</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/history.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Helsesjekk dashboard">
+        <span class="brand-mark" aria-hidden="true">H</span>
+        <span>Helsesjekk</span>
+      </a>
+      <a class="back-link" href="/">Back to dashboard</a>
+    </header>
+
+    <main class="page-shell">
+      <div class="page-heading form-heading">
+        <div>
+          <p class="eyebrow">Saved results</p>
+          <h1>History</h1>
+          <p class="intro">Every saved annual health check, newest first. Saved checks are never overwritten.</p>
+        </div>
+        <a class="primary-button active-button" href="/health-check">Start annual health check</a>
+      </div>
+
+      <section class="section-block" aria-labelledby="history-list-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">All checks</p>
+            <h2 id="history-list-title">Saved health checks</h2>
+          </div>
+        </div>
+        <div id="history-list" aria-live="polite"><p class="empty-state">Loading saved checks…</p></div>
+      </section>
+
+      <section class="section-block" id="history-detail" aria-labelledby="history-detail-title" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Read-only</p>
+            <h2 id="history-detail-title">Health check</h2>
+          </div>
+        </div>
+        <div id="history-detail-body"></div>
+      </section>
+    </main>
+    <footer class="footer"><span>Helsesjekk</span><span>Your data stays local.</span></footer>
+  </body>
+</html>
