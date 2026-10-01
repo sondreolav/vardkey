@@ -4,24 +4,37 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
+import sqlite3
 from urllib.parse import urlsplit
 
-from database import initialize_database
+from database import initialize_database, list_keys, seed_fixed_keys
 
 
 ROOT = Path(__file__).resolve().parent
 STATIC_FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
+    "/app.js": ("app.js", "text/javascript; charset=utf-8"),
 }
+
+
+def get_database_path():
+    """Return the configured SQLite database path."""
+    return os.environ.get("DATABASE_PATH", "data/helsesjekk.sqlite3")
 
 
 class AppHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        """Serve the dashboard assets and a lightweight health endpoint."""
+        """Serve the dashboard, key profiles, and the health endpoint."""
         path = urlsplit(self.path).path
         if path == "/health":
             self._send_json(200, {"status": "ok"})
+            return
+        if path == "/api/keys":
+            try:
+                self._send_json(200, list_keys(get_database_path()))
+            except (OSError, sqlite3.Error, ValueError):
+                self._send_json(500, {"error": "Key profiles are unavailable"})
             return
 
         asset = STATIC_FILES.get(path)
@@ -54,13 +67,14 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def _send_security_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self'; frame-ancestors 'none'")
+        self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; frame-ancestors 'none'")
         self.send_header("Referrer-Policy", "no-referrer")
 
 
 def main():
-    database_path = os.environ.get("DATABASE_PATH", "data/helsesjekk.sqlite3")
+    database_path = get_database_path()
     initialize_database(database_path)
+    seed_fixed_keys(database_path)
 
     port = int(os.environ.get("PORT", "8080"))
     if not 1 <= port <= 65535:
