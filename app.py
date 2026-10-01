@@ -13,8 +13,10 @@ from database import initialize_database, list_keys, seed_fixed_keys
 ROOT = Path(__file__).resolve().parent
 STATIC_FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
+    "/health-check": ("health-check.html", "text/html; charset=utf-8"),
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "/health-check.js": ("health-check.js", "text/javascript; charset=utf-8"),
 }
 
 
@@ -25,7 +27,7 @@ def get_database_path():
 
 class AppHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        """Serve the dashboard, key profiles, and the health endpoint."""
+        """Serve the dashboard, check form, key profiles, and health endpoint."""
         path = urlsplit(self.path).path
         if path == "/health":
             self._send_json(200, {"status": "ok"})
@@ -46,11 +48,12 @@ class AppHandler(BaseHTTPRequestHandler):
         try:
             body = (ROOT / "static" / filename).read_bytes()
         except OSError:
-            self.send_error(500, "Dashboard asset unavailable")
+            self.send_error(500, "Application page unavailable")
             return
 
         self.send_response(200)
         self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-store")
         self._send_security_headers()
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
