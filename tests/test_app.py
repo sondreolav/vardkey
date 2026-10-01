@@ -53,14 +53,22 @@ class AppHandlerTests(unittest.TestCase):
         self.assertEqual([key["device"] for key in keys], ["SeedSigner", "Blockstream Jade", "Nunchuk"])
         self.assertEqual([key["key_number"] for key in keys], [1, 2, 3])
 
-    def test_dashboard_loads_key_profiles_from_api(self):
-        with urlopen(self.base_url) as response:
+    def test_health_check_form_is_served_in_english(self):
+        with urlopen(f"{self.base_url}/health-check") as response:
             body = response.read().decode("utf-8")
 
         self.assertEqual(response.status, 200)
         self.assertIn('<html lang="en">', body)
+        self.assertIn('id="health-check-form"', body)
+        self.assertIn("Never enter seed phrases", body)
+        self.assertIn("Review check", body)
+
+    def test_dashboard_links_to_health_check_form(self):
+        with urlopen(self.base_url) as response:
+            body = response.read().decode("utf-8")
+
+        self.assertIn('href="/health-check"', body)
         self.assertIn('id="key-list"', body)
-        self.assertIn('<script src="/app.js" defer></script>', body)
 
     def test_unknown_path_returns_not_found(self):
         try:
