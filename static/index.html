@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="nn">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f4f6f2">
+    <title>Helsesjekk</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Helsesjekk – dashboard">
+        <span class="brand-mark" aria-hidden="true">H</span>
+        <span>Helsesjekk</span>
+      </a>
+      <span class="service-label">Lokal teneste</span>
+    </header>
+
+    <main class="page-shell">
+      <section class="page-heading" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">Årleg tryggleikskontroll</p>
+          <h1 id="page-title">Dashboard</h1>
+          <p class="intro">Samla oversikt over multisig-oppsettet og dei årlege kontrollane dine.</p>
+        </div>
+        <button class="primary-button" type="button" disabled aria-describedby="workflow-note">
+          Start årleg health check
+        </button>
+      </section>
+
+      <section class="setup-card" aria-labelledby="setup-title">
+        <div>
+          <p class="eyebrow">Multisig-oppsett</p>
+          <h2 id="setup-title">2-av-3</h2>
+        </div>
+        <p class="setup-description">To av tre nøklar trengst for å signere. Denne appen lagrar berre kontrollresultat – aldri nøklar eller seed phrases.</p>
+      </section>
+
+      <section class="section-block" aria-labelledby="keys-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Fast oppsett</p>
+            <h2 id="keys-title">Nøklane dine</h2>
+          </div>
+          <span class="muted-label">3 nøklar</span>
+        </div>
+        <div class="key-grid">
+          <article class="key-card">
+            <div class="key-card-top"><span class="key-number">01</span><span class="status status-neutral">Ikkje registrert</span></div>
+            <h3>SeedSigner</h3>
+            <p>Hardware-nøkkel</p>
+          </article>
+          <article class="key-card">
+            <div class="key-card-top"><span class="key-number">02</span><span class="status status-neutral">Ikkje registrert</span></div>
+            <h3>Blockstream Jade</h3>
+            <p>Hardware-nøkkel</p>
+          </article>
+          <article class="key-card">
+            <div class="key-card-top"><span class="key-number">03</span><span class="status status-neutral">Ikkje registrert</span></div>
+            <h3>Nunchuk</h3>
+            <p>Sky-nøkkel</p>
+          </article>
+        </div>
+      </section>
+
+      <div class="overview-grid">
+        <section class="info-card" aria-labelledby="last-check-title">
+          <p class="eyebrow">Sist gjennomført</p>
+          <h2 id="last-check-title">Ingen kontrollar enno</h2>
+          <p>Gjennomførte health checks vil bli viste her.</p>
+        </section>
+        <section class="info-card" aria-labelledby="next-check-title">
+          <p class="eyebrow">Neste kontroll</p>
+          <h2 id="next-check-title">Ikkje planlagd</h2>
+          <p>Neste dato blir foreslått når ein health check er lagra.</p>
+        </section>
+      </div>
+
+      <section class="section-block alerts-card" aria-labelledby="alerts-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Oppfølging</p>
+            <h2 id="alerts-title">Varsel</h2>
+          </div>
+        </div>
+        <p class="empty-state">Ingen kontrollresultat er registrerte. Varsel kjem fram når ein kontroll viser at noko må følgjast opp.</p>
+      </section>
+
+      <section class="history-card" aria-labelledby="history-title">
+        <div>
+          <p class="eyebrow">Tidlegare kontrollar</p>
+          <h2 id="history-title">Historikk</h2>
+        </div>
+        <p>Historikk blir tilgjengeleg når lagring er implementert.</p>
+      </section>
+
+      <p class="workflow-note" id="workflow-note">Kontrollskjema og lagring kjem i neste utviklingssteg.</p>
+    </main>
+    <footer class="footer"><span>Helsesjekk</span><span>Data skal bli verande lokalt.</span></footer>
+  </body>
+</html>
