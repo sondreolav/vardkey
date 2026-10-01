@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#f4f6f2">
     <title>Helsesjekk</title>
     <link rel="stylesheet" href="/styles.css">
+    <script src="/app.js" defer></script>
   </head>
   <body>
     <header class="topbar">
@@ -42,24 +43,10 @@
             <p class="eyebrow">Fixed setup</p>
             <h2 id="keys-title">Your keys</h2>
           </div>
-          <span class="muted-label">3 keys</span>
+          <span class="muted-label" id="key-count">Loading keys…</span>
         </div>
-        <div class="key-grid">
-          <article class="key-card">
-            <div class="key-card-top"><span class="key-number">01</span><span class="status status-neutral">Not registered</span></div>
-            <h3>SeedSigner</h3>
-            <p>Hardware key</p>
-          </article>
-          <article class="key-card">
-            <div class="key-card-top"><span class="key-number">02</span><span class="status status-neutral">Not registered</span></div>
-            <h3>Blockstream Jade</h3>
-            <p>Hardware key</p>
-          </article>
-          <article class="key-card">
-            <div class="key-card-top"><span class="key-number">03</span><span class="status status-neutral">Not registered</span></div>
-            <h3>Nunchuk</h3>
-            <p>Cloud key</p>
-          </article>
+        <div class="key-grid" id="key-list" aria-live="polite">
+          <p class="empty-state">Loading key profiles…</p>
         </div>
       </section>
 
