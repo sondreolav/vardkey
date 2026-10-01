@@ -46,6 +46,34 @@ class DatabaseInitializationTests(unittest.TestCase):
             <= tables
         )
 
+    def test_v1_database_migrates_to_current_schema_without_losing_data(self):
+        self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        connection = sqlite3.connect(self.database_path)
+        try:
+            connection.executescript(
+                """
+                CREATE TABLE key_checks (
+                    id INTEGER PRIMARY KEY,
+                    address_path_verified INTEGER,
+                    address_path TEXT
+                );
+                INSERT INTO key_checks (address_path_verified, address_path) VALUES (1, "m/48'/0'/0'/2'");
+                PRAGMA user_version = 1;
+                """
+            )
+        finally:
+            connection.close()
+
+        initialize_database(self.database_path)
+        with self.connect() as connection:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            row = connection.execute(
+                "SELECT address_path_verified, address_path, address_verified, derivation_height FROM key_checks"
+            ).fetchone()
+
+        self.assertEqual(version, SCHEMA_VERSION)
+        self.assertEqual(row, (1, "m/48'/0'/0'/2'", None, None))
+
     def test_seed_fixed_keys_is_idempotent_and_preserves_custom_names(self):
         initialize_database(self.database_path)
         seed_fixed_keys(self.database_path)
@@ -63,10 +91,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         )
 
         with self.connect() as connection:
-            connection.execute(
-                "UPDATE keys SET name = ? WHERE key_number = ?",
-                ("My Jade", 2),
-            )
+            connection.execute("UPDATE keys SET name = ? WHERE key_number = ?", ("My Jade", 2))
         seed_fixed_keys(self.database_path)
         self.assertEqual(list_keys(self.database_path)[1]["name"], "My Jade")
 
@@ -80,13 +105,11 @@ class DatabaseInitializationTests(unittest.TestCase):
                 )
 
             connection.execute(
-                "INSERT INTO keys (key_number, name, type, device) "
-                "VALUES (1, 'SeedSigner', 'hardware', 'SeedSigner')"
+                "INSERT INTO keys (key_number, name, type, device) VALUES (1, 'SeedSigner', 'hardware', 'SeedSigner')"
             )
             with self.assertRaises(sqlite3.IntegrityError):
                 connection.execute(
-                    "INSERT INTO keys (key_number, name, type, device) "
-                    "VALUES (1, 'Duplicate', 'hardware', 'SeedSigner')"
+                    "INSERT INTO keys (key_number, name, type, device) VALUES (1, 'Duplicate', 'hardware', 'SeedSigner')"
                 )
 
     def test_ai_security_status_is_limited_to_required_values(self):
