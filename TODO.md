@@ -14,13 +14,18 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 
 Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 
+## Språkkrav
+
+- [ ] Brukargrensesnittet, app-tekst, kjeldekode, variabel- og funksjonsnamn, kommentarar og teknisk dokumentasjon skal vere på engelsk.
+- [ ] `TODO.md` kan vere på norsk; dette er det einaste unntaket.
+
 ---
 
 # 1. Scope for første versjon
 
 ## Dette skal vere med
 
-- [ ] Ein enkel web-app med dashboard.
+- [x] Ein enkel web-app med dashboard.
 - [ ] Registrering av dei tre nøklane.
 - [ ] Registrering av årleg health check.
 - [ ] Kontroll av alle punkta i den årlege sjekklista.
@@ -526,9 +531,9 @@ Før første release skal alle desse vere oppfylte:
 
 Utfør oppgåvene i denne rekkefølgja og ikkje hopp fram til avanserte funksjonar:
 
-- [ ] 1. Opprett grunnleggande web-app.
-- [ ] 2. Opprett SQLite og datamodellen.
-- [ ] 3. Implementer dei tre faste nøklane.
+- [x] 1. Opprett grunnleggande web-app.
+- [x] 2. Opprett SQLite og datamodellen.
+- [x] 3. Implementer dei tre faste nøklane.
 - [ ] 4. Implementer health check-skjemaet.
 - [ ] 5. Implementer lagring og historikk.
 - [ ] 6. Implementer varsellogikken.
