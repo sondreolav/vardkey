@@ -40,9 +40,15 @@ class AppHandlerTests(unittest.TestCase):
         self.assertNotIn("Årleg", body)
 
     def test_unknown_path_returns_not_found(self):
-        with self.assertRaises(HTTPError) as error:
-            urlopen(f"{self.base_url}/missing")
-        self.assertEqual(error.exception.code, 404)
+        try:
+            with urlopen(f"{self.base_url}/missing") as response:
+                self.fail(f"Expected 404, received {response.status}")
+        except HTTPError as error:
+            try:
+                self.assertEqual(error.code, 404)
+                error.read()
+            finally:
+                error.close()
 
 
 if __name__ == "__main__":
