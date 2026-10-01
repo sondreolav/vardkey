@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlite3
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 FIXED_KEYS = (
     (1, "SeedSigner", "hardware", "SeedSigner"),
     (2, "Blockstream Jade", "hardware", "Blockstream Jade"),
@@ -46,6 +46,7 @@ SCHEMA_STATEMENTS = (
         cloud_health_status TEXT CHECK (cloud_health_status IN ('OK', 'PROBLEM', 'IKKJE_VURDERT')),
         cloud_provider_operational INTEGER CHECK (cloud_provider_operational IN (0, 1)),
         address_verified INTEGER CHECK (address_verified IN (0, 1)),
+        seed_backup_verified INTEGER CHECK (seed_backup_verified IN (0, 1)),
         address_path_verified INTEGER CHECK (address_path_verified IN (0, 1)),
         derivation_height TEXT,
         address_path TEXT,
@@ -87,6 +88,7 @@ MIGRATIONS = {
         "ALTER TABLE key_checks ADD COLUMN derivation_height TEXT",
     ),
     3: ("ALTER TABLE health_checks ADD COLUMN software_comments TEXT",),
+    4: ("ALTER TABLE key_checks ADD COLUMN seed_backup_verified INTEGER CHECK (seed_backup_verified IN (0, 1))",),
 }
 
 
