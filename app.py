@@ -4,20 +4,33 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 from urllib.parse import urlsplit
 
-from database import initialize_database, list_keys, seed_fixed_keys
+from database import (
+    get_health_check,
+    initialize_database,
+    list_health_checks,
+    list_keys,
+    save_health_check,
+    seed_fixed_keys,
+)
+from validation import ValidationError, validate_health_check
 
 
 ROOT = Path(__file__).resolve().parent
 STATIC_FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/health-check": ("health-check.html", "text/html; charset=utf-8"),
+    "/history": ("history.html", "text/html; charset=utf-8"),
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/health-check.js": ("health-check.js", "text/javascript; charset=utf-8"),
+    "/history.js": ("history.js", "text/javascript; charset=utf-8"),
 }
+HEALTH_CHECK_PATH = re.compile(r"^/api/health-checks/([1-9][0-9]*)$")
+MAX_REQUEST_BYTES = 262144
 
 
 def get_database_path():
@@ -27,16 +40,21 @@ def get_database_path():
 
 class AppHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        """Serve the dashboard, check form, key profiles, and health endpoint."""
+        """Serve the pages, key profiles, saved checks, and the health endpoint."""
         path = urlsplit(self.path).path
         if path == "/health":
             self._send_json(200, {"status": "ok"})
             return
         if path == "/api/keys":
-            try:
-                self._send_json(200, list_keys(get_database_path()))
-            except (OSError, sqlite3.Error, ValueError):
-                self._send_json(500, {"error": "Key profiles are unavailable"})
+            self._send_keys()
+            return
+        if path == "/api/health-checks":
+            self._send_health_check_list()
+            return
+
+        detail = HEALTH_CHECK_PATH.match(path)
+        if detail:
+            self._send_health_check(int(detail.group(1)))
             return
 
         asset = STATIC_FILES.get(path)
@@ -58,6 +76,72 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_POST(self):
+        """Store one validated annual health check."""
+        path = urlsplit(self.path).path
+        if path != "/api/health-checks":
+            self.send_error(404, "Not Found")
+            return
+
+        try:
+            payload = self._read_json_body()
+        except ValueError as error:
+            self._send_json(400, {"error": str(error)})
+            return
+
+        database_path = get_database_path()
+        try:
+            key_ids = {key["id"] for key in list_keys(database_path)}
+            data = validate_health_check(payload, key_ids)
+            health_check_id = save_health_check(data, database_path)
+        except ValidationError as error:
+            self._send_json(400, {"error": str(error)})
+            return
+        except (OSError, sqlite3.Error, ValueError):
+            self._send_json(500, {"error": "The health check could not be saved"})
+            return
+
+        self._send_json(201, {"id": health_check_id})
+
+    def _send_keys(self):
+        try:
+            self._send_json(200, list_keys(get_database_path()))
+        except (OSError, sqlite3.Error, ValueError):
+            self._send_json(500, {"error": "Key profiles are unavailable"})
+
+    def _send_health_check_list(self):
+        try:
+            self._send_json(200, list_health_checks(get_database_path()))
+        except (OSError, sqlite3.Error, ValueError):
+            self._send_json(500, {"error": "Saved health checks are unavailable"})
+
+    def _send_health_check(self, health_check_id):
+        try:
+            record = get_health_check(health_check_id, get_database_path())
+        except (OSError, sqlite3.Error, ValueError):
+            self._send_json(500, {"error": "Saved health checks are unavailable"})
+            return
+        if record is None:
+            self._send_json(404, {"error": "Health check not found"})
+            return
+        self._send_json(200, record)
+
+    def _read_json_body(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as error:
+            raise ValueError("Content-Length is not valid") from error
+        if length <= 0:
+            raise ValueError("a request body is required")
+        if length > MAX_REQUEST_BYTES:
+            raise ValueError("the request body is too large")
+
+        raw = self.rfile.read(length)
+        try:
+            return json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValueError("the request body must be valid JSON") from error
 
     def _send_json(self, status, payload):
         body = json.dumps(payload).encode("utf-8")
