@@ -18,6 +18,7 @@ class HealthCheckFormTests(unittest.TestCase):
 
     def test_form_script_covers_all_four_products_and_checklist_fields(self):
         script = (ROOT / "static" / "health-check.js").read_text(encoding="utf-8")
+        html = (ROOT / "static" / "health-check.html").read_text(encoding="utf-8")
         for product in ("SeedSigner", "Blockstream Jade", "Nunchuk", "Sparrow Wallet"):
             self.assertIn(product, script)
         for field in (
@@ -27,10 +28,10 @@ class HealthCheckFormTests(unittest.TestCase):
             "seed_backup_verified",
             "bip327_status",
             "slip39_status",
-            "contact_info_verified",
         ):
             self.assertIn(field, script)
-        self.assertIn("setFullYear", script)
+        self.assertIn('name="contact_info_verified"', html)
+        self.assertIn("formatLocalDate", script)
         self.assertIn("Needs assessment", script)
         self.assertIn("Results requiring follow-up", script)
 
