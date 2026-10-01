@@ -30,6 +30,7 @@ SCHEMA_STATEMENTS = (
             CHECK (software_compatibility_status IN ('OK', 'PROBLEM', 'IKKJE_VURDERT')),
         sparrow_version TEXT,
         nunchuk_version TEXT,
+        software_comments TEXT,
         contact_info_verified INTEGER CHECK (contact_info_verified IN (0, 1)),
         comments TEXT
     )
@@ -81,19 +82,10 @@ SCHEMA_STATEMENTS = (
     """,
     "CREATE INDEX IF NOT EXISTS idx_health_checks_checked_at ON health_checks(checked_at DESC)",
 )
-MIGRATIONS = {
-    1: SCHEMA_STATEMENTS,
-    2: (
-        "ALTER TABLE key_checks ADD COLUMN address_verified INTEGER CHECK (address_verified IN (0, 1))",
-        "ALTER TABLE key_checks ADD COLUMN derivation_height TEXT",
-    ),
-    3: ("ALTER TABLE health_checks ADD COLUMN software_comments TEXT",),
-    4: ("ALTER TABLE key_checks ADD COLUMN seed_backup_verified INTEGER CHECK (seed_backup_verified IN (0, 1))",),
-}
 
 
 def initialize_database(database_path="data/helsesjekk.sqlite3"):
-    """Create the database and apply schema migrations up to the current version."""
+    """Create the database schema if it does not already exist."""
     path = Path(database_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -106,20 +98,30 @@ def initialize_database(database_path="data/helsesjekk.sqlite3"):
                 f"Database schema version {version} is newer than supported version {SCHEMA_VERSION}"
             )
 
-        for migration_version in range(version + 1, SCHEMA_VERSION + 1):
-            connection.execute("BEGIN IMMEDIATE")
-            try:
-                for statement in MIGRATIONS[migration_version]:
-                    connection.execute(statement)
-                connection.execute(f"PRAGMA user_version = {migration_version}")
-                connection.commit()
-            except Exception:
-                connection.rollback()
-                raise
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            for statement in SCHEMA_STATEMENTS:
+                connection.execute(statement)
+            _ensure_column(connection, "key_checks", "address_verified", "INTEGER CHECK (address_verified IN (0, 1))")
+            _ensure_column(connection, "key_checks", "derivation_height", "TEXT")
+            _ensure_column(connection, "health_checks", "software_comments", "TEXT")
+            _ensure_column(connection, "key_checks", "seed_backup_verified", "INTEGER CHECK (seed_backup_verified IN (0, 1))")
+            connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
     finally:
         connection.close()
 
     return path
+
+
+def _ensure_column(connection, table, column, definition):
+    """Add a table column only when it is missing."""
+    columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+    if column not in columns:
+        connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 def seed_fixed_keys(database_path="data/helsesjekk.sqlite3"):
