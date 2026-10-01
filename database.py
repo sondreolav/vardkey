@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlite3
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 FIXED_KEYS = (
     (1, "SeedSigner", "hardware", "SeedSigner"),
     (2, "Blockstream Jade", "hardware", "Blockstream Jade"),
@@ -86,6 +86,7 @@ MIGRATIONS = {
         "ALTER TABLE key_checks ADD COLUMN address_verified INTEGER CHECK (address_verified IN (0, 1))",
         "ALTER TABLE key_checks ADD COLUMN derivation_height TEXT",
     ),
+    3: ("ALTER TABLE health_checks ADD COLUMN software_comments TEXT",),
 }
 
 
