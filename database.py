@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlite3
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 FIXED_KEYS = (
     (1, "SeedSigner", "hardware", "SeedSigner"),
     (2, "Blockstream Jade", "hardware", "Blockstream Jade"),
@@ -45,7 +45,9 @@ SCHEMA_STATEMENTS = (
         seed_backup_status TEXT CHECK (seed_backup_status IN ('OK', 'PROBLEM', 'IKKJE_VURDERT')),
         cloud_health_status TEXT CHECK (cloud_health_status IN ('OK', 'PROBLEM', 'IKKJE_VURDERT')),
         cloud_provider_operational INTEGER CHECK (cloud_provider_operational IN (0, 1)),
+        address_verified INTEGER CHECK (address_verified IN (0, 1)),
         address_path_verified INTEGER CHECK (address_path_verified IN (0, 1)),
+        derivation_height TEXT,
         address_path TEXT,
         comments TEXT,
         UNIQUE (health_check_id, key_id)
@@ -78,6 +80,13 @@ SCHEMA_STATEMENTS = (
     """,
     "CREATE INDEX IF NOT EXISTS idx_health_checks_checked_at ON health_checks(checked_at DESC)",
 )
+MIGRATIONS = {
+    1: SCHEMA_STATEMENTS,
+    2: (
+        "ALTER TABLE key_checks ADD COLUMN address_verified INTEGER CHECK (address_verified IN (0, 1))",
+        "ALTER TABLE key_checks ADD COLUMN derivation_height TEXT",
+    ),
+}
 
 
 def initialize_database(database_path="data/helsesjekk.sqlite3"):
@@ -94,12 +103,12 @@ def initialize_database(database_path="data/helsesjekk.sqlite3"):
                 f"Database schema version {version} is newer than supported version {SCHEMA_VERSION}"
             )
 
-        if version < 1:
+        for migration_version in range(version + 1, SCHEMA_VERSION + 1):
             connection.execute("BEGIN IMMEDIATE")
             try:
-                for statement in SCHEMA_STATEMENTS:
+                for statement in MIGRATIONS[migration_version]:
                     connection.execute(statement)
-                connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+                connection.execute(f"PRAGMA user_version = {migration_version}")
                 connection.commit()
             except Exception:
                 connection.rollback()
