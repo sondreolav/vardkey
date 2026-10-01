@@ -88,7 +88,7 @@
             <h2 id="contact-title">Contact information</h2>
           </div>
           <label class="field"><span>Have you confirmed that all key holders' contact details are current?</span><select name="contact_info_verified"><option value="">Not assessed</option><option value="1">Yes</option><option value="0">No</option></select></label>
-          <p class="field-help">Only the confirmation is recorded in the eventual check. Do not enter names, email addresses, or phone numbers.</p>
+          <p class="field-help">Only the confirmation is recorded in the saved check. Do not enter names, email addresses, or phone numbers.</p>
         </section>
 
         <section class="form-section" aria-labelledby="comments-title">
@@ -111,7 +111,11 @@
           <h2 id="review-title">Check summary</h2>
         </div>
         <div id="review-summary" aria-live="polite"></div>
-        <p class="workflow-note">Saving is not implemented yet. No data from this form has been stored.</p>
+        <p class="workflow-note" id="save-status" role="status"></p>
+        <div class="form-actions">
+          <button class="primary-button active-button" id="save-check" type="button" disabled>Save health check</button>
+          <a class="secondary-button" href="/">Cancel</a>
+        </div>
       </section>
     </main>
     <footer class="footer"><span>Helsesjekk</span><span>Your data stays local.</span></footer>
