@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f4f6f2">
+    <title>Annual health check — Helsesjekk</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/health-check.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Helsesjekk dashboard">
+        <span class="brand-mark" aria-hidden="true">H</span>
+        <span>Helsesjekk</span>
+      </a>
+      <a class="back-link" href="/">Back to dashboard</a>
+    </header>
+
+    <main class="page-shell form-shell">
+      <div class="page-heading form-heading">
+        <div>
+          <p class="eyebrow">Annual security check</p>
+          <h1>Health check</h1>
+          <p class="intro">Record what you checked. Helsesjekk does not test devices or backups itself.</p>
+        </div>
+      </div>
+
+      <div class="privacy-notice" role="note">
+        Never enter seed phrases, private keys, PINs, passwords, wallet secrets, or contact details.
+      </div>
+
+      <form id="health-check-form">
+        <section class="form-section" aria-labelledby="schedule-title">
+          <div class="form-section-heading">
+            <p class="eyebrow">01 / Schedule</p>
+            <h2 id="schedule-title">Check dates</h2>
+          </div>
+          <div class="field-grid">
+            <label class="field"><span>Check date</span><input id="checked-at" name="checked_at" type="date" required></label>
+            <label class="field"><span>Next check due</span><input id="next-check-due" name="next_check_due" type="date" required></label>
+          </div>
+          <p class="field-help">The next check date is suggested one calendar year after the check date. You can change it.</p>
+        </section>
+
+        <section class="form-section" aria-labelledby="key-checks-title">
+          <div class="form-section-heading">
+            <p class="eyebrow">02 / Keys</p>
+            <h2 id="key-checks-title">Key checks</h2>
+          </div>
+          <div id="key-checks" class="form-stack"><p class="empty-state">Loading key profiles…</p></div>
+        </section>
+
+        <section class="form-section" aria-labelledby="software-title">
+          <div class="form-section-heading">
+            <p class="eyebrow">03 / Compatibility</p>
+            <h2 id="software-title">Software compatibility</h2>
+          </div>
+          <div class="field-grid">
+            <label class="field"><span>Compatibility status</span><select name="software_compatibility_status"><option value="IKKJE_VURDERT">Not assessed</option><option value="OK">OK</option><option value="PROBLEM">Problem</option></select></label>
+            <label class="field"><span>Sparrow version <span class="optional">(if used)</span></span><input name="sparrow_version" type="text" maxlength="100" autocomplete="off"></label>
+            <label class="field"><span>Nunchuk version <span class="optional">(if used)</span></span><input name="nunchuk_version" type="text" maxlength="100" autocomplete="off"></label>
+          </div>
+          <label class="field"><span>Compatibility notes</span><textarea name="software_comments" rows="3" maxlength="2000"></textarea></label>
+        </section>
+
+        <section class="form-section" aria-labelledby="tool-checks-title">
+          <div class="form-section-heading">
+            <p class="eyebrow">04 / Standards</p>
+            <h2 id="tool-checks-title">BIP327 and SLIP39 support</h2>
+          </div>
+          <p class="field-help">Record the result and source. This app does not verify support or perform upgrades.</p>
+          <div id="tool-checks" class="form-stack"><p class="empty-state">Loading products…</p></div>
+        </section>
+
+        <section class="form-section" aria-labelledby="security-title">
+          <div class="form-section-heading">
+            <p class="eyebrow">05 / External research</p>
+            <h2 id="security-title">Security status</h2>
+          </div>
+          <p class="field-help">Enter results from your external research; the app does not contact AI or product providers.</p>
+          <div id="security-checks" class="form-stack"><p class="empty-state">Loading products…</p></div>
+        </section>
+
+        <section class="form-section" aria-labelledby="contact-title">
+          <div class="form-section-heading">
+            <p class="eyebrow">06 / Contact confirmation</p>
+            <h2 id="contact-title">Contact information</h2>
+          </div>
+          <label class="field"><span>Have you confirmed that all key holders' contact details are current?</span><select name="contact_info_verified"><option value="">Not assessed</option><option value="1">Yes</option><option value="0">No</option></select></label>
+          <p class="field-help">Only the confirmation is recorded in the eventual check. Do not enter names, email addresses, or phone numbers.</p>
+        </section>
+
+        <section class="form-section" aria-labelledby="comments-title">
+          <div class="form-section-heading">
+            <p class="eyebrow">07 / Notes</p>
+            <h2 id="comments-title">Overall comments</h2>
+          </div>
+          <label class="field"><span>Observations and follow-up notes</span><textarea name="comments" rows="4" maxlength="4000"></textarea></label>
+        </section>
+
+        <div class="form-actions">
+          <button class="primary-button active-button" type="submit">Review check</button>
+          <a class="secondary-button" href="/">Cancel</a>
+        </div>
+      </form>
+
+      <section id="review-panel" class="form-section review-panel" aria-labelledby="review-title" hidden>
+        <div class="form-section-heading">
+          <p class="eyebrow">Review</p>
+          <h2 id="review-title">Check summary</h2>
+        </div>
+        <div id="review-summary" aria-live="polite"></div>
+        <p class="workflow-note">Saving is not implemented yet. No data from this form has been stored.</p>
+      </section>
+    </main>
+    <footer class="footer"><span>Helsesjekk</span><span>Your data stays local.</span></footer>
+  </body>
+</html>
