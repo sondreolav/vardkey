@@ -4,7 +4,7 @@ Helsesjekk is a local web application for recording annual checks of a fixed 2-o
 
 ## Current status
 
-The English dashboard is an initial UI scaffold. SQLite schema initialization is implemented, but check forms, key registration, saving health checks, history, alerts, and report export are not implemented yet. The dashboard does not claim that any device or backup has been tested.
+The English dashboard loads the three fixed key profiles from SQLite. The profiles are seeded idempotently when the service starts, and `GET /api/keys` returns them as JSON. Check forms, saving health checks, history, alerts, and report export are not implemented yet. The dashboard does not claim that any device or backup has been tested.
 
 ## Run locally
 
