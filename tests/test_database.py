@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from database import SCHEMA_VERSION, initialize_database
+from database import SCHEMA_VERSION, initialize_database, list_keys, seed_fixed_keys
 
 
 class DatabaseInitializationTests(unittest.TestCase):
@@ -45,6 +45,30 @@ class DatabaseInitializationTests(unittest.TestCase):
             {"keys", "health_checks", "key_checks", "tool_checks", "ai_security_checks"}
             <= tables
         )
+
+    def test_seed_fixed_keys_is_idempotent_and_preserves_custom_names(self):
+        initialize_database(self.database_path)
+        seed_fixed_keys(self.database_path)
+        seed_fixed_keys(self.database_path)
+
+        keys = list_keys(self.database_path)
+        self.assertEqual(len(keys), 3)
+        self.assertEqual(
+            [(key["key_number"], key["name"], key["type"], key["device"]) for key in keys],
+            [
+                (1, "SeedSigner", "hardware", "SeedSigner"),
+                (2, "Blockstream Jade", "hardware", "Blockstream Jade"),
+                (3, "Nunchuk", "cloud", "Nunchuk"),
+            ],
+        )
+
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE keys SET name = ? WHERE key_number = ?",
+                ("My Jade", 2),
+            )
+        seed_fixed_keys(self.database_path)
+        self.assertEqual(list_keys(self.database_path)[1]["name"], "My Jade")
 
     def test_invalid_status_and_duplicate_key_numbers_are_rejected(self):
         initialize_database(self.database_path)
