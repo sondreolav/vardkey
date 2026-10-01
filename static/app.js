@@ -2,6 +2,8 @@
 
 const keyList = document.querySelector("#key-list");
 const keyCount = document.querySelector("#key-count");
+const lastCheckTitle = document.querySelector("#last-check-title");
+const nextCheckTitle = document.querySelector("#next-check-title");
 
 function createKeyCard(key) {
   const card = document.createElement("article");
@@ -49,4 +51,23 @@ async function loadKeys() {
   }
 }
 
+async function loadSummary() {
+  try {
+    const response = await fetch("/api/health-checks", { headers: { Accept: "application/json" } });
+    if (!response.ok) {
+      throw new Error("Saved checks are unavailable.");
+    }
+
+    const checks = await response.json();
+    if (checks.length) {
+      lastCheckTitle.textContent = checks[0].checked_at;
+      nextCheckTitle.textContent = checks[0].next_check_due;
+    }
+  } catch {
+    lastCheckTitle.textContent = "Unavailable";
+    nextCheckTitle.textContent = "Unavailable";
+  }
+}
+
 loadKeys();
+loadSummary();
