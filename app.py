@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from database import initialize_database
+
 
 ROOT = Path(__file__).resolve().parent
 STATIC_FILES = {
@@ -57,6 +59,9 @@ class AppHandler(BaseHTTPRequestHandler):
 
 
 def main():
+    database_path = os.environ.get("DATABASE_PATH", "data/helsesjekk.sqlite3")
+    initialize_database(database_path)
+
     port = int(os.environ.get("PORT", "8080"))
     if not 1 <= port <= 65535:
         raise ValueError("PORT must be between 1 and 65535")
