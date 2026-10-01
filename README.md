@@ -4,7 +4,7 @@ Helsesjekk is a local web application for recording annual checks of a fixed 2-o
 
 ## Current status
 
-The initial dashboard is a UI scaffold. Check forms, database storage, key editing, history, alerts, and report export are not implemented yet. The dashboard does not claim that any device or backup has been tested.
+The English dashboard is an initial UI scaffold. SQLite schema initialization is implemented, but check forms, key registration, saving health checks, history, alerts, and report export are not implemented yet. The dashboard does not claim that any device or backup has been tested.
 
 ## Run locally
 
@@ -14,8 +14,14 @@ Requires Python 3.9 or later. No third-party packages are needed.
 python3 app.py
 ```
 
-Open <http://localhost:8080>. Set the `PORT` environment variable to use a different port. The `GET /health` endpoint returns `{"status":"ok"}` for service health checks.
+Open <http://localhost:8080>. Set the `PORT` environment variable to use a different port. Set `DATABASE_PATH` to change the SQLite database file location; it defaults to `data/helsesjekk.sqlite3`. The `GET /health` endpoint returns `{"status":"ok"}` for service health checks.
+
+Run the tests with:
+
+```sh
+python3 -m unittest discover -s tests
+```
 
 ## Development
 
-The web server uses Python's standard library and serves only the explicitly listed static assets. Keep application data local; never add fields for seed phrases, private keys, wallet passwords, cloud credentials, or contact details.
+The web server and database use Python's standard library. The server serves only explicitly listed static assets. Keep application data local; never add fields for seed phrases, private keys, wallet passwords, cloud credentials, or contact details. The application UI, source code, comments, and technical documentation must be in English; `TODO.md` is intentionally written in Norwegian.
