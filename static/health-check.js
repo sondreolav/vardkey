@@ -11,6 +11,7 @@ const generalStatuses = [
   ["OK", "OK"],
   ["PROBLEM", "Problem"],
 ];
+const booleanOptions = [["", "Not assessed"], ["1", "Yes"], ["0", "No"]];
 const productNames = ["SeedSigner", "Blockstream Jade", "Nunchuk", "Sparrow Wallet"];
 const securityStatuses = ["TRYGG", "PATCHA", "SÅRBAR", "KOMPROMITTERT"];
 
@@ -77,20 +78,21 @@ function renderKeyChecks(keys) {
   for (const key of keys) {
     const card = makeCard(`Key ${key.key_number}: ${key.name}`, key.type === "cloud" ? "Cloud key — report the result of your manual check." : "Hardware key — record the result of your manual check.");
     const prefix = `key_${key.id}_`;
-    card.append(makeField("Availability", `${prefix}available`, makeSelect([["", "Not assessed"], ["1", "Available"], ["0", "Not available"]])));
+    card.append(makeField("Availability", `${prefix}available`, makeSelect(booleanOptions)));
 
     if (key.type === "hardware") {
-      card.append(makeField("Hardware works", `${prefix}hardware_works`, makeSelect([["", "Not assessed"], ["1", "Yes"], ["0", "No"]])));
+      card.append(makeField("Hardware works", `${prefix}hardware_works`, makeSelect(booleanOptions)));
       card.append(makeField("Firmware version", `${prefix}firmware_version`, makeTextInput(`${prefix}firmware_version`, 100)));
       card.append(makeField("Seed backup status", `${prefix}seed_backup_status`, makeSelect(generalStatuses)));
+      card.append(makeField("Backup verified as intact and matching the device", `${prefix}seed_backup_verified`, makeSelect(booleanOptions)));
     } else {
       card.append(makeField("Cloud health check", `${prefix}cloud_health_status`, makeSelect(generalStatuses)));
-      card.append(makeField("Provider operational", `${prefix}cloud_provider_operational`, makeSelect([["", "Not assessed"], ["1", "Yes"], ["0", "No"]])));
+      card.append(makeField("Provider operational", `${prefix}cloud_provider_operational`, makeSelect(booleanOptions)));
     }
 
-    card.append(makeField("Address verified", `${prefix}address_verified`, makeSelect([["", "Not assessed"], ["1", "Yes"], ["0", "No"]])));
+    card.append(makeField("Address verified", `${prefix}address_verified`, makeSelect(booleanOptions)));
     card.append(makeField("Derivation height", `${prefix}derivation_height`, makeTextInput(`${prefix}derivation_height`, 100)));
-    card.append(makeField("Address path verified", `${prefix}address_path_verified`, makeSelect([["", "Not assessed"], ["1", "Yes"], ["0", "No"]])));
+    card.append(makeField("Address path verified", `${prefix}address_path_verified`, makeSelect(booleanOptions)));
     card.append(makeField("Address path", `${prefix}address_path`, makeTextInput(`${prefix}address_path`, 200)));
     card.append(makeField("Key notes", `${prefix}comments`, makeTextarea(`${prefix}comments`)));
     keyChecks.append(card);
@@ -125,11 +127,17 @@ function renderSecurityChecks() {
   }
 }
 
+function formatLocalDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function setSuggestedDates() {
   const checkedAt = document.querySelector("#checked-at");
   const dueDate = document.querySelector("#next-check-due");
-  const today = new Date();
-  checkedAt.value = today.toISOString().slice(0, 10);
+  checkedAt.value = formatLocalDate(new Date());
   dueDate.dataset.suggested = "true";
   suggestDueDate();
   checkedAt.addEventListener("change", suggestDueDate);
@@ -138,10 +146,11 @@ function setSuggestedDates() {
   });
 
   function suggestDueDate() {
-    if (dueDate.dataset.suggested !== "false") {
-      const date = new Date(`${checkedAt.value}T12:00:00`);
+    if (dueDate.dataset.suggested !== "false" && checkedAt.value) {
+      const [year, month, day] = checkedAt.value.split("-").map(Number);
+      const date = new Date(year, month - 1, day);
       date.setFullYear(date.getFullYear() + 1);
-      dueDate.value = date.toISOString().slice(0, 10);
+      dueDate.value = formatLocalDate(date);
     }
   }
 }
@@ -151,7 +160,8 @@ function buildReview() {
   const missing = [];
   const problems = [];
   for (const select of form.querySelectorAll("select")) {
-    const label = select.closest(".field")?.querySelector("span")?.textContent || select.name;
+    const fieldLabel = select.closest(".field")?.querySelector("span");
+    const label = fieldLabel?.textContent || select.name;
     const value = data.get(select.name);
     if (value === "" || value === "IKKJE_VURDERT") {
       missing.push(label);
