@@ -52,8 +52,13 @@ h2 { margin-bottom: 0; font-size: 20px; letter-spacing: -.02em; }
 .key-number { color: #839087; font-size: 12px; font-weight: 700; }
 .status { padding: 5px 8px; border-radius: 20px; font-size: 11px; font-weight: 650; }
 .status-neutral { color: #5e6962; background: #f0f2ef; }
+.status-ok { color: #1f5f45; background: var(--green-soft); }
+.status-overdue { color: #8a3529; background: #fbeceb; }
 .key-card h3 { margin: 20px 0 5px; font-size: 16px; }
 .key-card p, .info-card p:not(.eyebrow), .history-card > p { margin-bottom: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.key-dates { margin: 14px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: 12px; }
+.key-dates dt { color: var(--muted); font-weight: 600; }
+.key-dates dd { margin: 0; }
 .overview-grid { margin-top: 20px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .info-card { min-height: 132px; padding: 20px; }
 .info-card h2 { margin-bottom: 8px; font-size: 17px; }
