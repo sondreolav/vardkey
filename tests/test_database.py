@@ -10,6 +10,7 @@ from database import (
     SCHEMA_VERSION,
     get_health_check,
     initialize_database,
+    list_export_rows,
     list_health_checks,
     list_key_status,
     list_keys,
@@ -350,6 +351,59 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(status[3]["next_check_due"], "2027-05-01")
         self.assertIsNone(status[2]["last_checked_at"])
         self.assertIsNone(status[2]["next_check_due"])
+
+    def test_export_rows_are_empty_before_anything_is_saved(self):
+        initialize_database(self.database_path)
+        seed_fixed_keys(self.database_path)
+
+        self.assertEqual(list_export_rows(self.database_path), [])
+
+    def test_export_rows_join_products_and_security_statuses(self):
+        initialize_database(self.database_path)
+        seed_fixed_keys(self.database_path)
+        keys = list_keys(self.database_path)
+
+        saved_id = save_health_check(
+            validate_health_check(sample_payload(keys[0]), keys), self.database_path
+        )
+        save_health_check(
+            validate_health_check(sample_payload(keys[2]), keys), self.database_path
+        )
+
+        rows = list_export_rows(self.database_path)
+
+        self.assertEqual(len(rows), 2)
+        first = rows[0]
+        self.assertEqual(first["check_id"], saved_id)
+        self.assertEqual(first["checked_at"], "2026-10-01")
+        self.assertEqual(first["next_check_due"], "2027-10-01")
+        self.assertEqual(first["key_number"], 1)
+        self.assertEqual(first["key_name"], "SeedSigner")
+        self.assertEqual(first["key_type"], "hardware")
+        self.assertEqual(first["seed_backup_verified"], "OK")
+        self.assertEqual(first["address_path_verified"], "OK")
+        self.assertEqual(first["address_path"], "m/48'/0'/0'/2'/0/0")
+        self.assertEqual(first["wallet_software"], "Sparrow Wallet")
+        self.assertEqual(first["contact_info_verified"], 1)
+        self.assertEqual(
+            first["bip327_status"],
+            "SeedSigner: IKKJE_VURDERT; Sparrow Wallet: IKKJE_VURDERT",
+        )
+        self.assertEqual(
+            first["slip39_status"],
+            "SeedSigner: IKKJE_VURDERT; Sparrow Wallet: IKKJE_VURDERT",
+        )
+        self.assertEqual(
+            first["security_status"],
+            "SeedSigner: SECURE; Sparrow Wallet: SECURE; Nunchuk: SECURE",
+        )
+
+        cloud = rows[1]
+        self.assertEqual(cloud["key_number"], 3)
+        self.assertEqual(cloud["key_name"], "Nunchuk")
+        self.assertEqual(cloud["wallet_software"], "Nunchuk")
+        self.assertEqual(cloud["bip327_status"], "Nunchuk: IKKJE_VURDERT")
+        self.assertEqual(cloud["security_status"], "Nunchuk: SECURE")
 
     def test_invalid_status_and_duplicate_key_numbers_are_rejected(self):
         initialize_database(self.database_path)
