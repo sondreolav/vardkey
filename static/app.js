@@ -116,7 +116,12 @@ function createAlertItem(alert) {
   const message = document.createElement("p");
   message.textContent = alert.message;
 
-  item.append(source, message);
+  // Every alert names the saved check it came from (section 21).
+  const origin = document.createElement("p");
+  origin.className = "alert-origin";
+  origin.textContent = `From check ${alert.check_id} · ${alert.checked_at}`;
+
+  item.append(source, message, origin);
   return item;
 }
 
@@ -153,7 +158,7 @@ async function loadAlerts() {
     const alerts = await response.json();
     if (!alerts.length) {
       alertsList.replaceChildren(createEmptyState(
-        "No alerts. The most recent saved check has no result that needs follow-up.",
+        "No alerts. No saved check has a result that needs follow-up.",
       ));
       alertCount.textContent = "No alerts";
       return;
