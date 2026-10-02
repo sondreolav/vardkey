@@ -157,6 +157,23 @@ class AppHandlerTests(unittest.TestCase):
         self.assertEqual(len(record["tool_checks"]), 4)
         self.assertEqual(len(record["ai_security_checks"]), 4)
 
+    def test_alerts_api_reports_follow_up_for_the_latest_check(self):
+        with urlopen(f"{self.base_url}/api/keys") as response:
+            keys = json.load(response)
+
+        payload = sample_payload(keys)
+        payload["key_checks"][0]["available"] = 0
+        with self.post_json("/api/health-checks", payload) as response:
+            self.assertEqual(response.status, 201)
+
+        with urlopen(f"{self.base_url}/api/alerts") as response:
+            alerts = json.load(response)
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual([alert["code"] for alert in alerts], ["key_unavailable"])
+        self.assertEqual(alerts[0]["severity"], "critical")
+        self.assertIn("Key 1", alerts[0]["source"])
+
     def test_invalid_health_check_is_rejected(self):
         payload = sample_payload([{"id": 1, "type": "hardware"}])
         payload["checked_at"] = "not-a-date"
