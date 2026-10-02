@@ -8,6 +8,7 @@ import re
 import sqlite3
 from urllib.parse import urlsplit
 
+from alerts import build_alerts
 from database import (
     get_health_check,
     initialize_database,
@@ -40,7 +41,7 @@ def get_database_path():
 
 class AppHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        """Serve the pages, key profiles, saved checks, and the health endpoint."""
+        """Serve the pages, key profiles, saved checks, alerts, and the health endpoint."""
         path = urlsplit(self.path).path
         if path == "/health":
             self._send_json(200, {"status": "ok"})
@@ -50,6 +51,9 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/health-checks":
             self._send_health_check_list()
+            return
+        if path == "/api/alerts":
+            self._send_alerts()
             return
 
         detail = HEALTH_CHECK_PATH.match(path)
@@ -115,6 +119,21 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json(200, list_health_checks(get_database_path()))
         except (OSError, sqlite3.Error, ValueError):
             self._send_json(500, {"error": "Saved health checks are unavailable"})
+
+    def _send_alerts(self):
+        """Return the follow-up alerts of the most recent saved health check."""
+        database_path = get_database_path()
+        try:
+            summaries = list_health_checks(database_path)
+            if not summaries:
+                self._send_json(200, [])
+                return
+            record = get_health_check(summaries[0]["id"], database_path)
+        except (OSError, sqlite3.Error, ValueError):
+            self._send_json(500, {"error": "Alerts are unavailable"})
+            return
+
+        self._send_json(200, build_alerts(record) if record else [])
 
     def _send_health_check(self, health_check_id):
         try:
