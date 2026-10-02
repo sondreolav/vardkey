@@ -4,6 +4,15 @@ const keyList = document.querySelector("#key-list");
 const keyCount = document.querySelector("#key-count");
 const lastCheckTitle = document.querySelector("#last-check-title");
 const nextCheckTitle = document.querySelector("#next-check-title");
+const alertsList = document.querySelector("#alerts-list");
+const alertCount = document.querySelector("#alert-count");
+
+function createEmptyState(text) {
+  const message = document.createElement("p");
+  message.className = "empty-state";
+  message.textContent = text;
+  return message;
+}
 
 function createKeyCard(key) {
   const card = document.createElement("article");
@@ -31,6 +40,20 @@ function createKeyCard(key) {
   return card;
 }
 
+function createAlertItem(alert) {
+  const item = document.createElement("li");
+  item.className = `alert-item alert-${alert.severity}`;
+
+  const source = document.createElement("strong");
+  source.textContent = alert.source;
+
+  const message = document.createElement("p");
+  message.textContent = alert.message;
+
+  item.append(source, message);
+  return item;
+}
+
 async function loadKeys() {
   try {
     const response = await fetch("/api/keys", { headers: { Accept: "application/json" } });
@@ -42,11 +65,9 @@ async function loadKeys() {
     keyList.replaceChildren(...keys.map(createKeyCard));
     keyCount.textContent = `${keys.length} keys`;
   } catch {
-    keyList.replaceChildren();
-    const message = document.createElement("p");
-    message.className = "empty-state";
-    message.textContent = "Key profiles are unavailable. Please reload the page or contact the service administrator.";
-    keyList.append(message);
+    keyList.replaceChildren(createEmptyState(
+      "Key profiles are unavailable. Please reload the page or contact the service administrator.",
+    ));
     keyCount.textContent = "Unavailable";
   }
 }
@@ -69,5 +90,35 @@ async function loadSummary() {
   }
 }
 
+async function loadAlerts() {
+  try {
+    const response = await fetch("/api/alerts", { headers: { Accept: "application/json" } });
+    if (!response.ok) {
+      throw new Error("Alerts are unavailable.");
+    }
+
+    const alerts = await response.json();
+    if (!alerts.length) {
+      alertsList.replaceChildren(createEmptyState(
+        "No alerts. The most recent saved check has no result that needs follow-up.",
+      ));
+      alertCount.textContent = "No alerts";
+      return;
+    }
+
+    const list = document.createElement("ul");
+    list.className = "alert-list";
+    list.append(...alerts.map(createAlertItem));
+    alertsList.replaceChildren(list);
+    alertCount.textContent = alerts.length === 1 ? "1 alert" : `${alerts.length} alerts`;
+  } catch {
+    alertsList.replaceChildren(createEmptyState(
+      "Alerts could not be loaded. Please reload the page.",
+    ));
+    alertCount.textContent = "Unavailable";
+  }
+}
+
 loadKeys();
 loadSummary();
+loadAlerts();
