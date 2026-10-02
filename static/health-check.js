@@ -23,9 +23,15 @@ const SECURITY_STATUSES = ["SECURE", "PATCHED", "VULNERABLE", "COMPROMISED"];
 const UNRESOLVED_STATUSES = ["VULNERABLE", "COMPROMISED"];
 const DEFAULT_SECURITY_STATUS = "SECURE";
 const generalStatuses = [
-  ["IKKJE_VURDERT", "Not assessed"],
+  ["NOT_ASSESSED", "Not assessed"],
   ["OK", "OK"],
   ["PROBLEM", "Problem"],
+];
+// BIP327 and SLIP39 answer yes or no, and "not assessed" is not a no (section 21).
+const standardsStatuses = [
+  ["NOT_ASSESSED", "Not assessed"],
+  ["YES", "Yes"],
+  ["NO", "No"],
 ];
 const verificationStatuses = [
   ["OK", "OK"],
@@ -185,11 +191,8 @@ function renderKeyCheck() {
       makeSelect(verificationStatuses, "seed_backup_verified", "Select a status"),
     ));
   }
-  details.append(makeField(
-    "Address path verified",
-    "address_path_verified",
-    makeSelect(verificationStatuses, "address_path_verified", "Select a status"),
-  ));
+  const addressVerified = makeSelect(verificationStatuses, "address_path_verified", "Select a status");
+  details.append(makeField("Address path verified", "address_path_verified", addressVerified));
   details.append(makeField(
     "Address path",
     "address_path",
@@ -203,6 +206,8 @@ function renderKeyCheck() {
     details.hidden = available.value === "0";
     syncRequiredFields();
   });
+  addressVerified.addEventListener("change", syncAddressPathField);
+  syncAddressPathField();
   syncRequiredFields();
 }
 
@@ -215,6 +220,21 @@ function syncRequiredFields() {
     if (select) {
       select.required = required;
     }
+  }
+}
+
+function syncAddressPathField() {
+  // The path is only recorded when it was verified as OK, so an unverified or
+  // failed result never stores a path (section 21).
+  const field = form.querySelector('[name="address_path"]')?.closest(".field");
+  const verified = form.querySelector('[name="address_path_verified"]');
+  if (!field || verified === null) {
+    return;
+  }
+  const show = Boolean(selectedKey()) && verified.value === "OK";
+  field.hidden = !show;
+  if (!show) {
+    form.querySelector('[name="address_path"]').value = "";
   }
 }
 
@@ -254,8 +274,8 @@ function renderToolChecks() {
   for (const product of products) {
     const slug = productSlug(product);
     const card = makeCard(product, "Record the support status for this submission.");
-    card.append(makeField("BIP327 status", `tool_${slug}_bip327_status`, makeSelect(generalStatuses, `tool_${slug}_bip327_status`)));
-    card.append(makeField("SLIP39 status", `tool_${slug}_slip39_status`, makeSelect(generalStatuses, `tool_${slug}_slip39_status`)));
+    card.append(makeField("BIP327 status", `tool_${slug}_bip327_status`, makeSelect(standardsStatuses, `tool_${slug}_bip327_status`)));
+    card.append(makeField("SLIP39 status", `tool_${slug}_slip39_status`, makeSelect(standardsStatuses, `tool_${slug}_slip39_status`)));
     toolChecks.append(card);
   }
 }
@@ -384,7 +404,7 @@ function buildReview() {
     const fieldLabel = select.closest(".field")?.querySelector("span");
     const label = fieldLabel?.textContent || select.name;
     const value = data.get(select.name);
-    if (value === "" || value === "IKKJE_VURDERT") {
+    if (value === "" || value === "NOT_ASSESSED") {
       missing.push(label);
     } else if (value === "PROBLEM" || value === "0" || value === "VULNERABLE" || value === "COMPROMISED") {
       problems.push(`${label}: ${value}`);
@@ -452,13 +472,13 @@ function derivedValues(key, available) {
     return {
       cloud_health_status: "PROBLEM",
       cloud_provider_operational: 0,
-      software_compatibility_status: "IKKJE_VURDERT",
+      software_compatibility_status: "NOT_ASSESSED",
     };
   }
   return {
     cloud_health_status: null,
     cloud_provider_operational: null,
-    software_compatibility_status: "IKKJE_VURDERT",
+    software_compatibility_status: "NOT_ASSESSED",
   };
 }
 
