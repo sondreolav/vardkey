@@ -293,6 +293,21 @@ class CollectAlertsTests(unittest.TestCase):
         self.assertEqual(alerts[0]["checked_at"], "2026-10-01")
 
     def test_alerts_with_the_same_code_but_another_source_are_kept(self):
+        # The source of a security alert is the provider, not the key.
+        first = dated_record(1, "2025-10-01")
+        first["ai_security_checks"][0]["status"] = "VULNERABLE"
+        second = dated_record(2, "2026-10-01", key_number=2, name="Blockstream Jade")
+        second["ai_security_checks"][0]["status"] = "VULNERABLE"
+
+        alerts = collect_alerts([second, first])
+
+        self.assertEqual(self.codes(alerts), ["security_vulnerable", "security_vulnerable"])
+        self.assertEqual([alert["source"] for alert in alerts], ["Blockstream Jade", "SeedSigner"])
+        self.assertEqual([alert["check_id"] for alert in alerts], [2, 1])
+
+    def test_a_security_alert_for_the_same_provider_is_merged_across_keys(self):
+        # Nunchuk is both the cloud key and wallet software, so its status is one
+        # source, whatever key recorded it.
         first = dated_record(1, "2025-10-01")
         first["ai_security_checks"][2]["status"] = "VULNERABLE"
         second = dated_record(2, "2026-10-01", key_number=2, name="Blockstream Jade")
@@ -300,8 +315,9 @@ class CollectAlertsTests(unittest.TestCase):
 
         alerts = collect_alerts([second, first])
 
-        self.assertEqual(self.codes(alerts), ["security_vulnerable", "security_vulnerable"])
-        self.assertEqual([alert["check_id"] for alert in alerts], [2, 1])
+        self.assertEqual(self.codes(alerts), ["security_vulnerable"])
+        self.assertEqual(alerts[0]["source"], "Nunchuk")
+        self.assertEqual(alerts[0]["check_id"], 2)
 
     def test_critical_alerts_come_first_and_then_the_newest(self):
         older = dated_record(1, "2025-10-01")
