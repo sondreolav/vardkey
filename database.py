@@ -106,6 +106,16 @@ SECURITY_STATUS_MIGRATION = (
     ("SÅRBAR", "VULNERABLE"),
     ("KOMPROMITTERT", "COMPROMISED"),
 )
+# The newest saved check per key, used by the dashboard. Duplicated on purpose so
+# the query stays readable without a window function.
+_LATEST_CHECK_QUERY = """
+    SELECT hc.{column}
+    FROM key_checks AS kc
+    JOIN health_checks AS hc ON hc.id = kc.health_check_id
+    WHERE kc.key_id = k.id
+    ORDER BY hc.checked_at DESC, hc.id DESC
+    LIMIT 1
+"""
 
 
 def initialize_database(database_path="data/helsesjekk.sqlite3"):
@@ -420,6 +430,29 @@ def list_health_checks(database_path="data/helsesjekk.sqlite3"):
             for entry in summaries:
                 entry["key_numbers"] = numbers.get(entry["id"], [])
         return summaries
+    finally:
+        connection.close()
+
+
+def list_key_status(database_path="data/helsesjekk.sqlite3"):
+    """Return each key with the dates of its newest saved check.
+
+    A key that has never been checked has no dates. Whether a date is overdue is
+    left to the caller, so this function stays independent of the current date.
+    """
+    connection = sqlite3.connect(database_path, timeout=5)
+    connection.row_factory = sqlite3.Row
+    try:
+        rows = connection.execute(
+            f"""
+            SELECT k.id AS key_id, k.key_number, k.name, k.type, k.device,
+                   ({_LATEST_CHECK_QUERY.format(column="checked_at")}) AS last_checked_at,
+                   ({_LATEST_CHECK_QUERY.format(column="next_check_due")}) AS next_check_due
+            FROM keys AS k
+            ORDER BY k.key_number
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
     finally:
         connection.close()
 
