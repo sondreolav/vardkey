@@ -13,52 +13,46 @@ from app import AppHandler
 from database import initialize_database, seed_fixed_keys
 
 
-PRODUCTS = ("SeedSigner", "Blockstream Jade", "Nunchuk", "Sparrow Wallet")
+KEY_PRODUCTS = {1: "SeedSigner", 2: "Blockstream Jade", 3: "Nunchuk"}
 
 
-def sample_payload(keys):
-    """Return a valid health check payload matching the given key profiles."""
+def sample_payload(key, wallet_software=None):
+    """Return a valid single-key payload for the given key profile."""
+    number = key["key_number"]
+    if wallet_software is None:
+        wallet_software = "Nunchuk" if number == 3 else "Sparrow Wallet"
+    products = list(dict.fromkeys((KEY_PRODUCTS[number], wallet_software)))
+    providers = ["Nunchuk"] if number == 3 else [KEY_PRODUCTS[number], "Sparrow Wallet", "Nunchuk"]
+    entry = {
+        "key_id": key["id"],
+        "available": 1,
+        "address_path_verified": "OK",
+        "address_path": "m/48'/0'/0'/2'/0/0",
+        "comments": "",
+    }
+    if key["type"] == "hardware":
+        entry.update({
+            "hardware_works": 1,
+            "firmware_version": "1.0.0",
+            "seed_backup_verified": "OK",
+        })
+    else:
+        entry.update({"cloud_health_status": "OK", "cloud_provider_operational": 1})
     return {
         "checked_at": "2026-10-01",
-        "next_check_due": "2027-10-01",
+        "wallet_software": wallet_software,
+        "software_version": "1.8.0",
         "software_compatibility_status": "OK",
-        "sparrow_version": "1.8.0",
-        "nunchuk_version": "",
         "software_comments": "",
         "contact_info_verified": 1,
         "comments": "Annual review",
-        "key_checks": [
-            {
-                "key_id": key["id"],
-                "available": 1,
-                "hardware_works": 1 if key["type"] == "hardware" else None,
-                "firmware_version": "1.0.0" if key["type"] == "hardware" else "",
-                "seed_backup_status": "OK" if key["type"] == "hardware" else None,
-                "seed_backup_verified": 1 if key["type"] == "hardware" else None,
-                "cloud_health_status": "OK" if key["type"] == "cloud" else None,
-                "cloud_provider_operational": 1 if key["type"] == "cloud" else None,
-                "address_verified": 1,
-                "derivation_height": "m/48'/0'/0'/2'",
-                "address_path_verified": 1,
-                "address_path": "m/48'/0'/0'/2'/0/0",
-                "comments": "",
-            }
-            for key in keys
-        ],
+        "key_check": entry,
         "tool_checks": [
-            {
-                "product": product,
-                "bip327_status": "IKKJE_VURDERT",
-                "slip39_status": "IKKJE_VURDERT",
-                "version": "",
-                "checked_at": "",
-                "notes": "",
-            }
-            for product in PRODUCTS
+            {"product": product, "bip327_status": "IKKJE_VURDERT", "slip39_status": "IKKJE_VURDERT"}
+            for product in products
         ],
         "ai_security_checks": [
-            {"provider": product, "status": "TRYGG", "comments": ""}
-            for product in PRODUCTS
+            {"provider": provider, "status": "SECURE", "comments": ""} for provider in providers
         ],
     }
 
@@ -89,6 +83,10 @@ class AppHandlerTests(unittest.TestCase):
             os.environ["DATABASE_PATH"] = cls.previous_database_path
         cls.temp_dir.cleanup()
 
+    def key_profiles(self):
+        with urlopen(f"{self.base_url}/api/keys") as response:
+            return json.load(response)
+
     def post_json(self, path, payload):
         request = Request(
             f"{self.base_url}{path}",
@@ -97,6 +95,17 @@ class AppHandlerTests(unittest.TestCase):
             method="POST",
         )
         return urlopen(request)
+
+    def assert_rejected(self, payload):
+        try:
+            with self.post_json("/api/health-checks", payload) as response:
+                self.fail(f"Expected 400, received {response.status}")
+        except HTTPError as error:
+            try:
+                self.assertEqual(error.code, 400)
+                error.read()
+            finally:
+                error.close()
 
     def test_health_endpoint_returns_json(self):
         with urlopen(f"{self.base_url}/health") as response:
@@ -119,6 +128,7 @@ class AppHandlerTests(unittest.TestCase):
         self.assertEqual(response.status, 200)
         self.assertIn('<html lang="en">', body)
         self.assertIn('id="health-check-form"', body)
+        self.assertIn('id="key-select"', body)
         self.assertIn("Never enter seed phrases", body)
         self.assertIn("Save health check", body)
 
@@ -138,31 +148,11 @@ class AppHandlerTests(unittest.TestCase):
         self.assertIn('href="/health-check"', body)
         self.assertIn('href="/history"', body)
 
-    def test_saved_health_check_can_be_read_back(self):
-        with urlopen(f"{self.base_url}/api/keys") as response:
-            keys = json.load(response)
-
-        with self.post_json("/api/health-checks", sample_payload(keys)) as response:
-            self.assertEqual(response.status, 201)
-            saved = json.load(response)
-
-        with urlopen(f"{self.base_url}/api/health-checks") as response:
-            summaries = json.load(response)
-        self.assertTrue(any(entry["id"] == saved["id"] for entry in summaries))
-
-        with urlopen(f"{self.base_url}/api/health-checks/{saved['id']}") as response:
-            record = json.load(response)
-        self.assertEqual(record["checked_at"], "2026-10-01")
-        self.assertEqual(len(record["key_checks"]), 3)
-        self.assertEqual(len(record["tool_checks"]), 4)
-        self.assertEqual(len(record["ai_security_checks"]), 4)
-
     def test_alerts_api_reports_follow_up_for_the_latest_check(self):
-        with urlopen(f"{self.base_url}/api/keys") as response:
-            keys = json.load(response)
+        key = self.key_profiles()[1]
+        payload = sample_payload(key)
+        payload["key_check"]["available"] = 0
 
-        payload = sample_payload(keys)
-        payload["key_checks"][0]["available"] = 0
         with self.post_json("/api/health-checks", payload) as response:
             self.assertEqual(response.status, 201)
 
@@ -172,21 +162,60 @@ class AppHandlerTests(unittest.TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual([alert["code"] for alert in alerts], ["key_unavailable"])
         self.assertEqual(alerts[0]["severity"], "critical")
-        self.assertIn("Key 1", alerts[0]["source"])
+        self.assertIn("Key 2", alerts[0]["source"])
+
+    def test_saved_health_check_can_be_read_back(self):
+        key = self.key_profiles()[0]
+        with self.post_json("/api/health-checks", sample_payload(key)) as response:
+            self.assertEqual(response.status, 201)
+            saved = json.load(response)
+
+        with urlopen(f"{self.base_url}/api/health-checks") as response:
+            summaries = json.load(response)
+        summary = next(entry for entry in summaries if entry["id"] == saved["id"])
+        self.assertEqual(summary["key_numbers"], [1])
+
+        with urlopen(f"{self.base_url}/api/health-checks/{saved['id']}") as response:
+            record = json.load(response)
+        self.assertEqual(record["checked_at"], "2026-10-01")
+        self.assertEqual(record["next_check_due"], "2027-10-01")
+        self.assertEqual(record["wallet_software"], "Sparrow Wallet")
+        self.assertEqual(len(record["key_checks"]), 1)
+        self.assertEqual(record["key_checks"][0]["key_number"], 1)
+        self.assertEqual(
+            [entry["product"] for entry in record["tool_checks"]],
+            ["SeedSigner", "Sparrow Wallet"],
+        )
+        self.assertEqual(len(record["ai_security_checks"]), 3)
+
+    def test_each_key_can_be_posted_and_read_back(self):
+        for key in self.key_profiles():
+            with self.post_json("/api/health-checks", sample_payload(key)) as response:
+                self.assertEqual(response.status, 201)
+                saved = json.load(response)
+            with urlopen(f"{self.base_url}/api/health-checks/{saved['id']}") as response:
+                record = json.load(response)
+            self.assertEqual(record["key_checks"][0]["key_number"], key["key_number"])
 
     def test_invalid_health_check_is_rejected(self):
-        payload = sample_payload([{"id": 1, "type": "hardware"}])
+        payload = sample_payload(self.key_profiles()[0])
         payload["checked_at"] = "not-a-date"
 
-        try:
-            with self.post_json("/api/health-checks", payload) as response:
-                self.fail(f"Expected 400, received {response.status}")
-        except HTTPError as error:
-            try:
-                self.assertEqual(error.code, 400)
-                error.read()
-            finally:
-                error.close()
+        self.assert_rejected(payload)
+
+    def test_irrelevant_product_is_rejected(self):
+        payload = sample_payload(self.key_profiles()[0])
+        payload["tool_checks"].append(
+            {"product": "Blockstream Jade", "bip327_status": "OK", "slip39_status": "OK"}
+        )
+
+        self.assert_rejected(payload)
+
+    def test_sparrow_wallet_is_rejected_for_the_cloud_key(self):
+        payload = sample_payload(self.key_profiles()[2])
+        payload["wallet_software"] = "Sparrow Wallet"
+
+        self.assert_rejected(payload)
 
     def test_unknown_health_check_returns_not_found(self):
         try:
