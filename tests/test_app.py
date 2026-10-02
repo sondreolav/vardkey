@@ -64,6 +64,28 @@ def sample_payload(key, wallet_software=None):
     }
 
 
+def unavailable_payload(key):
+    """Return the payload the form sends for a key that was not available."""
+    entry = {
+        "key_id": key["id"],
+        "available": 0,
+        "comments": "Key is with the third holder",
+    }
+    if key["type"] == "cloud":
+        # The form derives these from availability alone (section 20).
+        entry.update({"cloud_health_status": "PROBLEM", "cloud_provider_operational": 0})
+    return {
+        "checked_at": "2026-10-01",
+        "wallet_software": None,
+        "software_compatibility_status": "NOT_ASSESSED",
+        "contact_info_verified": 1,
+        "comments": "Annual review",
+        "key_check": entry,
+        "tool_checks": [],
+        "ai_security_checks": [],
+    }
+
+
 class AppHandlerTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -106,6 +128,11 @@ class AppHandlerTests(unittest.TestCase):
         with self.post_json("/api/health-checks", payload) as response:
             self.assertEqual(response.status, 201)
             return json.load(response)["id"]
+
+    def get_record(self, health_check_id):
+        with urlopen(f"{self.base_url}/api/health-checks/{health_check_id}") as response:
+            self.assertEqual(response.status, 200)
+            return json.load(response)
 
     def get_alerts(self):
         with urlopen(f"{self.base_url}/api/alerts") as response:
@@ -225,6 +252,24 @@ class AppHandlerTests(unittest.TestCase):
         self.assertIn("SeedSigner: NOT_ASSESSED", values["BIP327"])
         self.assertIn("Nunchuk: SECURE", values["Security status"])
 
+    def test_export_api_leaves_the_skipped_columns_empty(self):
+        saved_id = self.post_health_check(unavailable_payload(self.key_profiles()[1]))
+
+        with urlopen(f"{self.base_url}/api/export") as response:
+            body = response.read().decode("utf-8")
+
+        rows = list(csv.reader(io.StringIO(body)))
+        values = dict(zip(HEADERS, rows[1]))
+
+        self.assertEqual(values["Check id"], str(saved_id))
+        self.assertEqual(values["Available"], "No")
+        self.assertEqual(values["Key comments"], "Key is with the third holder")
+        self.assertEqual(values["Wallet software"], "")
+        self.assertEqual(values["Software compatibility"], "NOT_ASSESSED")
+        self.assertEqual(values["BIP327"], "")
+        self.assertEqual(values["SLIP39"], "")
+        self.assertEqual(values["Security status"], "")
+
     def test_health_check_form_is_served_in_english(self):
         with urlopen(f"{self.base_url}/health-check") as response:
             body = response.read().decode("utf-8")
@@ -260,9 +305,7 @@ class AppHandlerTests(unittest.TestCase):
             self.assertEqual(json.load(response), [])
 
     def test_alerts_api_reports_follow_up_from_the_saved_check(self):
-        payload = sample_payload(self.key_profiles()[1])
-        payload["key_check"]["available"] = 0
-        saved_id = self.post_health_check(payload)
+        saved_id = self.post_health_check(unavailable_payload(self.key_profiles()[1]))
 
         alerts = self.get_alerts()
 
@@ -273,8 +316,7 @@ class AppHandlerTests(unittest.TestCase):
         self.assertEqual(alerts[0]["checked_at"], "2026-10-01")
 
     def test_alerts_api_keeps_alerts_from_older_checks(self):
-        older = sample_payload(self.key_profiles()[1])
-        older["key_check"]["available"] = 0
+        older = unavailable_payload(self.key_profiles()[1])
         older_id = self.post_health_check(older)
 
         newer = sample_payload(self.key_profiles()[0])
@@ -287,14 +329,12 @@ class AppHandlerTests(unittest.TestCase):
         self.assertEqual(alerts[0]["check_id"], older_id)
 
     def test_alerts_api_merges_identical_alerts_and_keeps_the_newest(self):
-        older = sample_payload(self.key_profiles()[1])
+        older = unavailable_payload(self.key_profiles()[1])
         older["checked_at"] = "2026-01-01"
-        older["key_check"]["available"] = 0
         older_id = self.post_health_check(older)
 
-        newer = sample_payload(self.key_profiles()[1])
+        newer = unavailable_payload(self.key_profiles()[1])
         newer["checked_at"] = "2027-01-01"
-        newer["key_check"]["available"] = 0
         newer_id = self.post_health_check(newer)
 
         alerts = self.get_alerts()
@@ -336,8 +376,7 @@ class AppHandlerTests(unittest.TestCase):
         summary = next(entry for entry in summaries if entry["id"] == saved_id)
         self.assertEqual(summary["key_numbers"], [1])
 
-        with urlopen(f"{self.base_url}/api/health-checks/{saved_id}") as response:
-            record = json.load(response)
+        record = self.get_record(saved_id)
         self.assertEqual(record["checked_at"], "2026-10-01")
         self.assertEqual(record["next_check_due"], "2027-10-01")
         self.assertEqual(record["wallet_software"], "Sparrow Wallet")
@@ -353,25 +392,67 @@ class AppHandlerTests(unittest.TestCase):
     def test_each_key_can_be_posted_and_read_back(self):
         for key in self.key_profiles():
             saved_id = self.post_health_check(sample_payload(key))
-            with urlopen(f"{self.base_url}/api/health-checks/{saved_id}") as response:
-                record = json.load(response)
+            record = self.get_record(saved_id)
             self.assertEqual(record["key_checks"][0]["key_number"], key["key_number"])
+
+    def test_a_minimal_unavailable_payload_is_accepted(self):
+        key = self.key_profiles()[1]
+        payload = {
+            "checked_at": "2026-10-01",
+            "key_check": {
+                "key_id": key["id"],
+                "available": 0,
+                "comments": "Key is with the third holder",
+            },
+        }
+
+        saved_id = self.post_health_check(payload)
+
+        record = self.get_record(saved_id)
+        self.assertEqual(record["next_check_due"], "2027-10-01")
+        self.assertIsNone(record["wallet_software"])
+        self.assertIsNone(record["software_version"])
+        self.assertEqual(record["software_compatibility_status"], "NOT_ASSESSED")
+        self.assertEqual(record["tool_checks"], [])
+        self.assertEqual(record["ai_security_checks"], [])
+        self.assertEqual(record["key_checks"][0]["available"], 0)
+        self.assertEqual(record["key_checks"][0]["comments"], "Key is with the third holder")
+
+        alerts = self.get_alerts()
+        self.assertEqual([alert["code"] for alert in alerts], ["key_unavailable"])
+        self.assertEqual(alerts[0]["check_id"], saved_id)
+
+    def test_an_unavailable_key_rejects_recorded_results(self):
+        key = self.key_profiles()[0]
+        recorded = (
+            ("wallet_software", "Sparrow Wallet"),
+            ("tool_checks", [{"product": "SeedSigner", "bip327_status": "YES", "slip39_status": "YES"}]),
+            ("ai_security_checks", [{"provider": "SeedSigner", "status": "SECURE", "comments": ""}]),
+        )
+        for field, value in recorded:
+            payload = {
+                "checked_at": "2026-10-01",
+                "key_check": {"key_id": key["id"], "available": 0},
+                field: value,
+            }
+            self.assert_rejected(payload)
+
+    def test_a_payload_without_availability_is_rejected(self):
+        payload = sample_payload(self.key_profiles()[0])
+        del payload["key_check"]["available"]
+
+        self.assert_rejected(payload)
 
     def test_an_unavailable_cloud_key_keeps_its_derived_cloud_results(self):
         key = self.key_profiles()[2]
-        payload = sample_payload(key)
-        payload["software_compatibility_status"] = "NOT_ASSESSED"
-        payload["key_check"].update({
-            "available": 0,
-            "cloud_health_status": "PROBLEM",
-            "cloud_provider_operational": 0,
-        })
-        saved_id = self.post_health_check(payload)
+        saved_id = self.post_health_check(unavailable_payload(key))
 
-        with urlopen(f"{self.base_url}/api/health-checks/{saved_id}") as response:
-            record = json.load(response)
+        record = self.get_record(saved_id)
 
+        self.assertIsNone(record["wallet_software"])
         self.assertEqual(record["software_compatibility_status"], "NOT_ASSESSED")
+        self.assertEqual(record["tool_checks"], [])
+        self.assertEqual(record["ai_security_checks"], [])
         self.assertEqual(record["key_checks"][0]["cloud_health_status"], "PROBLEM")
         self.assertEqual(record["key_checks"][0]["cloud_provider_operational"], 0)
         self.assertIsNone(record["key_checks"][0]["address_path_verified"])
