@@ -11,6 +11,7 @@ from database import (
     get_health_check,
     initialize_database,
     list_health_checks,
+    list_key_status,
     list_keys,
     save_health_check,
     seed_fixed_keys,
@@ -311,6 +312,44 @@ class DatabaseInitializationTests(unittest.TestCase):
 
         summaries = list_health_checks(self.database_path)
         self.assertEqual([entry["key_numbers"] for entry in summaries], [[3], [2], [1]])
+
+    def test_key_status_has_no_dates_before_anything_is_saved(self):
+        initialize_database(self.database_path)
+        seed_fixed_keys(self.database_path)
+
+        status = list_key_status(self.database_path)
+
+        self.assertEqual([entry["key_number"] for entry in status], [1, 2, 3])
+        self.assertEqual([entry["name"] for entry in status], ["SeedSigner", "Blockstream Jade", "Nunchuk"])
+        self.assertEqual([entry["type"] for entry in status], ["hardware", "hardware", "cloud"])
+        self.assertEqual([entry["last_checked_at"] for entry in status], [None, None, None])
+        self.assertEqual([entry["next_check_due"] for entry in status], [None, None, None])
+
+    def test_key_status_reports_the_newest_check_per_key(self):
+        initialize_database(self.database_path)
+        seed_fixed_keys(self.database_path)
+        keys = list_keys(self.database_path)
+
+        older = sample_payload(keys[0])
+        older["checked_at"] = "2025-10-01"
+        save_health_check(validate_health_check(older, keys), self.database_path)
+
+        newer = sample_payload(keys[0])
+        newer["checked_at"] = "2026-10-01"
+        save_health_check(validate_health_check(newer, keys), self.database_path)
+
+        cloud = sample_payload(keys[2])
+        cloud["checked_at"] = "2026-05-01"
+        save_health_check(validate_health_check(cloud, keys), self.database_path)
+
+        status = {entry["key_number"]: entry for entry in list_key_status(self.database_path)}
+
+        self.assertEqual(status[1]["last_checked_at"], "2026-10-01")
+        self.assertEqual(status[1]["next_check_due"], "2027-10-01")
+        self.assertEqual(status[3]["last_checked_at"], "2026-05-01")
+        self.assertEqual(status[3]["next_check_due"], "2027-05-01")
+        self.assertIsNone(status[2]["last_checked_at"])
+        self.assertIsNone(status[2]["next_check_due"])
 
     def test_invalid_status_and_duplicate_key_numbers_are_rejected(self):
         initialize_database(self.database_path)
