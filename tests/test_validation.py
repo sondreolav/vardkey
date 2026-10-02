@@ -13,9 +13,14 @@ KEYS = (
 KEY_PRODUCTS = {1: "SeedSigner", 2: "Blockstream Jade", 3: "Nunchuk"}
 
 
+def key_for(key_number):
+    """Return the key profile with the given number."""
+    return next(entry for entry in KEYS if entry["key_number"] == key_number)
+
+
 def sample_payload(key_number=1, wallet_software=None):
     """Return a valid single-key payload for the given key number."""
-    key = next(entry for entry in KEYS if entry["key_number"] == key_number)
+    key = key_for(key_number)
     if wallet_software is None:
         wallet_software = "Nunchuk" if key_number == 3 else "Sparrow Wallet"
     products = list(dict.fromkeys((KEY_PRODUCTS[key_number], wallet_software)))
@@ -51,6 +56,29 @@ def sample_payload(key_number=1, wallet_software=None):
         "ai_security_checks": [
             {"provider": provider, "status": "SECURE", "comments": ""} for provider in providers
         ],
+    }
+
+
+def unavailable_payload(key_number=1):
+    """Return the payload the form sends for a key that was not available."""
+    key = key_for(key_number)
+    entry = {
+        "key_id": key["id"],
+        "available": 0,
+        "comments": "Key is with the third holder",
+    }
+    if key["type"] == "cloud":
+        # The form derives these from availability alone (section 20).
+        entry.update({"cloud_health_status": "PROBLEM", "cloud_provider_operational": 0})
+    return {
+        "checked_at": "2026-10-01",
+        "wallet_software": None,
+        "software_compatibility_status": "NOT_ASSESSED",
+        "contact_info_verified": 1,
+        "comments": "Annual review",
+        "key_check": entry,
+        "tool_checks": [],
+        "ai_security_checks": [],
     }
 
 
@@ -216,18 +244,51 @@ class ValidationTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             validate_health_check(payload, KEYS)
 
+    def test_availability_is_required(self):
+        for value in ("", None):
+            payload = sample_payload()
+            payload["key_check"]["available"] = value
+            with self.assertRaises(ValidationError):
+                validate_health_check(payload, KEYS)
+
+    def test_a_minimal_unavailable_payload_is_accepted(self):
+        payload = {
+            "checked_at": "2026-10-01",
+            "key_check": {"key_id": 1, "available": 0},
+        }
+
+        result = validate_health_check(payload, KEYS)
+
+        self.assertEqual(result["next_check_due"], "2027-10-01")
+        self.assertEqual(result["key_check"]["available"], 0)
+        self.assertIsNone(result["wallet_software"])
+        self.assertEqual(result["tool_checks"], [])
+        self.assertEqual(result["ai_security_checks"], [])
+        self.assertEqual(result["software_compatibility_status"], "NOT_ASSESSED")
+        self.assertIsNone(result["contact_info_verified"])
+        self.assertIsNone(result["comments"])
+
+    def test_an_unavailable_key_rejects_recorded_results(self):
+        recorded = (
+            ("wallet_software", "Sparrow Wallet"),
+            ("tool_checks", [{"product": "SeedSigner", "bip327_status": "YES", "slip39_status": "YES"}]),
+            ("ai_security_checks", [{"provider": "SeedSigner", "status": "SECURE", "comments": ""}]),
+        )
+        for field, value in recorded:
+            payload = unavailable_payload()
+            payload[field] = value
+            with self.assertRaises(ValidationError):
+                validate_health_check(payload, KEYS)
+
     def test_an_unavailable_hardware_key_records_nothing_else(self):
-        payload = sample_payload()
-        payload["key_check"] = {
-            "key_id": 1,
-            "available": 0,
+        payload = unavailable_payload()
+        payload["key_check"].update({
             "hardware_works": 1,
             "firmware_version": "1.0.0",
             "seed_backup_verified": "PROBLEM",
             "address_path_verified": "PROBLEM",
             "address_path": "m/48'/0'/0'/2'/0/0",
-            "comments": "Key is with the third holder",
-        }
+        })
 
         result = validate_health_check(payload, KEYS)
 
@@ -240,17 +301,11 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(result["key_check"]["comments"], "Key is with the third holder")
 
     def test_an_unavailable_cloud_key_keeps_its_derived_cloud_results(self):
-        payload = sample_payload(key_number=3)
-        payload["software_compatibility_status"] = "NOT_ASSESSED"
-        payload["key_check"] = {
-            "key_id": 3,
-            "available": 0,
-            "cloud_health_status": "PROBLEM",
-            "cloud_provider_operational": 0,
+        payload = unavailable_payload(key_number=3)
+        payload["key_check"].update({
             "address_path_verified": "PROBLEM",
             "address_path": "m/48'/0'/0'/2'/0/0",
-            "comments": "The provider is down",
-        }
+        })
 
         result = validate_health_check(payload, KEYS)
 
@@ -260,7 +315,7 @@ class ValidationTests(unittest.TestCase):
         self.assertIsNone(result["key_check"]["address_path_verified"])
         self.assertIsNone(result["key_check"]["address_path"])
         self.assertEqual(result["software_compatibility_status"], "NOT_ASSESSED")
-        self.assertEqual(result["key_check"]["comments"], "The provider is down")
+        self.assertEqual(result["key_check"]["comments"], "Key is with the third holder")
 
     def test_invalid_flag_is_rejected(self):
         payload = sample_payload()
