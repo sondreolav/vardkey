@@ -106,10 +106,10 @@ SECURITY_STATUS_MIGRATION = (
     ("SÅRBAR", "VULNERABLE"),
     ("KOMPROMITTERT", "COMPROMISED"),
 )
-# The newest saved check per key, used by the dashboard. Duplicated on purpose so
-# the query stays readable without a window function.
+# The newest saved check per key, used by the dashboard and the form. Duplicated
+# on purpose so the queries stay readable without a window function.
 _LATEST_CHECK_QUERY = """
-    SELECT hc.{column}
+    SELECT {expression}
     FROM key_checks AS kc
     JOIN health_checks AS hc ON hc.id = kc.health_check_id
     WHERE kc.key_id = k.id
@@ -446,13 +446,53 @@ def list_key_status(database_path="data/helsesjekk.sqlite3"):
         rows = connection.execute(
             f"""
             SELECT k.id AS key_id, k.key_number, k.name, k.type, k.device,
-                   ({_LATEST_CHECK_QUERY.format(column="checked_at")}) AS last_checked_at,
-                   ({_LATEST_CHECK_QUERY.format(column="next_check_due")}) AS next_check_due
+                   ({_LATEST_CHECK_QUERY.format(expression="hc.checked_at")}) AS last_checked_at,
+                   ({_LATEST_CHECK_QUERY.format(expression="hc.next_check_due")}) AS next_check_due
             FROM keys AS k
             ORDER BY k.key_number
             """
         ).fetchall()
         return [dict(row) for row in rows]
+    finally:
+        connection.close()
+
+
+def list_previous_values(database_path="data/helsesjekk.sqlite3"):
+    """Return the most recently saved values, for pre-filling the form.
+
+    ``keys`` carries the last recorded firmware version, address path, wallet
+    software, and software version for each key. ``security`` carries the last
+    recorded security status for each provider, whatever key recorded it. Both
+    are used for the placeholders and for carrying hidden fields forward.
+    """
+    connection = sqlite3.connect(database_path, timeout=5)
+    connection.row_factory = sqlite3.Row
+    try:
+        keys = [
+            dict(row)
+            for row in connection.execute(
+                f"""
+                SELECT k.id AS key_id,
+                       ({_LATEST_CHECK_QUERY.format(expression="kc.firmware_version")}) AS firmware_version,
+                       ({_LATEST_CHECK_QUERY.format(expression="kc.address_path")}) AS address_path,
+                       ({_LATEST_CHECK_QUERY.format(expression="hc.wallet_software")}) AS wallet_software,
+                       ({_LATEST_CHECK_QUERY.format(expression="hc.software_version")}) AS software_version
+                FROM keys AS k
+                ORDER BY k.key_number
+                """
+            ).fetchall()
+        ]
+        security = {}
+        for row in connection.execute(
+            """
+            SELECT acs.provider, acs.status
+            FROM ai_security_checks AS acs
+            JOIN health_checks AS hc ON hc.id = acs.health_check_id
+            ORDER BY hc.checked_at DESC, hc.id DESC, acs.id DESC
+            """
+        ):
+            security.setdefault(row["provider"], row["status"])
+        return {"keys": keys, "security": security}
     finally:
         connection.close()
 
