@@ -72,6 +72,7 @@ h2 { margin-bottom: 0; font-size: 20px; letter-spacing: -.02em; }
 .empty-state { margin: 0; padding: 14px 16px; border-radius: 8px; color: #55645a; background: #f5f7f4; font-size: 13px; line-height: 1.6; }
 .history-card { margin-top: 20px; padding: 20px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .history-card h2 { font-size: 17px; }
+.card-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .workflow-note { margin: 20px 0 0; color: #768078; font-size: 12px; }
 .footer { min-height: 58px; padding: 16px max(24px, calc((100% - 1120px) / 2)); display: flex; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line); color: var(--muted); background: #fff; font-size: 12px; }
 
@@ -117,6 +118,7 @@ h2 { margin-bottom: 0; font-size: 20px; letter-spacing: -.02em; }
   .key-grid, .overview-grid, .field-grid { grid-template-columns: 1fr; }
   .key-card { min-height: 130px; }
   .history-card { align-items: flex-start; flex-direction: column; }
+  .card-actions { width: 100%; }
   .form-section { padding: 18px; }
   .detail-list { grid-template-columns: 1fr; }
   .history-item { align-items: flex-start; flex-direction: column; }
