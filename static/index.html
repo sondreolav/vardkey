@@ -49,15 +49,15 @@
       </section>
 
       <div class="overview-grid">
-        <section class="info-card" aria-labelledby="last-check-title">
-          <p class="eyebrow">Last completed</p>
-          <h2 id="last-check-title">No checks yet</h2>
-          <p>Completed health checks will appear here.</p>
-        </section>
         <section class="info-card" aria-labelledby="next-check-title">
           <p class="eyebrow">Next check</p>
           <h2 id="next-check-title">Not scheduled</h2>
-          <p>The next date will be suggested when a health check is saved.</p>
+          <p id="next-check-detail">Each key keeps its own next check date. The earliest one is shown here.</p>
+        </section>
+        <section class="info-card" aria-labelledby="overdue-title">
+          <p class="eyebrow">Attention</p>
+          <h2 id="overdue-title">Nothing overdue</h2>
+          <p id="overdue-detail">No key has passed its next check date.</p>
         </section>
       </div>
 
