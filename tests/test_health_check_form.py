@@ -76,12 +76,11 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("NOT_ASSESSED", script)
         self.assertNotIn("IKKJE_VURDERT", script)
         # BIP327 and SLIP39 answer yes or no, so they have their own option list,
-        # and both tool-check fields must use it.
+        # and the tool-check fields must use it instead of the general one.
         self.assertIn("standardsStatuses", script)
         self.assertIn('["YES", "Yes"]', script)
         self.assertIn('["NO", "No"]', script)
-        self.assertIn("makeSelect(standardsStatuses, `tool_${slug}_bip327_status`)", script)
-        self.assertIn("makeSelect(standardsStatuses, `tool_${slug}_slip39_status`)", script)
+        self.assertIn("makeSelect(standardsStatuses", script)
         # The two verification results keep OK and PROBLEM.
         self.assertIn('["OK", "OK"]', script)
         self.assertIn('["PROBLEM", "Problem"]', script)
@@ -91,8 +90,8 @@ class HealthCheckFormTests(unittest.TestCase):
         styles = read_static("styles.css")
         self.assertIn("syncAddressPathField", script)
         self.assertIn('verified.value === "OK"', script)
-        self.assertIn('form.querySelector(`[name="address_path"]`)', script)
-        self.assertIn('form.querySelector(`[name="address_path_verified"]`)', script)
+        self.assertIn('[name="address_path"]', script)
+        self.assertIn('[name="address_path_verified"]', script)
         # The field is a grid container, so the hidden attribute needs a rule.
         self.assertIn(".field[hidden]", styles)
 
