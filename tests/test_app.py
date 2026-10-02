@@ -1,6 +1,8 @@
 """HTTP tests for the dashboard server."""
 
 from http.server import ThreadingHTTPServer
+import csv
+import io
 import json
 import os
 import tempfile
@@ -11,6 +13,7 @@ from urllib.request import Request, urlopen
 
 from app import AppHandler
 from database import initialize_database, seed_fixed_keys
+from export import HEADERS
 
 
 KEY_PRODUCTS = {1: "SeedSigner", 2: "Blockstream Jade", 3: "Nunchuk"}
@@ -136,6 +139,39 @@ class AppHandlerTests(unittest.TestCase):
         self.assertEqual(status[0]["last_checked_at"], "2027-03-01")
         self.assertEqual(status[0]["next_check_due"], "2028-03-01")
         self.assertEqual(status[0]["name"], "SeedSigner")
+
+    def test_export_api_returns_a_csv_download(self):
+        payload = sample_payload(self.key_profiles()[0])
+        payload["checked_at"] = "2027-04-01"
+        with self.post_json("/api/health-checks", payload) as response:
+            self.assertEqual(response.status, 201)
+            saved = json.load(response)
+
+        with urlopen(f"{self.base_url}/api/export") as response:
+            body = response.read().decode("utf-8")
+            content_type = response.headers["Content-Type"]
+            disposition = response.headers["Content-Disposition"]
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(content_type, "text/csv; charset=utf-8")
+        self.assertIn("helsesjekk-export.csv", disposition)
+
+        rows = list(csv.reader(io.StringIO(body)))
+        self.assertEqual(rows[0], list(HEADERS))
+        matching = [row for row in rows[1:] if row[0] == str(saved["id"])]
+        self.assertEqual(len(matching), 1)
+
+        values = dict(zip(HEADERS, matching[0]))
+        self.assertEqual(values["Check date"], "2027-04-01")
+        self.assertEqual(values["Next check due"], "2028-04-01")
+        self.assertEqual(values["Key number"], "1")
+        self.assertEqual(values["Key name"], "SeedSigner")
+        self.assertEqual(values["Available"], "Yes")
+        self.assertEqual(values["Seed backup verified"], "OK")
+        self.assertEqual(values["Wallet software"], "Sparrow Wallet")
+        self.assertEqual(values["Contact details confirmed"], "Yes")
+        self.assertIn("SeedSigner: IKKJE_VURDERT", values["BIP327"])
+        self.assertIn("Nunchuk: SECURE", values["Security status"])
 
     def test_health_check_form_is_served_in_english(self):
         with urlopen(f"{self.base_url}/health-check") as response:
