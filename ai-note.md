@@ -7,9 +7,9 @@ Short working handover for the next model. Keep it short.
 
 ## Status
 
-- **Done and verified:** section 19 (one key per submission) and section 18 steps 1–7. Those items are ticked in `TODO.md`.
-- **Tests:** 65, all passing. The user runs them: `python3 -m unittest discover -s tests` from `/home/snes/start9/helsesjekk`.
-- **Next:** step 8 (`GET /api/export`), then steps 9–12 (StartOS package, persistent volume, backup/restore, `.s9pk`).
+- **Done and verified:** section 19 (one key per submission) and section 18 steps 1–8. Those items are ticked in `TODO.md`.
+- **Tests:** 76, all passing. The user runs them: `python3 -m unittest discover -s tests` from `/home/snes/start9/helsesjekk`.
+- **Next:** steps 9–12 (StartOS package, persistent volume, backup/restore, `.s9pk`).
 
 ## Ground rules
 
@@ -19,6 +19,7 @@ Short working handover for the next model. Keep it short.
 - The user runs the tests and reports the result. Wait for it.
 - Ask one question at a time, with concrete options.
 - Never add fields for seed phrases, private keys, PINs, passwords, cloud tokens, or contact details. The app records results only.
+- The HTTP tests create their own database and server per test. Keep them order-independent; a shared database already caused one order-dependent failure.
 
 ## Settled decisions — do not re-open
 
@@ -34,6 +35,7 @@ Short working handover for the next model. Keep it short.
 10. The prohibition lists in sections 1 and 13 stay unticked. They are standing prohibitions, to be re-confirmed before release.
 11. Readable user-defined key names are not built; the section 3 item stays unticked.
 12. The dashboard shows status and dates per key on the key cards. The summary cards are "Next check" (earliest due, naming the key) and "Attention" (how many keys are overdue). Whether a date is overdue is decided in the browser, so the API stays independent of the current date.
+13. The export is **plain CSV only**, one row per key check, with `Check id` grouping the rows of one submission. XLSX is not built and the app does not promise Excel compatibility. `export.py` holds the column list and the writer; `database.list_export_rows()` builds the rows and joins BIP327, SLIP39, and the security statuses into one cell per column.
 
 ## Data model (schema version 5)
 
@@ -45,7 +47,7 @@ Short working handover for the next model. Keep it short.
 
 ## API
 
-`GET /health`, `GET /api/keys`, `GET /api/key-status`, `GET /api/health-checks`, `GET /api/health-checks/<id>`, `GET /api/alerts`, `POST /api/health-checks`. Field details are in `README.md`.
+`GET /health`, `GET /api/keys`, `GET /api/key-status`, `GET /api/health-checks`, `GET /api/health-checks/<id>`, `GET /api/alerts`, `GET /api/export`, `POST /api/health-checks`. Field details are in `README.md`.
 
 Two things that are easy to break:
 
@@ -54,7 +56,6 @@ Two things that are easy to break:
 
 ## Remaining work
 
-- **Step 8 — `GET /api/export`.** CSV with clear Excel documentation is the simple route; XLSX only if it is genuinely simple.
 - **Steps 9–12.** StartOS package (`startos/manifest`, `main.ts`, `interfaces.ts`, `backups.ts`, `init/`, `instructions.md`, `icon.svg`, `Makefile`), persistent volume, backup/restore, restart testing, and the final `.s9pk`.
 
 ## Product clarification
