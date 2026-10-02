@@ -3,6 +3,7 @@
 const form = document.querySelector("#health-check-form");
 const keySelect = document.querySelector("#key-select");
 const keyCheck = document.querySelector("#key-check");
+const softwareSection = document.querySelector("#software-section");
 const softwareGrid = document.querySelector("#software-section .field-grid");
 const walletSoftwareSelect = document.querySelector("#wallet-software");
 const softwareVersionInput = document.querySelector("#software-version");
@@ -14,6 +15,8 @@ const reviewPanel = document.querySelector("#review-panel");
 const reviewSummary = document.querySelector("#review-summary");
 const saveButton = document.querySelector("#save-check");
 const saveStatus = document.querySelector("#save-status");
+const toolChecksSection = toolChecks.closest(".form-section");
+const securityChecksSection = securityChecks.closest(".form-section");
 
 const CLOUD_KEY_NUMBER = 3;
 const KEY_PRODUCTS = { 1: "SeedSigner", 2: "Blockstream Jade", 3: "Nunchuk" };
@@ -22,6 +25,7 @@ const SECURITY_STATUSES = ["SECURE", "PATCHED", "VULNERABLE", "COMPROMISED"];
 // A status that still needs follow-up is never hidden (section 20).
 const UNRESOLVED_STATUSES = ["VULNERABLE", "COMPROMISED"];
 const DEFAULT_SECURITY_STATUS = "SECURE";
+const UNAVAILABLE_MESSAGE = "The remaining checks for this key cannot be recorded.";
 const generalStatuses = [
   ["NOT_ASSESSED", "Not assessed"],
   ["OK", "OK"],
@@ -37,6 +41,8 @@ const verificationStatuses = [
   ["OK", "OK"],
   ["PROBLEM", "Problem"],
 ];
+// Availability is always recorded, so it has no "not assessed" value (section 22).
+const availabilityOptions = [["", "Select availability"], ["1", "Yes"], ["0", "No"]];
 const booleanOptions = [["", "Not assessed"], ["1", "Yes"], ["0", "No"]];
 let keyProfiles = [];
 let previousValues = { keys: [], security: {} };
@@ -131,6 +137,11 @@ function keyProductFor(key) {
   return KEY_PRODUCTS[key.key_number];
 }
 
+function keyIsUnavailable() {
+  const availability = form.querySelector('[name="available"]');
+  return Boolean(selectedKey()) && availability !== null && availability.value === "0";
+}
+
 function expectedProducts(key) {
   const software = walletSoftwareSelect.value;
   if (!key || !WALLET_SOFTWARE.includes(software)) {
@@ -173,7 +184,8 @@ function renderKeyCheck() {
       ? "Cloud key — report the result of your manual check."
       : "Hardware key — record the result of your manual check.",
   );
-  const available = makeSelect(booleanOptions, "available");
+  const available = makeSelect(availabilityOptions, "available");
+  available.required = true;
   card.append(makeField("Availability", "available", available));
 
   const details = document.createElement("div");
@@ -205,6 +217,7 @@ function renderKeyCheck() {
   available.addEventListener("change", () => {
     details.hidden = available.value === "0";
     syncRequiredFields();
+    refreshKeySections();
   });
   addressVerified.addEventListener("change", syncAddressPathField);
   syncAddressPathField();
@@ -216,7 +229,8 @@ function syncRequiredFields() {
   const availability = form.querySelector('[name="available"]');
   const required = Boolean(key) && availability !== null && availability.value === "1";
   for (const name of ["seed_backup_verified", "address_path_verified"]) {
-    const select = form.querySelector(`[name="${name}"]`);
+    const selector = `[name="${name}"]`;
+    const select = form.querySelector(selector);
     if (select) {
       select.required = required;
     }
@@ -236,6 +250,16 @@ function syncAddressPathField() {
   if (!show) {
     form.querySelector('[name="address_path"]').value = "";
   }
+}
+
+function syncUnavailableState() {
+  // A key that was not available records nothing else, so those parts of the
+  // form are hidden and never required (section 22).
+  const unavailable = keyIsUnavailable();
+  softwareSection.hidden = unavailable;
+  toolChecksSection.hidden = unavailable;
+  securityChecksSection.hidden = unavailable;
+  walletSoftwareSelect.required = !unavailable;
 }
 
 function lockSoftwareFields() {
@@ -266,6 +290,10 @@ function updateSoftwareVersionPlaceholder() {
 
 function renderToolChecks() {
   toolChecks.replaceChildren();
+  if (keyIsUnavailable()) {
+    toolChecks.append(emptyState(UNAVAILABLE_MESSAGE));
+    return;
+  }
   const products = expectedProducts(selectedKey());
   if (!products.length) {
     toolChecks.append(emptyState("Select a key and software to see the products to check."));
@@ -273,9 +301,11 @@ function renderToolChecks() {
   }
   for (const product of products) {
     const slug = productSlug(product);
+    const bip327Name = `tool_${slug}_bip327_status`;
+    const slip39Name = `tool_${slug}_slip39_status`;
     const card = makeCard(product, "Record the support status for this submission.");
-    card.append(makeField("BIP327 status", `tool_${slug}_bip327_status`, makeSelect(standardsStatuses, `tool_${slug}_bip327_status`)));
-    card.append(makeField("SLIP39 status", `tool_${slug}_slip39_status`, makeSelect(standardsStatuses, `tool_${slug}_slip39_status`)));
+    card.append(makeField("BIP327 status", bip327Name, makeSelect(standardsStatuses, bip327Name)));
+    card.append(makeField("SLIP39 status", slip39Name, makeSelect(standardsStatuses, slip39Name)));
     toolChecks.append(card);
   }
 }
@@ -286,6 +316,10 @@ function renderSecurityChecks() {
   carriedSecurity = [];
   if (!key) {
     securityChecks.append(emptyState("Select a key to see the providers to check."));
+    return;
+  }
+  if (keyIsUnavailable()) {
+    securityChecks.append(emptyState(UNAVAILABLE_MESSAGE));
     return;
   }
 
@@ -301,15 +335,17 @@ function renderSecurityChecks() {
       carriedSecurity.push({ provider, status: last || DEFAULT_SECURITY_STATUS });
       continue;
     }
+    const statusName = `security_${slug}_status`;
+    const commentName = `security_${slug}_comments`;
     const card = makeCard(provider, "Enter the result of external research; do not include credentials or secrets.");
-    const status = makeSelect(options, `security_${slug}_status`, "Select a status");
+    const status = makeSelect(options, statusName, "Select a status");
     status.required = true;
     if (!relevant && last) {
       // A known problem stays visible, so it is never dropped silently.
       status.value = last;
     }
-    card.append(makeField("Security status", `security_${slug}_status`, status));
-    card.append(makeField("Comment", `security_${slug}_comments`, makeTextarea(`security_${slug}_comments`, 1000)));
+    card.append(makeField("Security status", statusName, status));
+    card.append(makeField("Comment", commentName, makeTextarea(commentName, 1000)));
     securityChecks.append(card);
   }
 
@@ -320,6 +356,13 @@ function renderSecurityChecks() {
     input.value = entry.status;
     securityChecks.append(input);
   }
+}
+
+function refreshKeySections() {
+  lockSoftwareFields();
+  renderToolChecks();
+  renderSecurityChecks();
+  syncUnavailableState();
 }
 
 function formatLocalDate(date) {
@@ -407,7 +450,8 @@ function buildReview() {
     if (value === "" || value === "NOT_ASSESSED") {
       missing.push(label);
     } else if (value === "PROBLEM" || value === "0" || value === "VULNERABLE" || value === "COMPROMISED") {
-      problems.push(`${label}: ${value}`);
+      const problem = `${label}: ${value}`;
+      problems.push(problem);
     }
   }
 
@@ -513,30 +557,39 @@ function collectKeyCheck(data, key, derived) {
 function collectPayload() {
   const data = new FormData(form);
   const key = selectedKey();
-  const derived = derivedValues(key, key ? flagValue(data, "available") : null);
+  const available = key ? flagValue(data, "available") : null;
+  // A key that was not available records nothing else, so the payload leaves
+  // those parts out entirely (section 22).
+  const unavailable = available === 0;
+  const derived = derivedValues(key, available);
   return {
     checked_at: textValue(data, "checked_at"),
-    wallet_software: data.get("wallet_software"),
-    software_version: textValue(data, "software_version"),
-    software_compatibility_status: derived.software_compatibility_status || data.get("software_compatibility_status"),
-    software_comments: textValue(data, "software_comments"),
+    wallet_software: unavailable ? null : data.get("wallet_software"),
+    software_version: unavailable ? "" : textValue(data, "software_version"),
+    software_compatibility_status: derived.software_compatibility_status
+      || (unavailable ? "NOT_ASSESSED" : data.get("software_compatibility_status")),
+    software_comments: unavailable ? "" : textValue(data, "software_comments"),
     contact_info_verified: flagValue(data, "contact_info_verified"),
     comments: textValue(data, "comments"),
     key_check: collectKeyCheck(data, key, derived),
-    tool_checks: expectedProducts(key).map((product) => {
+    tool_checks: unavailable ? [] : expectedProducts(key).map((product) => {
       const slug = productSlug(product);
+      const bip327Name = `tool_${slug}_bip327_status`;
+      const slip39Name = `tool_${slug}_slip39_status`;
       return {
         product,
-        bip327_status: data.get(`tool_${slug}_bip327_status`),
-        slip39_status: data.get(`tool_${slug}_slip39_status`),
+        bip327_status: data.get(bip327Name),
+        slip39_status: data.get(slip39Name),
       };
     }),
-    ai_security_checks: expectedProviders(key).map((provider) => {
+    ai_security_checks: unavailable ? [] : expectedProviders(key).map((provider) => {
       const slug = productSlug(provider);
+      const statusName = `security_${slug}_status`;
+      const commentName = `security_${slug}_comments`;
       return {
         provider,
-        status: statusValue(data, `security_${slug}_status`),
-        comments: textValue(data, `security_${slug}_comments`),
+        status: statusValue(data, statusName),
+        comments: textValue(data, commentName),
       };
     }),
   };
@@ -557,7 +610,8 @@ async function saveHealthCheck() {
     }
     const saved = await response.json();
     saveStatus.textContent = "Health check saved.";
-    window.location.assign(`/history?id=${encodeURIComponent(saved.id)}`);
+    const target = `/history?id=${encodeURIComponent(saved.id)}`;
+    window.location.assign(target);
   } catch (error) {
     saveStatus.textContent = error.message;
     saveButton.disabled = false;
@@ -592,15 +646,11 @@ async function loadFormData() {
 
 setCheckDate();
 renderKeyCheck();
-lockSoftwareFields();
-renderToolChecks();
-renderSecurityChecks();
+refreshKeySections();
 saveButton.addEventListener("click", saveHealthCheck);
 keySelect.addEventListener("change", () => {
-  lockSoftwareFields();
   renderKeyCheck();
-  renderToolChecks();
-  renderSecurityChecks();
+  refreshKeySections();
 });
 walletSoftwareSelect.addEventListener("change", () => {
   updateSoftwareVersionPlaceholder();
