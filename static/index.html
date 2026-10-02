@@ -79,10 +79,13 @@
           <p class="eyebrow">Previous checks</p>
           <h2 id="history-title">History</h2>
         </div>
-        <a class="secondary-button" href="/history">Open history</a>
+        <div class="card-actions">
+          <a class="secondary-button" href="/history">Open history</a>
+          <a class="secondary-button" href="/api/export" download="helsesjekk-export.csv">Download CSV</a>
+        </div>
       </section>
 
-      <p class="workflow-note" id="workflow-note">Save a health check to see it in the history. Report export is not implemented yet.</p>
+      <p class="workflow-note" id="workflow-note">Save a health check to see it in the history. Download CSV exports every saved key check, one row per key check.</p>
     </main>
     <footer class="footer"><span>Helsesjekk</span><span>Your data stays local.</span></footer>
   </body>
