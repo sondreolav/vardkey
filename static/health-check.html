@@ -52,7 +52,7 @@
           <div id="key-check" class="form-stack"><p class="empty-state">Loading key profiles…</p></div>
         </section>
 
-        <section class="form-section" aria-labelledby="software-title">
+        <section class="form-section" id="software-section" aria-labelledby="software-title">
           <div class="form-section-heading">
             <p class="eyebrow">03 / Compatibility</p>
             <h2 id="software-title">Software compatibility</h2>
@@ -60,7 +60,7 @@
           <div class="field-grid">
             <label class="field"><span>Wallet software</span><select id="wallet-software" name="wallet_software" required><option value="">Select software</option><option value="Sparrow Wallet">Sparrow Wallet</option><option value="Nunchuk">Nunchuk</option></select></label>
             <label class="field"><span>Compatibility status</span><select name="software_compatibility_status"><option value="IKKJE_VURDERT">Not assessed</option><option value="OK">OK</option><option value="PROBLEM">Problem</option></select></label>
-            <label class="field"><span>Software version <span class="optional">(if used)</span></span><input name="software_version" type="text" maxlength="100" autocomplete="off"></label>
+            <label class="field"><span>Software version <span class="optional">(if used)</span></span><input id="software-version" name="software_version" type="text" maxlength="100" autocomplete="off"></label>
           </div>
           <p class="field-help" id="software-help">Record the version of the software you selected for this key.</p>
           <label class="field"><span>Compatibility notes</span><textarea name="software_comments" rows="3" maxlength="2000"></textarea></label>
