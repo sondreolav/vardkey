@@ -1,4 +1,8 @@
-"""HTTP tests for the dashboard server."""
+"""HTTP tests for the dashboard server.
+
+Every test gets its own database and server, so the tests stay independent of
+each other and of the order they run in.
+"""
 
 from http.server import ThreadingHTTPServer
 import csv
@@ -61,30 +65,28 @@ def sample_payload(key, wallet_software=None):
 
 
 class AppHandlerTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.temp_dir = tempfile.TemporaryDirectory()
-        cls.database_path = os.path.join(cls.temp_dir.name, "test.sqlite3")
-        initialize_database(cls.database_path)
-        seed_fixed_keys(cls.database_path)
-        cls.previous_database_path = os.environ.get("DATABASE_PATH")
-        os.environ["DATABASE_PATH"] = cls.database_path
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.database_path = os.path.join(self.temp_dir.name, "test.sqlite3")
+        initialize_database(self.database_path)
+        seed_fixed_keys(self.database_path)
+        self.previous_database_path = os.environ.get("DATABASE_PATH")
+        os.environ["DATABASE_PATH"] = self.database_path
 
-        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), AppHandler)
-        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
-        cls.thread.start()
-        cls.base_url = f"http://127.0.0.1:{cls.server.server_port}"
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), AppHandler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.base_url = f"http://127.0.0.1:{self.server.server_port}"
 
-    @classmethod
-    def tearDownClass(cls):
-        cls.server.shutdown()
-        cls.server.server_close()
-        cls.thread.join(timeout=2)
-        if cls.previous_database_path is None:
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
+        if self.previous_database_path is None:
             os.environ.pop("DATABASE_PATH", None)
         else:
-            os.environ["DATABASE_PATH"] = cls.previous_database_path
-        cls.temp_dir.cleanup()
+            os.environ["DATABASE_PATH"] = self.previous_database_path
+        self.temp_dir.cleanup()
 
     def key_profiles(self):
         with urlopen(f"{self.base_url}/api/keys") as response:
@@ -124,6 +126,15 @@ class AppHandlerTests(unittest.TestCase):
         self.assertEqual([key["device"] for key in keys], ["SeedSigner", "Blockstream Jade", "Nunchuk"])
         self.assertEqual([key["key_number"] for key in keys], [1, 2, 3])
 
+    def test_key_status_api_is_empty_before_anything_is_saved(self):
+        with urlopen(f"{self.base_url}/api/key-status") as response:
+            status = json.load(response)
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual([entry["key_number"] for entry in status], [1, 2, 3])
+        self.assertEqual([entry["last_checked_at"] for entry in status], [None, None, None])
+        self.assertEqual([entry["next_check_due"] for entry in status], [None, None, None])
+
     def test_key_status_api_lists_each_key_with_its_newest_check(self):
         payload = sample_payload(self.key_profiles()[0])
         payload["checked_at"] = "2027-03-01"
@@ -136,9 +147,11 @@ class AppHandlerTests(unittest.TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual([entry["key_number"] for entry in status], [1, 2, 3])
         self.assertEqual([entry["type"] for entry in status], ["hardware", "hardware", "cloud"])
+        self.assertEqual(status[0]["name"], "SeedSigner")
         self.assertEqual(status[0]["last_checked_at"], "2027-03-01")
         self.assertEqual(status[0]["next_check_due"], "2028-03-01")
-        self.assertEqual(status[0]["name"], "SeedSigner")
+        self.assertIsNone(status[1]["last_checked_at"])
+        self.assertIsNone(status[2]["last_checked_at"])
 
     def test_export_api_returns_a_csv_download(self):
         payload = sample_payload(self.key_profiles()[0])
@@ -158,10 +171,10 @@ class AppHandlerTests(unittest.TestCase):
 
         rows = list(csv.reader(io.StringIO(body)))
         self.assertEqual(rows[0], list(HEADERS))
-        matching = [row for row in rows[1:] if row[0] == str(saved["id"])]
-        self.assertEqual(len(matching), 1)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[1][0], str(saved["id"]))
 
-        values = dict(zip(HEADERS, matching[0]))
+        values = dict(zip(HEADERS, rows[1]))
         self.assertEqual(values["Check date"], "2027-04-01")
         self.assertEqual(values["Next check due"], "2028-04-01")
         self.assertEqual(values["Key number"], "1")
@@ -199,6 +212,10 @@ class AppHandlerTests(unittest.TestCase):
 
         self.assertIn('href="/health-check"', body)
         self.assertIn('href="/history"', body)
+
+    def test_alerts_api_is_empty_before_anything_is_saved(self):
+        with urlopen(f"{self.base_url}/api/alerts") as response:
+            self.assertEqual(json.load(response), [])
 
     def test_alerts_api_reports_follow_up_for_the_latest_check(self):
         key = self.key_profiles()[1]
