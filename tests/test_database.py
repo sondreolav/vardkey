@@ -14,6 +14,7 @@ from database import (
     list_health_checks,
     list_key_status,
     list_keys,
+    list_previous_values,
     save_health_check,
     seed_fixed_keys,
 )
@@ -351,6 +352,80 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(status[3]["next_check_due"], "2027-05-01")
         self.assertIsNone(status[2]["last_checked_at"])
         self.assertIsNone(status[2]["next_check_due"])
+
+    def test_previous_values_are_empty_before_anything_is_saved(self):
+        initialize_database(self.database_path)
+        seed_fixed_keys(self.database_path)
+
+        values = list_previous_values(self.database_path)
+
+        self.assertEqual([entry["key_id"] for entry in values["keys"]], [1, 2, 3])
+        self.assertEqual([entry["firmware_version"] for entry in values["keys"]], [None, None, None])
+        self.assertEqual([entry["address_path"] for entry in values["keys"]], [None, None, None])
+        self.assertEqual([entry["wallet_software"] for entry in values["keys"]], [None, None, None])
+        self.assertEqual([entry["software_version"] for entry in values["keys"]], [None, None, None])
+        self.assertEqual(values["security"], {})
+
+    def test_previous_values_return_the_newest_saved_values(self):
+        initialize_database(self.database_path)
+        seed_fixed_keys(self.database_path)
+        keys = list_keys(self.database_path)
+
+        older = sample_payload(keys[0])
+        older["checked_at"] = "2025-10-01"
+        older["software_version"] = "1.7.0"
+        older["key_check"]["firmware_version"] = "0.9.0"
+        save_health_check(validate_health_check(older, keys), self.database_path)
+
+        newer = sample_payload(keys[0])
+        newer["checked_at"] = "2026-10-01"
+        newer["software_version"] = "1.8.0"
+        newer["key_check"]["firmware_version"] = "1.0.0"
+        save_health_check(validate_health_check(newer, keys), self.database_path)
+
+        cloud = sample_payload(keys[2])
+        cloud["checked_at"] = "2026-05-01"
+        cloud["software_version"] = "1.9.0"
+        save_health_check(validate_health_check(cloud, keys), self.database_path)
+
+        values = list_previous_values(self.database_path)
+        by_key = {entry["key_id"]: entry for entry in values["keys"]}
+
+        self.assertEqual(by_key[1]["firmware_version"], "1.0.0")
+        self.assertEqual(by_key[1]["address_path"], "m/48'/0'/0'/2'/0/0")
+        self.assertEqual(by_key[1]["wallet_software"], "Sparrow Wallet")
+        self.assertEqual(by_key[1]["software_version"], "1.8.0")
+        self.assertEqual(by_key[3]["wallet_software"], "Nunchuk")
+        self.assertEqual(by_key[3]["software_version"], "1.9.0")
+        self.assertIsNone(by_key[2]["firmware_version"])
+        self.assertEqual(
+            values["security"],
+            {"SeedSigner": "SECURE", "Sparrow Wallet": "SECURE", "Nunchuk": "SECURE"},
+        )
+
+    def test_previous_security_status_keeps_the_newest_status_per_provider(self):
+        initialize_database(self.database_path)
+        seed_fixed_keys(self.database_path)
+        keys = list_keys(self.database_path)
+
+        older = sample_payload(keys[0])
+        older["checked_at"] = "2025-10-01"
+        older["ai_security_checks"] = [
+            {"provider": "SeedSigner", "status": "VULNERABLE", "comments": ""},
+            {"provider": "Sparrow Wallet", "status": "PATCHED", "comments": ""},
+            {"provider": "Nunchuk", "status": "SECURE", "comments": ""},
+        ]
+        save_health_check(validate_health_check(older, keys), self.database_path)
+
+        newer = sample_payload(keys[0])
+        newer["checked_at"] = "2026-10-01"
+        save_health_check(validate_health_check(newer, keys), self.database_path)
+
+        values = list_previous_values(self.database_path)
+
+        self.assertEqual(values["security"]["SeedSigner"], "SECURE")
+        self.assertEqual(values["security"]["Sparrow Wallet"], "SECURE")
+        self.assertEqual(values["security"]["Nunchuk"], "SECURE")
 
     def test_export_rows_are_empty_before_anything_is_saved(self):
         initialize_database(self.database_path)
