@@ -1,143 +1,62 @@
-# AI Agent Note — Per-Key Health Check Changes
+# AI Agent Note — Helsesjekk
+
+Short working handover for the next model. Keep it short.
+
+- `TODO.md` (Norwegian) is the requirement specification. This note is the handover.
+- `HANDOVER.md` was deleted as outdated. Do not recreate it.
 
 ## Status
 
-The requirements in section 19 of `TODO.md` are **implemented and verified**, and so is step 7 (the dashboard). Section 19 of `TODO.md`, the items that section 19 changed in sections 4, 5, 6, 7, 9, 11 and 18, and section 8 are ticked. The full suite passes (65 tests, run by the user with `python3 -m unittest discover -s tests`), and the user has confirmed that the dashboard renders correctly.
+- **Done and verified:** section 19 (one key per submission) and section 18 steps 1–7. Those items are ticked in `TODO.md`.
+- **Tests:** 65, all passing. The user runs them: `python3 -m unittest discover -s tests` from `/home/snes/start9/helsesjekk`.
+- **Next:** step 8 (`GET /api/export`), then steps 9–12 (StartOS package, persistent volume, backup/restore, `.s9pk`).
 
-Treat section 19 as authoritative wherever older requirements elsewhere in `TODO.md` conflict with it. Do not re-open the decisions below; they are settled and built.
+## Ground rules
 
-**Do not edit `TODO.md` outside section 19 without asking the user.**
+- English everywhere except `TODO.md`.
+- Read the existing files first. Work one file at a time and finish each file before starting the next.
+- Do not start a new step without asking. Do not edit `TODO.md` outside section 19 without asking.
+- The user runs the tests and reports the result. Wait for it.
+- Ask one question at a time, with concrete options.
+- Never add fields for seed phrases, private keys, PINs, passwords, cloud tokens, or contact details. The app records results only.
 
----
+## Settled decisions — do not re-open
 
-## Decisions confirmed with the user
+1. Security statuses are English: `SECURE`, `PATCHED`, `VULNERABLE`, `COMPROMISED`. Old rows are migrated.
+2. One submission records **one key**. There is no "round" grouping. Each key's next check is its own `checked_at` plus one calendar year, computed on the server (29 February → 28 February), not editable in the form.
+3. BIP327/SLIP39 rows are the key's product plus the chosen software, deduplicated: at most two rows, and Nunchuk alone for key 3.
+4. Security status fields are the key's product plus Sparrow Wallet plus Nunchuk for keys 1–2, and Nunchuk alone for key 3. Sparrow is not offered for key 3, so a bad Sparrow status alerts on every submission.
+5. Wallet software is `Sparrow Wallet` or `Nunchuk`; key 3 is fixed to Nunchuk. One software field plus one version field (`wallet_software`, `software_version`).
+6. `seed_backup_verified` (keys 1–2 only) and `address_path_verified` are `OK`/`PROBLEM` and mandatory when the key is available. Removed: `seed_backup_status`, `address_verified`, `derivation_height`.
+7. An unavailable key hides and empties the other key fields; the key note stays. The only alert is the critical `key_unavailable`.
+8. Legacy rows keep rendering. The migration maps `1` → `OK`, `0` → `PROBLEM` and folds the old status into `seed_backup_verified`.
+9. A negative cloud result (`cloud_health_status = PROBLEM` or `cloud_provider_operational = 0`) raises the critical `cloud_provider_problem`.
+10. The prohibition lists in sections 1 and 13 stay unticked. They are standing prohibitions, to be re-confirmed before release.
+11. Readable user-defined key names are not built; the section 3 item stays unticked.
+12. The dashboard shows status and dates per key on the key cards. The summary cards are "Next check" (earliest due, naming the key) and "Attention" (how many keys are overdue). Whether a date is overdue is decided in the browser, so the API stays independent of the current date.
 
-These were settled in a question-by-question review. Do not re-open them.
+## Data model (schema version 5)
 
-1. **Security status values become English.** Replace the Norwegian stored values with `SECURE`, `PATCHED`, `VULNERABLE`, `COMPROMISED`. Existing rows must be migrated. SQLite cannot alter a `CHECK` constraint, so `ai_security_checks` has to be rebuilt and its rows copied with a value mapping. `README.md` and `TODO.md` section 5.2 must be updated to the English values.
+- `health_checks`: `checked_at`, `next_check_due`, `wallet_software`, `software_version`, `software_compatibility_status`, `software_comments`, `contact_info_verified`, `comments`, plus the legacy `sparrow_version` / `nunchuk_version`.
+- `key_checks`: one row per submission — `available`, `hardware_works`, `firmware_version`, `seed_backup_verified` (OK/PROBLEM), `cloud_health_status`, `cloud_provider_operational`, `address_path_verified` (OK/PROBLEM), `address_path`, `comments`.
+- `tool_checks`: `product`, `bip327_status`, `slip39_status`. The legacy `version`, `checked_at`, `notes` are kept for old rows but never written.
+- `ai_security_checks`: `provider`, `status` (English), `comments`.
+- Startup migration rebuilds `key_checks` and `ai_security_checks` when they still use the old layout. Covered by `test_legacy_database_migrates_to_per_key_checks`.
 
-2. **No check "round" grouping.** Each submission stands alone; there is no concept that ties three submissions into one annual check. Every key has its own next-due date, derived from its own last submission as `checked_at` plus one calendar year. Registering one key never changes another key's interval. Consequence: there is no single "next check" — there are three, one per key. The dashboard summary cards in section 8 must be reworked for this (step 7).
+## API
 
-3. **BIP327/SLIP39 scope.** Recorded for the selected key's product plus the selected wallet software, deduplicated:
-   - Key 1 → SeedSigner + (Sparrow Wallet or Nunchuk)
-   - Key 2 → Blockstream Jade + (Sparrow Wallet or Nunchuk)
-   - Key 3 → Nunchuk only, one row, because Nunchuk is both the key and the software
-   At most two rows per submission. This keeps the section 17 criterion satisfiable for Sparrow.
+`GET /health`, `GET /api/keys`, `GET /api/key-status`, `GET /api/health-checks`, `GET /api/health-checks/<id>`, `GET /api/alerts`, `POST /api/health-checks`. Field details are in `README.md`.
 
-4. **Security status fields per submission.**
-   - Key 1: SeedSigner + Sparrow Wallet + Nunchuk (three fields)
-   - Key 2: Blockstream Jade + Sparrow Wallet + Nunchuk (three fields)
-   - Key 3: Nunchuk only (one field)
-   Sparrow Wallet is not offered for key 3. Sparrow Wallet and Nunchuk follow every submission because they are wallet software used regardless of which key is being checked. Consequence: a `VULNERABLE` or `COMPROMISED` status on Sparrow Wallet raises an alert on every submission, not only when Sparrow is the selected compatibility software.
+Two things that are easy to break:
 
-5. **Software compatibility.** Per submission. Keys 1 and 2 let the user choose Sparrow Wallet or Nunchuk; key 3 is fixed to Nunchuk. Record the compatibility status and the version of the chosen software. The separate Sparrow and Nunchuk version inputs are removed and replaced by one software field plus one version field.
-
-6. **Merged key-check fields.** The user confirmed the `TODO.md` section 4.3 names, with new value semantics:
-   - `seed_backup_verified` → status OK / Problem. Keys 1 and 2 only; a cloud key has no seed backup.
-   - `address_path_verified` → status OK / Problem.
-   - `address_path` → text, the verified address path.
-   - `software_comments` → free-text note.
-   Removed: `seed_backup_status`, `address_verified`, `derivation_height`. The checklist point "Verifiser derivasjonshøgd" is covered by `address_path`.
-
-7. **OK / Problem is mandatory for the two verification fields.** There is no "not assessed" option and an empty value is rejected at save. They are required only when the key is available, per decision 8.
-
-8. **Unavailable key.** When `available = No`, the remaining key fields (hardware works, firmware version, seed backup, address path) are hidden and not required. The key note stays available, for example to record why the key is missing or that a replacement has been ordered. The only alert in this case is the critical one: *"This key was not available. Replace the key before continuing; the remaining checks for this key cannot be recorded."* The app must not raise a seed-backup or address alert for an unavailable key, because those checks could not be performed.
-
-9. **Legacy records stay readable.** Existing multi-key records must keep rendering in the history. The migration must map old boolean flags to the new status values (`1` → `OK`, `0` → `Problem`) and fold the old `seed_backup_status` into `seed_backup_verified`.
-
----
-
-## Decisions of the follow-up round
-
-Settled after section 19 was implemented and verified.
-
-10. **A negative cloud result is a critical alert.** `cloud_health_status = PROBLEM` or `cloud_provider_operational = 0` on the cloud key raises the new critical alert `cloud_provider_problem`: *"The cloud provider is not operating normally. Check the provider status before continuing."* It is implemented in `alerts.py`, documented in section 7 of `TODO.md` and in `README.md`, and covered by two tests in `tests/test_alerts.py`. It is suppressed for an unavailable key, like the other key-level alerts.
-
-11. **The two negative requirement lists stay unticked.** The "Dette skal ikkje vere med i første versjon" list in section 1 and the "Unngå" list in section 13 are standing prohibitions, not tasks, so they are never ticked. A note in each section says they must be confirmed again before release.
-
-12. **Readable user-defined key names are not built.** Section 3 keeps its item unticked. The three fixed names are enough for the MVP; the database and `seed_fixed_keys` already preserve a custom name if one is ever set.
-
----
-
-## How section 19 was implemented
-
-Schema version 5. All application code is Python's standard library plus vanilla JavaScript; no new dependencies.
-
-- `database.py` — `SCHEMA_VERSION = 5`. New columns `health_checks.wallet_software` and `health_checks.software_version` (the legacy `sparrow_version` and `nunchuk_version` columns stay). `key_checks` now stores `seed_backup_verified` and `address_path_verified` as `OK`/`PROBLEM` and no longer has `seed_backup_status`, `address_verified`, or `derivation_height`. `ai_security_checks` accepts only the four English values. Two explicit, idempotent rebuilds run inside the existing `BEGIN IMMEDIATE` transaction: `_migrate_key_checks` and `_migrate_ai_security_checks`. Each detects the old layout (legacy column names, or a `CREATE TABLE` statement without `SECURE`) and copies every row with a value mapping. `tool_checks` keeps its `version`, `checked_at`, and `notes` columns for legacy rows but no longer writes them.
-- `validation.py` — `validate_health_check(payload, keys)` now takes the key profiles instead of key ids, and normalizes one `key_check` object. `next_check_due()` is a module-level helper that adds one calendar year and clamps 29 February to 28 February; the payload's `next_check_due` is ignored. Irrelevant products and providers, duplicate rows, unknown keys, a non-Nunchuk software choice for key 3, and a missing verification status for an available key are all rejected.
-- `app.py` — passes `list_keys(...)` to the validator.
-- `alerts.py` — `seed_backup_problem` reads `seed_backup_verified`, `address_verification_failed` reads `address_path_verified`, `cloud_provider_problem` reads `cloud_health_status` and `cloud_provider_operational`, the security statuses are English, and an unavailable key returns only the single critical `key_unavailable` alert.
-- `static/health-check.html`, `static/health-check.js` — the form selects one key and one wallet software, renders the key, BIP327/SLIP39 and security fields for that selection, hides the key fields when the key is unavailable, and shows the derived next check date as read-only text.
-- `static/history.js` — the detail view shows the checked key and the software selection; the legacy version columns are rendered only when an old record actually has them.
-- `README.md` — documents the per-key POST contract, the alert rules, and the migration.
-
-Two implementation choices worth knowing:
-
-- The POST payload uses a single `key_check` object, not a `key_checks` list, because one submission records one key.
-- `GET /api/health-checks` summaries now include `key_numbers`, so the history list can show which key a submission belongs to.
-
----
-
-## How step 7 was implemented
-
-- `database.py` — `list_key_status()` returns one row per key with `key_id`, `key_number`, `name`, `type`, `device`, `last_checked_at`, and `next_check_due`, taken from that key's newest saved check. A key that has never been checked has `null` dates. The query uses a small correlated subquery per column instead of a window function, and the shared subquery text is a module constant (`_LATEST_CHECK_QUERY`) so the SQL stays readable.
-- `app.py` — new endpoint `GET /api/key-status`, served by `_send_key_status()`.
-- `static/index.html` — the two overview cards became "Next check" (earliest due date, naming the key) and "Attention" (how many keys have passed their due date).
-- `static/app.js` — `loadKeyStatus()` renders one card per key with a status badge (`Never checked`, `Up to date`, `Overdue`) and a `last checked` / `next check due` pair. Whether a date is overdue is decided in the browser by comparing the ISO date text with today's local date, so the endpoint stays independent of the current date.
-- `static/styles.css` — `.status-ok`, `.status-overdue`, and `.key-dates`.
-
-The dashboard has one source of truth for dates: the key cards. The summary cards only aggregate from the same response.
-
----
-
-## Product behavior
-
-- Each form submission records one selected key only: SeedSigner (key 1), Blockstream Jade (key 2), or Nunchuk (key 3).
-- All key-specific checks and notes in that submission apply only to the selected key.
-- The user chooses the check date. Next check due is automatically one calendar year later, is not editable in the UI, and is calculated/validated on the server too. 29 February is clamped to the last valid day of February.
-- Contact confirmation and overall comments remain available for each submission.
-- Software compatibility: select one wallet software (Sparrow Wallet or Nunchuk) and record its compatibility status and version for the selected key. Key 3 is fixed to Nunchuk.
-- BIP327/SLIP39: record only the two statuses for the selected key's product and the selected software. Do not require statuses for other keys or products in the same submission.
-- Security status fields are contextual, as described in decision 4. Only `SECURE`, `PATCHED`, `VULNERABLE`, `COMPROMISED` are accepted.
-- History clearly shows the selected key and its associated results. Existing saved history is preserved through a safe, backward-compatible database migration.
-
----
-
-## Defaults applied
-
-These were the open items with a stated default; the defaults were implemented.
-
-- `hardware_works` and `firmware_version` for keys 1 and 2: not required.
-- `cloud_health_status` and `cloud_provider_operational` for key 3: not required. A negative value does raise the critical alert from decision 10.
-- `contact_info_verified`: optional, with a "not assessed" choice.
-- New column names for the software choice: `wallet_software` and `software_version` on `health_checks`, while the legacy `sparrow_version` and `nunchuk_version` columns stay for old rows.
-
----
-
-## Migration notes
-
-The migration touches four tables, and it is the riskiest part of the change:
-
-- `ai_security_checks`: rebuilt to allow only `SECURE`, `PATCHED`, `VULNERABLE`, `COMPROMISED`, with the old Norwegian values mapped.
-- `key_checks`: rebuilt so `seed_backup_verified` and `address_path_verified` hold `OK`/`PROBLEM`; `seed_backup_status`, `address_verified`, and `derivation_height` are dropped.
-- `health_checks`: `wallet_software` and `software_version` added; `sparrow_version` and `nunchuk_version` kept for legacy rows.
-- `tool_checks`: `version`, `checked_at`, and `notes` are no longer written for new submissions.
-
-`tests/test_database.py` contains `test_legacy_database_migrates_to_per_key_checks`, which starts from a database written by the previous code (schema version 4, Norwegian security statuses, boolean verification flags), runs the migration, and then reads both the old rows and a newly saved single-key row.
-
----
+- New static files must be added to `STATIC_FILES` in `app.py`, or they return `404`.
+- `/api/alerts` and `/api/key-status` are extra endpoints that are not in the minimum list in section 11. They are noted in section 11 but not in the specification itself.
 
 ## Remaining work
 
 - **Step 8 — `GET /api/export`.** CSV with clear Excel documentation is the simple route; XLSX only if it is genuinely simple.
 - **Steps 9–12.** StartOS package (`startos/manifest`, `main.ts`, `interfaces.ts`, `backups.ts`, `init/`, `instructions.md`, `icon.svg`, `Makefile`), persistent volume, backup/restore, restart testing, and the final `.s9pk`.
 
-### Still not in the specification
+## Product clarification
 
-- `GET /api/alerts` and `GET /api/key-status` are extra endpoints that are not in the minimum list in section 11. Both are described in `README.md` and noted in `TODO.md` section 11, but the specification itself has not been extended.
-
----
-
-## Important product clarification
-
-Nunchuk has two roles: it is the third key/provider and also wallet software. Still record only one Nunchuk security status per submission, and only one Nunchuk BIP327/SLIP39 row. Sparrow is software only and is checked on every submission. Software compatibility is a separate selection where the user chooses Sparrow Wallet or Nunchuk, except for key 3, which is fixed to Nunchuk.
+Nunchuk has two roles: it is the third key and also wallet software. Record only one Nunchuk security status per submission and only one Nunchuk BIP327/SLIP39 row. Sparrow is software only and is checked on every submission.
