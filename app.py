@@ -13,6 +13,7 @@ from database import (
     get_health_check,
     initialize_database,
     list_health_checks,
+    list_key_status,
     list_keys,
     save_health_check,
     seed_fixed_keys,
@@ -48,6 +49,9 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/keys":
             self._send_keys()
+            return
+        if path == "/api/key-status":
+            self._send_key_status()
             return
         if path == "/api/health-checks":
             self._send_health_check_list()
@@ -113,6 +117,13 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json(200, list_keys(get_database_path()))
         except (OSError, sqlite3.Error, ValueError):
             self._send_json(500, {"error": "Key profiles are unavailable"})
+
+    def _send_key_status(self):
+        """Return each key with the dates of its newest saved check."""
+        try:
+            self._send_json(200, list_key_status(get_database_path()))
+        except (OSError, sqlite3.Error, ValueError):
+            self._send_json(500, {"error": "Key status is unavailable"})
 
     def _send_health_check_list(self):
         try:
