@@ -2,13 +2,11 @@
 
 ## Status
 
-The requirements in section 19 of `TODO.md` are **implemented and verified**. Section 19 of `TODO.md` and the items that section 19 changed in sections 4, 5, 6, 7, 9, 11 and 18 are ticked.
-
-A follow-up round of questions was then answered by the user; see "Decisions of the follow-up round". The cloud provider alert from that round is implemented. The full suite passes (62 tests, run by the user with `python3 -m unittest discover -s tests`).
+The requirements in section 19 of `TODO.md` are **implemented and verified**, and so is step 7 (the dashboard). Section 19 of `TODO.md`, the items that section 19 changed in sections 4, 5, 6, 7, 9, 11 and 18, and section 8 are ticked. The full suite passes (65 tests, run by the user with `python3 -m unittest discover -s tests`), and the user has confirmed that the dashboard renders correctly.
 
 Treat section 19 as authoritative wherever older requirements elsewhere in `TODO.md` conflict with it. Do not re-open the decisions below; they are settled and built.
 
-**Do not edit `TODO.md` outside section 19 without asking the user.** Section 8 is still stale; see "Remaining work" at the end of this note.
+**Do not edit `TODO.md` outside section 19 without asking the user.**
 
 ---
 
@@ -61,13 +59,13 @@ Settled after section 19 was implemented and verified.
 
 ---
 
-## How it was implemented
+## How section 19 was implemented
 
 Schema version 5. All application code is Python's standard library plus vanilla JavaScript; no new dependencies.
 
 - `database.py` — `SCHEMA_VERSION = 5`. New columns `health_checks.wallet_software` and `health_checks.software_version` (the legacy `sparrow_version` and `nunchuk_version` columns stay). `key_checks` now stores `seed_backup_verified` and `address_path_verified` as `OK`/`PROBLEM` and no longer has `seed_backup_status`, `address_verified`, or `derivation_height`. `ai_security_checks` accepts only the four English values. Two explicit, idempotent rebuilds run inside the existing `BEGIN IMMEDIATE` transaction: `_migrate_key_checks` and `_migrate_ai_security_checks`. Each detects the old layout (legacy column names, or a `CREATE TABLE` statement without `SECURE`) and copies every row with a value mapping. `tool_checks` keeps its `version`, `checked_at`, and `notes` columns for legacy rows but no longer writes them.
 - `validation.py` — `validate_health_check(payload, keys)` now takes the key profiles instead of key ids, and normalizes one `key_check` object. `next_check_due()` is a module-level helper that adds one calendar year and clamps 29 February to 28 February; the payload's `next_check_due` is ignored. Irrelevant products and providers, duplicate rows, unknown keys, a non-Nunchuk software choice for key 3, and a missing verification status for an available key are all rejected.
-- `app.py` — passes `list_keys(...)` to the validator. No other routing change.
+- `app.py` — passes `list_keys(...)` to the validator.
 - `alerts.py` — `seed_backup_problem` reads `seed_backup_verified`, `address_verification_failed` reads `address_path_verified`, `cloud_provider_problem` reads `cloud_health_status` and `cloud_provider_operational`, the security statuses are English, and an unavailable key returns only the single critical `key_unavailable` alert.
 - `static/health-check.html`, `static/health-check.js` — the form selects one key and one wallet software, renders the key, BIP327/SLIP39 and security fields for that selection, hides the key fields when the key is unavailable, and shows the derived next check date as read-only text.
 - `static/history.js` — the detail view shows the checked key and the software selection; the legacy version columns are rendered only when an old record actually has them.
@@ -77,6 +75,18 @@ Two implementation choices worth knowing:
 
 - The POST payload uses a single `key_check` object, not a `key_checks` list, because one submission records one key.
 - `GET /api/health-checks` summaries now include `key_numbers`, so the history list can show which key a submission belongs to.
+
+---
+
+## How step 7 was implemented
+
+- `database.py` — `list_key_status()` returns one row per key with `key_id`, `key_number`, `name`, `type`, `device`, `last_checked_at`, and `next_check_due`, taken from that key's newest saved check. A key that has never been checked has `null` dates. The query uses a small correlated subquery per column instead of a window function, and the shared subquery text is a module constant (`_LATEST_CHECK_QUERY`) so the SQL stays readable.
+- `app.py` — new endpoint `GET /api/key-status`, served by `_send_key_status()`.
+- `static/index.html` — the two overview cards became "Next check" (earliest due date, naming the key) and "Attention" (how many keys have passed their due date).
+- `static/app.js` — `loadKeyStatus()` renders one card per key with a status badge (`Never checked`, `Up to date`, `Overdue`) and a `last checked` / `next check due` pair. Whether a date is overdue is decided in the browser by comparing the ISO date text with today's local date, so the endpoint stays independent of the current date.
+- `static/styles.css` — `.status-ok`, `.status-overdue`, and `.key-dates`.
+
+The dashboard has one source of truth for dates: the key cards. The summary cards only aggregate from the same response.
 
 ---
 
@@ -119,13 +129,12 @@ The migration touches four tables, and it is the riskiest part of the change:
 
 ## Remaining work
 
-- **Step 7 — dashboard.** The cards still show `Profile configured` for each key, and the two overview cards ("Last completed" and "Next check") still use the single latest saved check. They must become per-key status plus per-key last/next dates. Section 8 of `TODO.md` is therefore still stale and is left unticked.
 - **Step 8 — `GET /api/export`.** CSV with clear Excel documentation is the simple route; XLSX only if it is genuinely simple.
 - **Steps 9–12.** StartOS package (`startos/manifest`, `main.ts`, `interfaces.ts`, `backups.ts`, `init/`, `instructions.md`, `icon.svg`, `Makefile`), persistent volume, backup/restore, restart testing, and the final `.s9pk`.
 
 ### Still not in the specification
 
-- `/api/alerts` is an extra endpoint that is not in the minimum list in section 11. It is described in `README.md` and noted in `TODO.md` section 11, but the specification itself has not been extended.
+- `GET /api/alerts` and `GET /api/key-status` are extra endpoints that are not in the minimum list in section 11. Both are described in `README.md` and noted in `TODO.md` section 11, but the specification itself has not been extended.
 
 ---
 
