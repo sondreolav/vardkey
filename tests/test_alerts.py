@@ -62,17 +62,31 @@ class AlertTests(unittest.TestCase):
         self.assertIn("Replace the key", alerts[0]["message"])
 
     def test_an_unavailable_key_hides_the_other_results(self):
-        record = clean_record(key_number=3, name="Nunchuk", key_type="cloud")
+        record = clean_record()
         record["key_checks"][0].update({
             "available": 0,
             "hardware_works": 0,
             "seed_backup_verified": "PROBLEM",
-            "cloud_health_status": "PROBLEM",
-            "cloud_provider_operational": 0,
             "address_path_verified": "PROBLEM",
         })
 
         self.assertEqual(self.codes(record), ["key_unavailable"])
+
+    def test_an_unavailable_cloud_key_gets_one_merged_alert(self):
+        record = clean_record(key_number=3, name="Nunchuk", key_type="cloud")
+        record["key_checks"][0].update({
+            "available": 0,
+            "cloud_health_status": "PROBLEM",
+            "cloud_provider_operational": 0,
+        })
+
+        alerts = build_alerts(record)
+
+        self.assertEqual(self.codes(record), ["key_unavailable"])
+        self.assertEqual(alerts[0]["severity"], "critical")
+        self.assertEqual(alerts[0]["source"], "Key 3: Nunchuk")
+        self.assertIn("cloud provider", alerts[0]["message"])
+        self.assertIn("Replace the key", alerts[0]["message"])
 
     def test_a_hardware_failure_points_at_testing_the_backup_elsewhere(self):
         record = clean_record()
