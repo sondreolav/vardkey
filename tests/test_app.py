@@ -121,6 +121,22 @@ class AppHandlerTests(unittest.TestCase):
         self.assertEqual([key["device"] for key in keys], ["SeedSigner", "Blockstream Jade", "Nunchuk"])
         self.assertEqual([key["key_number"] for key in keys], [1, 2, 3])
 
+    def test_key_status_api_lists_each_key_with_its_newest_check(self):
+        payload = sample_payload(self.key_profiles()[0])
+        payload["checked_at"] = "2027-03-01"
+        with self.post_json("/api/health-checks", payload) as response:
+            self.assertEqual(response.status, 201)
+
+        with urlopen(f"{self.base_url}/api/key-status") as response:
+            status = json.load(response)
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual([entry["key_number"] for entry in status], [1, 2, 3])
+        self.assertEqual([entry["type"] for entry in status], ["hardware", "hardware", "cloud"])
+        self.assertEqual(status[0]["last_checked_at"], "2027-03-01")
+        self.assertEqual(status[0]["next_check_due"], "2028-03-01")
+        self.assertEqual(status[0]["name"], "SeedSigner")
+
     def test_health_check_form_is_served_in_english(self):
         with urlopen(f"{self.base_url}/health-check") as response:
             body = response.read().decode("utf-8")
