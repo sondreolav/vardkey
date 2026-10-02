@@ -457,6 +457,59 @@ def list_key_status(database_path="data/helsesjekk.sqlite3"):
         connection.close()
 
 
+def list_export_rows(database_path="data/helsesjekk.sqlite3"):
+    """Return one row per key check for the report export, oldest first.
+
+    Every row is one key check. ``check_id`` identifies the submission it belongs
+    to, so rows saved before section 19 (up to three keys in one submission) stay
+    grouped. The per-product and per-provider results are joined into a single
+    text cell, because they have more than one value per submission.
+    """
+    connection = sqlite3.connect(database_path, timeout=5)
+    connection.row_factory = sqlite3.Row
+    try:
+        rows = connection.execute(
+            """
+            SELECT hc.id AS check_id, hc.checked_at, hc.next_check_due,
+                   hc.wallet_software, hc.software_version,
+                   hc.software_compatibility_status, hc.software_comments,
+                   hc.contact_info_verified, hc.comments,
+                   kc.key_id, k.key_number, k.name AS key_name, k.type AS key_type,
+                   kc.available, kc.hardware_works, kc.firmware_version,
+                   kc.seed_backup_verified, kc.cloud_health_status,
+                   kc.cloud_provider_operational, kc.address_path_verified,
+                   kc.address_path, kc.comments AS key_comments
+            FROM key_checks AS kc
+            JOIN health_checks AS hc ON hc.id = kc.health_check_id
+            JOIN keys AS k ON k.id = kc.key_id
+            ORDER BY hc.checked_at, hc.id, k.key_number
+            """
+        ).fetchall()
+        result = [dict(row) for row in rows]
+        bip327 = _grouped_values(connection, "tool_checks", "product", "bip327_status")
+        slip39 = _grouped_values(connection, "tool_checks", "product", "slip39_status")
+        security = _grouped_values(connection, "ai_security_checks", "provider", "status")
+        for row in result:
+            row["bip327_status"] = bip327.get(row["check_id"], "")
+            row["slip39_status"] = slip39.get(row["check_id"], "")
+            row["security_status"] = security.get(row["check_id"], "")
+        return result
+    finally:
+        connection.close()
+
+
+def _grouped_values(connection, table, label_column, value_column):
+    """Return {check_id: "Label: value; Label: value"} for one related table."""
+    rows = connection.execute(
+        f"SELECT health_check_id, {label_column}, {value_column} FROM {table} ORDER BY id"
+    ).fetchall()
+    grouped = {}
+    for row in rows:
+        entry = f"{row[label_column]}: {row[value_column]}"
+        grouped.setdefault(row["health_check_id"], []).append(entry)
+    return {check_id: "; ".join(values) for check_id, values in grouped.items()}
+
+
 def get_health_check(health_check_id, database_path="data/helsesjekk.sqlite3"):
     """Return one saved health check with its related rows, or None."""
     connection = sqlite3.connect(database_path, timeout=5)
