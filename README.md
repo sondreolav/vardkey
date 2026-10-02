@@ -8,6 +8,8 @@ The English dashboard shows the three fixed key profiles, the latest saved check
 
 Each key has its own next-check date, calculated on the server as one calendar year after the check date (29 February is clamped to 28 February). The date is not editable in the form, and a submission for one key never changes another key's interval.
 
+`Availability` is the first question in the form and is required. When a key is not available, the rest of the check cannot be recorded, so the form hides the software compatibility, the standards, and the security statuses and submits only the availability, the key note, the contact confirmation, and the overall comment. That single submission is a complete result and raises the follow-up alert.
+
 ## Run locally
 
 Requires Python 3.9 or later. No third-party packages are needed.
@@ -41,7 +43,10 @@ python3 -m unittest discover -s tests
 
 `POST /api/health-checks` accepts JSON and records exactly one configured key:
 
-- `key_check` is one object with the selected `key_id`. When `available` is `0`, the remaining key fields are not required and are stored as empty.
+- `key_check` is one object with the selected `key_id` and `available`. `available` is required and is `1` (yes) or `0` (no).
+- When `available` is `1`, the fields below are recorded as described.
+- When `available` is `0`, the key could not be checked, so `wallet_software`, `tool_checks`, and `ai_security_checks` must be absent or empty. Sending them is a `400` rather than something dropped silently. `software_compatibility_status` may be omitted and is then stored as `NOT_ASSESSED`. No standards or security rows are stored, and `wallet_software` stays `NULL`.
+- The remaining key fields are not required when the key was not available, and are stored as empty. The key note is kept. For the cloud key the derived cloud results are still stored (see below).
 - `wallet_software` is `Sparrow Wallet` or `Nunchuk`. Key 3 (the cloud key) only accepts `Nunchuk`.
 - `tool_checks` must cover the selected key's product plus the selected wallet software, without duplicates: at most two rows, and one row for the cloud key. `bip327_status` and `slip39_status` accept `YES`, `NO`, or `NOT_ASSESSED`.
 - `ai_security_checks` must cover the providers relevant to the selected key: the key's product, `Sparrow Wallet`, and `Nunchuk` for keys 1 and 2, and `Nunchuk` alone for key 3.
@@ -50,7 +55,13 @@ python3 -m unittest discover -s tests
 - `address_path` is only recorded when `address_path_verified` is `OK`; the form hides the field and clears it otherwise.
 - `next_check_due` is ignored; the server derives it from `checked_at`.
 
-Unknown statuses, unknown key ids, irrelevant or duplicated products and providers, invalid dates, and over-long text are rejected with `400`.
+A minimal submission for a key that was not available is therefore just the check date and the key check:
+
+```json
+{"checked_at": "2026-10-01", "key_check": {"key_id": 2, "available": 0, "comments": "Key is with the third holder"}}
+```
+
+Unknown statuses, unknown key ids, a missing `available`, irrelevant or duplicated products and providers, standards or security results for an unavailable key, invalid dates, and over-long text are rejected with `400`.
 
 ## CSV export
 
@@ -61,7 +72,7 @@ One row is one key check. The `Check id` column identifies the submission a row 
 - `BIP327` and `SLIP39` list the key's product and the chosen wallet software.
 - `Security status` lists the key's product, `Sparrow Wallet`, and `Nunchuk`, or `Nunchuk` alone for the cloud key.
 
-Stored `0`/`1` values are written as `No`/`Yes`, matching the history view. Status values are written exactly as stored. Empty values are written as empty cells. Text that contains a comma, a quote, or a semicolon is quoted and escaped by the standard CSV rules, so the file can be opened directly in a spreadsheet.
+Stored `0`/`1` values are written as `No`/`Yes`, matching the history view. Status values are written exactly as stored. Empty values are written as empty cells, so a check that recorded only an unavailable key leaves the software, standards, and security columns empty. Text that contains a comma, a quote, or a semicolon is quoted and escaped by the standard CSV rules, so the file can be opened directly in a spreadsheet.
 
 ## Alerts
 
@@ -94,3 +105,5 @@ Databases created by earlier versions are migrated on startup, up to schema vers
 - `IKKJE_VURDERT` becomes `NOT_ASSESSED`, and the BIP327/SLIP39 results `OK`/`PROBLEM` become `YES`/`NO`.
 
 Because `health_checks` is a parent table with foreign keys from the three child tables, the migration disables foreign keys for the transaction, checks them with `PRAGMA foreign_key_check` before committing, and rolls back if anything is wrong. Older records keep rendering in the history.
+
+Making the rest of a check optional for an unavailable key needs no migration: `wallet_software` is already nullable, and the standards and security results live in their own tables. A record with no such rows simply renders and exports as empty.
