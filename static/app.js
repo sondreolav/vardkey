@@ -2,8 +2,10 @@
 
 const keyList = document.querySelector("#key-list");
 const keyCount = document.querySelector("#key-count");
-const lastCheckTitle = document.querySelector("#last-check-title");
 const nextCheckTitle = document.querySelector("#next-check-title");
+const nextCheckDetail = document.querySelector("#next-check-detail");
+const overdueTitle = document.querySelector("#overdue-title");
+const overdueDetail = document.querySelector("#overdue-detail");
 const alertsList = document.querySelector("#alerts-list");
 const alertCount = document.querySelector("#alert-count");
 
@@ -14,7 +16,41 @@ function createEmptyState(text) {
   return message;
 }
 
-function createKeyCard(key) {
+function formatLocalDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function isOverdue(entry) {
+  // ISO dates compare correctly as text, so no parsing is needed here.
+  return Boolean(entry.next_check_due) && entry.next_check_due < formatLocalDate(new Date());
+}
+
+function statusLabel(entry) {
+  if (!entry.next_check_due) {
+    return "Never checked";
+  }
+  return isOverdue(entry) ? "Overdue" : "Up to date";
+}
+
+function statusClass(entry) {
+  if (!entry.next_check_due) {
+    return "status-neutral";
+  }
+  return isOverdue(entry) ? "status-overdue" : "status-ok";
+}
+
+function appendDateRow(list, label, value) {
+  const term = document.createElement("dt");
+  term.textContent = label;
+  const detail = document.createElement("dd");
+  detail.textContent = value || "—";
+  list.append(term, detail);
+}
+
+function createKeyCard(entry) {
   const card = document.createElement("article");
   card.className = "key-card";
 
@@ -23,21 +59,51 @@ function createKeyCard(key) {
 
   const number = document.createElement("span");
   number.className = "key-number";
-  number.textContent = String(key.key_number).padStart(2, "0");
+  number.textContent = String(entry.key_number).padStart(2, "0");
 
   const status = document.createElement("span");
-  status.className = "status status-neutral";
-  status.textContent = "Profile configured";
+  status.className = `status ${statusClass(entry)}`;
+  status.textContent = statusLabel(entry);
 
   const name = document.createElement("h3");
-  name.textContent = key.name;
+  name.textContent = entry.name;
 
   const type = document.createElement("p");
-  type.textContent = key.type === "cloud" ? "Cloud key" : "Hardware key";
+  type.textContent = entry.type === "cloud" ? "Cloud key" : "Hardware key";
+
+  const dates = document.createElement("dl");
+  dates.className = "key-dates";
+  appendDateRow(dates, "Last checked", entry.last_checked_at);
+  appendDateRow(dates, "Next check due", entry.next_check_due);
 
   top.append(number, status);
-  card.append(top, name, type);
+  card.append(top, name, type, dates);
   return card;
+}
+
+function renderSummary(status) {
+  const scheduled = status.filter((entry) => entry.next_check_due);
+  if (!scheduled.length) {
+    nextCheckTitle.textContent = "Not scheduled";
+    nextCheckDetail.textContent = "No key has a next check date yet. Save a health check to schedule one.";
+  } else {
+    const earliest = scheduled.reduce((first, entry) => (
+      entry.next_check_due < first.next_check_due ? entry : first
+    ));
+    nextCheckTitle.textContent = earliest.next_check_due;
+    nextCheckDetail.textContent = `Earliest next check, for key ${earliest.key_number}: ${earliest.name}.`;
+  }
+
+  const overdue = status.filter(isOverdue);
+  if (!overdue.length) {
+    overdueTitle.textContent = "Nothing overdue";
+    overdueDetail.textContent = "No key has passed its next check date.";
+  } else {
+    overdueTitle.textContent = overdue.length === 1 ? "1 key overdue" : `${overdue.length} keys overdue`;
+    overdueDetail.textContent = overdue
+      .map((entry) => `Key ${entry.key_number}: ${entry.name} (due ${entry.next_check_due})`)
+      .join(" · ");
+  }
 }
 
 function createAlertItem(alert) {
@@ -54,39 +120,26 @@ function createAlertItem(alert) {
   return item;
 }
 
-async function loadKeys() {
+async function loadKeyStatus() {
   try {
-    const response = await fetch("/api/keys", { headers: { Accept: "application/json" } });
+    const response = await fetch("/api/key-status", { headers: { Accept: "application/json" } });
     if (!response.ok) {
-      throw new Error("The key profiles could not be loaded.");
+      throw new Error("Key status is unavailable.");
     }
 
-    const keys = await response.json();
-    keyList.replaceChildren(...keys.map(createKeyCard));
-    keyCount.textContent = `${keys.length} keys`;
+    const status = await response.json();
+    keyList.replaceChildren(...status.map(createKeyCard));
+    keyCount.textContent = `${status.length} keys`;
+    renderSummary(status);
   } catch {
     keyList.replaceChildren(createEmptyState(
-      "Key profiles are unavailable. Please reload the page or contact the service administrator.",
+      "Key status is unavailable. Please reload the page or contact the service administrator.",
     ));
     keyCount.textContent = "Unavailable";
-  }
-}
-
-async function loadSummary() {
-  try {
-    const response = await fetch("/api/health-checks", { headers: { Accept: "application/json" } });
-    if (!response.ok) {
-      throw new Error("Saved checks are unavailable.");
-    }
-
-    const checks = await response.json();
-    if (checks.length) {
-      lastCheckTitle.textContent = checks[0].checked_at;
-      nextCheckTitle.textContent = checks[0].next_check_due;
-    }
-  } catch {
-    lastCheckTitle.textContent = "Unavailable";
     nextCheckTitle.textContent = "Unavailable";
+    nextCheckDetail.textContent = "The next check dates could not be loaded.";
+    overdueTitle.textContent = "Unavailable";
+    overdueDetail.textContent = "The overdue keys could not be determined.";
   }
 }
 
@@ -119,6 +172,5 @@ async function loadAlerts() {
   }
 }
 
-loadKeys();
-loadSummary();
+loadKeyStatus();
 loadAlerts();
