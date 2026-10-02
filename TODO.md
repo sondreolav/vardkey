@@ -88,6 +88,8 @@ Appen skal starte med eitt fast multisig-oppsett:
 
 Bruk SQLite med så få tabellar som mogleg.
 
+**Merk:** §19 gjer om datamodellen. Felta under er oppdaterte i tråd med §19. Ticka punkt som gjeld noko §19 endrar, er sette tilbake til uticka.
+
 ## 4.1 `keys`
 
 - [x] `id`
@@ -99,21 +101,23 @@ Bruk SQLite med så få tabellar som mogleg.
 
 ## 4.2 `health_checks`
 
-Ein rad/record for kvar årlege health check.
+Ein rad/record for kvar innsending, som gjeld éin vald nøkkel (§19).
 
 - [x] `id`
 - [x] `checked_at`
 - [x] `next_check_due`
 - [x] `software_compatibility_status`
-- [x] `sparrow_version`
-- [x] `nunchuk_version`
-- [ ] `ai_security_status`
+- [ ] `wallet_software` — vald programvare: `Sparrow Wallet` eller `Nunchuk` (§19)
+- [ ] `software_version` — versjonen til den valde programvara (§19)
+- [ ] `ai_security_status` — blir lagra per leverandør i `ai_security_checks`, jf. §6 steg 7 og §19
 - [x] `contact_info_verified`
 - [x] `comments`
 
+**Endra i §19:** `sparrow_version` og `nunchuk_version` er tekne ut av kravet og erstatta av `wallet_software` og `software_version`. Kolonnane blir behaldne for gamle rader.
+
 ## 4.3 `key_checks`
 
-Eitt record per nøkkel i kvar health check.
+Eitt record for den valde nøkkelen i kvar innsending.
 
 - [x] `id`
 - [x] `health_check_id`
@@ -121,10 +125,10 @@ Eitt record per nøkkel i kvar health check.
 - [x] `available`
 - [x] `hardware_works`
 - [x] `firmware_version`
-- [x] `seed_backup_status`
+- [ ] `seed_backup_verified` — status `OK` eller `Problem`; gjeld nøkkel 1 og 2 (§19)
 - [x] `cloud_health_status`
 - [x] `cloud_provider_operational`
-- [x] `address_path_verified`
+- [ ] `address_path_verified` — status `OK` eller `Problem`; var Ja/Nei (§19)
 - [x] `address_path`
 - [x] `comments`
 
@@ -132,14 +136,19 @@ Reglar:
 
 - [x] `hardware_works` skal vere relevant for nøkkel 1 og 2.
 - [x] `firmware_version` skal vere relevant for nøkkel 1 og 2.
+- [ ] `seed_backup_verified` skal vere relevant for nøkkel 1 og 2, og ikkje for sky-nøkkelen.
 - [x] `cloud_health_status` og `cloud_provider_operational` skal vere relevante for nøkkel 3.
 - [x] `address_path` skal kunne lagre den verifiserte adressestien.
+- [ ] `seed_backup_verified` og `address_path_verified` skal berre ha verdiane `OK` eller `Problem`, og vere obligatoriske når `available` er Ja.
+- [ ] Når `available` er Nei, skal dei andre nøkkelfelta ikkje krevjast, og nøkkelnotatet skal framleis kunne fyllast ut (§19).
+
+**Endra i §19:** `seed_backup_status`, `address_verified` og `derivation_height` er tekne ut. Sjekkpunktet «Verifiser derivasjonshøgd» blir dekt av `address_path`.
 
 ## 4.4 `tool_checks`
 
 Ein enkel matrise for støtte-kontrollen.
 
-Produkta som skal vurderast:
+Produkta som skal vurderast, alle fire, men i ulike innsendingar (§19):
 
 - SeedSigner
 - Blockstream Jade
@@ -150,12 +159,11 @@ Felt:
 
 - [x] `id`
 - [x] `health_check_id`
-- [x] `product`
+- [x] `product` — nøkkelproduktet pluss vald programvare, maks to rader per innsending (§19)
 - [x] `bip327_status`
 - [x] `slip39_status`
-- [x] `version`
-- [x] `checked_at`
-- [x] `notes`
+
+**Endra i §19:** `version`, `checked_at` og `notes` er tekne ut av kravet. Kolonnane blir behaldne for gamle rader.
 
 ---
 
@@ -176,22 +184,27 @@ Bruk enkle statusar som:
 
 Bruk nøyaktig desse fire verdiane:
 
-- [x] `TRYGG`
-- [x] `PATCHA`
-- [x] `SÅRBAR`
-- [x] `KOMPROMITTERT`
+- [ ] `SECURE`
+- [ ] `PATCHED`
+- [ ] `VULNERABLE`
+- [ ] `COMPROMISED`
 
 Ingen andre sikkerheitsstatusar skal brukast.
+
+**Endra i §19:** dei norske verdiane `TRYGG`, `PATCHA`, `SÅRBAR` og `KOMPROMITTERT` er bytte ut med dei engelske. Eksisterande rader skal migrerast til dei nye verdiane.
 
 ---
 
 # 6. Årleg health check — steg for steg
 
+**Merk:** §19 gjer at éi innsending gjeld éin vald nøkkel.
+
 ## Steg 1 — Start kontroll
 
 - [x] Brukaren trykkjer `Start årleg health check`.
+- [ ] Brukaren vel kva nøkkel innsendinga gjeld: nøkkel 1, 2 eller 3 (§19).
 - [x] Dagens dato blir føreslått automatisk.
-- [x] Neste sjekk blir føreslått ca. eitt år fram i tid.
+- [ ] Neste sjekkdato blir rekna ut på serveren som eitt kalenderår etter sjekkdatoen, og kan ikkje redigerast i skjemaet (§19).
 
 ## Steg 2 — Kontroller nøkkel 1: SeedSigner
 
@@ -199,10 +212,8 @@ Ingen andre sikkerheitsstatusar skal brukast.
 - [x] Hardware fungerer / fungerer ikkje.
 - [x] Registrer firmware-versjon.
 - [x] Kontroller seed-backup.
-- [x] Kontroller at backupen er intakt og stemmer med hardware.
-- [x] Verifiser adresse.
-- [x] Verifiser derivasjonshøgd.
-- [x] Verifiser adresse-sti.
+- [ ] Kontroller at backupen er intakt og stemmer med hardware → `seed_backup_verified` (`OK` / `Problem`).
+- [ ] Verifiser adresse, derivasjonshøgd og adresse-sti → `address_path_verified` (`OK` / `Problem`) og `address_path` (tekst).
 - [x] Kommentar ved behov.
 
 ## Steg 3 — Kontroller nøkkel 2: Blockstream Jade
@@ -211,10 +222,8 @@ Ingen andre sikkerheitsstatusar skal brukast.
 - [x] Hardware fungerer / fungerer ikkje.
 - [x] Registrer firmware-versjon.
 - [x] Kontroller seed-backup.
-- [x] Kontroller at backupen er intakt og stemmer med hardware.
-- [x] Verifiser adresse.
-- [x] Verifiser derivasjonshøgd.
-- [x] Verifiser adresse-sti.
+- [ ] Kontroller at backupen er intakt og stemmer med hardware → `seed_backup_verified` (`OK` / `Problem`).
+- [ ] Verifiser adresse, derivasjonshøgd og adresse-sti → `address_path_verified` (`OK` / `Problem`) og `address_path` (tekst).
 - [x] Kommentar ved behov.
 
 ## Steg 4 — Kontroller nøkkel 3: Nunchuk sky-nøkkel
@@ -223,53 +232,48 @@ Ingen andre sikkerheitsstatusar skal brukast.
 - [x] Gjennomfør cloud health check.
 - [x] Verifiser at Nunchuk framleis er i drift.
 - [x] Registrer resultatet av leverandør-kontrollen.
-- [x] Verifiser relevant adresse/oppsett.
+- [ ] Verifiser relevant adresse/oppsett → `address_path_verified` (`OK` / `Problem`) og `address_path` (tekst).
 - [x] Kommentar ved behov.
 
 ## Steg 5 — Programvare-kompatibilitet
 
-- [x] Registrer Sparrow-versjon dersom Sparrow blir brukt.
-- [x] Registrer Nunchuk-versjon dersom Nunchuk blir brukt.
+- [ ] Brukaren vel éi wallet-programvare: Sparrow Wallet eller Nunchuk (§19). For nøkkel 3 er valet låst til Nunchuk.
+- [ ] Registrer versjonen til den valde programvara i `software_version` (§19).
 - [x] Verifiser at Sparrow og/eller Nunchuk støttar hardware-oppsettet.
 - [x] Registrer `OK` eller `PROBLEM`.
 - [x] Legg inn kommentar dersom det er problem.
 
+**Endra i §19:** dei separate Sparrow- og Nunchuk-versjonsfelta er tekne ut.
+
 ## Steg 6 — BIP327 / SLIP39
 
-Sjekk status for kvart av desse fire produkta:
+Registrer berre status for den valde nøkkelen sitt produkt og den valde programvara (§19):
 
-- [x] SeedSigner — BIP327
-- [x] SeedSigner — SLIP39
-- [x] Blockstream Jade — BIP327
-- [x] Blockstream Jade — SLIP39
-- [x] Nunchuk — BIP327
-- [x] Nunchuk — SLIP39
-- [x] Sparrow Wallet — BIP327
-- [x] Sparrow Wallet — SLIP39
+- [ ] Nøkkelproduktet: SeedSigner for nøkkel 1, Blockstream Jade for nøkkel 2, Nunchuk for nøkkel 3.
+- [ ] Vald programvare: Sparrow Wallet eller Nunchuk. Når Nunchuk både er nøkkel og programvare, blir det éi rad.
 
-For kvart resultat:
+For kvart produkt:
 
-- [x] Registrer status.
-- [x] Registrer versjon dersom relevant.
-- [x] Registrer dato.
-- [x] Registrer kommentar/kjelde dersom relevant.
+- [x] Registrer `bip327_status`.
+- [x] Registrer `slip39_status`.
 
-Appen skal berre **registrere** dette resultatet. Han skal ikkje starte ei oppgradering.
+Alle fire produkta skal framleis kunne registrerast, men i ulike innsendingar.
+
+**Endra i §19:** «Version checked», «Date checked» og «Notes or source» er tekne ut.
 
 ## Steg 7 — KI-sikkerheitsstatus
 
 Brukaren skal registrere resultat frå ein ekstern KI-/research-sjekk av leverandørane.
 
-Leverandørar:
+Leverandørar per innsending (§19):
 
-- [x] SeedSigner
-- [x] Blockstream Jade
-- [x] Nunchuk
-- [x] Sparrow Wallet
+- [ ] Nøkkel 1: SeedSigner, Sparrow Wallet og Nunchuk.
+- [ ] Nøkkel 2: Blockstream Jade, Sparrow Wallet og Nunchuk.
+- [ ] Nøkkel 3: Nunchuk åleine.
 
 For kvar leverandør:
 
-- [x] Registrer status: TRYGG / PATCHA / SÅRBAR / KOMPROMITTERT.
+- [ ] Registrer status: `SECURE` / `PATCHED` / `VULNERABLE` / `COMPROMISED`.
 - [x] Registrer kort kommentar.
 
 Appen skal ikkje kontakte KI sjølv i MVP.
@@ -303,15 +307,15 @@ Før lagring skal appen vise:
 
 Appen skal gi tydelege varsel når resultatet krev handling.
 
-- [x] Nøkkel ikkje tilgjengeleg → vis at dette krev umiddelbar oppfølging.
+- [ ] Nøkkel ikkje tilgjengeleg → vis at nøkkelen må bytast ut før du går vidare, og at resten av nøkkelfelta ikkje kan registrerast (§19).
 - [x] Hardware fungerer ikkje → vis at seed-backup bør testast på annan kompatibel hardware.
-- [x] Seed-backup manglar eller er øydelagd → vis at PROTOKOLL 3: Nøkkeltap skal aktiverast.
-- [x] Adresseverifisering feilar → vis at adressa bør kontrollerast mot BSMS og testast på nytt.
+- [ ] Seed-backup manglar eller er øydelagd → vis at PROTOKOLL 3: Nøkkeltap skal aktiverast. Skal ikkje utløysast når nøkkelen er utilgjengeleg.
+- [ ] Adresseverifisering feilar → vis at adressa bør kontrollerast mot BSMS og testast på nytt. Skal ikkje utløysast når nøkkelen er utilgjengeleg.
 - [x] Programvare støttar ikkje lenger hardware → vis at alternativ programvare/løysing bør vurderast.
 - [x] BIP327-status er positiv → vis at framtidig BIP327-oppgradering kan vurderast.
 - [x] SLIP39-status er positiv → vis at framtidig SLIP39-aktivering kan vurderast.
-- [x] KI-status `SÅRBAR` → vis at firmware-/sikkerheitsproblem må følgjast opp.
-- [x] KI-status `KOMPROMITTERT` → vis at nøkkeltapsprosedyre må følgjast.
+- [ ] KI-status `VULNERABLE` → vis at firmware-/sikkerheitsproblem må følgjast opp.
+- [ ] KI-status `COMPROMISED` → vis at nøkkeltapsprosedyre må følgjast.
 - [x] Kontaktinfo er ikkje stadfesta → vis at kontaktinformasjon må oppdaterast i den eksterne dokumentasjonen.
 
 Appen skal ikkje automatisk utføre nokon av desse tiltaka.
@@ -326,11 +330,12 @@ Dashboardet skal vere enkelt.
 - [ ] Vis status for nøkkel 1.
 - [ ] Vis status for nøkkel 2.
 - [ ] Vis status for nøkkel 3.
-- [x] Vis dato for siste health check.
-- [x] Vis neste health check.
+- [ ] Vis siste sjekk og neste forfall per nøkkel (§19: kvar nøkkel har sitt eige intervall).
 - [x] Vis aktive varsel.
 - [x] Knapp: `Start årleg health check`.
 - [x] Knapp/lenke: `Historikk`.
+
+**Endra i §19:** dei to oversiktskorta («Last completed» og «Next check») går ut frå éin felles dato og må gjerast om.
 
 ---
 
@@ -338,10 +343,11 @@ Dashboardet skal vere enkelt.
 
 - [x] Vis alle gjennomførte health checks kronologisk.
 - [x] Opne ein health check i read-only-visning.
+- [ ] Vis kva nøkkel innsendinga gjeld (§19).
 - [x] Vis dato.
 - [x] Vis neste sjekk.
 - [x] Vis status per nøkkel.
-- [x] Vis programvarestatus.
+- [ ] Vis programvarestatus — vald programvare og versjon (§19).
 - [x] Vis BIP327/SLIP39-resultat.
 - [x] Vis KI-status.
 - [x] Vis kommentarar.
@@ -376,11 +382,11 @@ Rapporten skal kunne brukast i Excel.
 Vel den enklaste teknologien som passar godt for ein liten lokal web-app.
 
 - [x] Implementer SQLite.
-- [x] Implementer database-initialisering/migrering.
+- [ ] Implementer database-initialisering/migrering — må utvidast med migreringa i §19.
 - [x] Implementer lagring av nøklar.
-- [x] Implementer lagring av health checks.
+- [ ] Implementer lagring av health checks — éi innsending gjeld éin vald nøkkel (§19).
 - [x] Implementer historikk.
-- [x] Implementer varsellogikken.
+- [ ] Implementer varsellogikken — varseltekstane og vilkåra blir endra i §19.
 - [ ] Implementer rapporteksport.
 - [x] Implementer health endpoint.
 
@@ -390,7 +396,7 @@ Minimum:
 - [x] `GET /api/keys`
 - [x] `GET /api/health-checks`
 - [x] `GET /api/health-checks/:id`
-- [x] `POST /api/health-checks`
+- [ ] `POST /api/health-checks` — kontrakten blir endra i §19.
 - [ ] `GET /api/export`
 
 ---
@@ -488,8 +494,8 @@ Unngå:
 - [ ] Test programvare-inkompatibilitet.
 - [ ] Test BIP327-resultat.
 - [ ] Test SLIP39-resultat.
-- [ ] Test KI-status `SÅRBAR`.
-- [ ] Test KI-status `KOMPROMITTERT`.
+- [ ] Test KI-status `VULNERABLE`.
+- [ ] Test KI-status `COMPROMISED`.
 - [ ] Test kontaktinfo `NEI`.
 
 ## StartOS-test
@@ -515,7 +521,7 @@ Før første release skal alle desse vere oppfylte:
 - [ ] Ein komplett årleg health check kan gjennomførast i nettlesaren.
 - [ ] Alle årlege kontrollpunkt kan registrerast.
 - [ ] BIP327/SLIP39 kan registrerast for SeedSigner, Blockstream Jade, Nunchuk og Sparrow.
-- [ ] KI-status kan registrerast som TRYGG, PATCHA, SÅRBAR eller KOMPROMITTERT.
+- [ ] KI-status kan registrerast som SECURE, PATCHED, VULNERABLE eller COMPROMISED.
 - [ ] Kontaktinfo kan verifiserast utan å lagre kontaktinformasjonen.
 - [ ] Problem gir tydelege varsel.
 - [ ] Neste sjekk blir lagra.
@@ -534,15 +540,17 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 - [x] 1. Opprett grunnleggande web-app.
 - [x] 2. Opprett SQLite og datamodellen.
 - [x] 3. Implementer dei tre faste nøklane.
-- [x] 4. Implementer health check-skjemaet.
-- [x] 5. Implementer lagring og historikk.
-- [x] 6. Implementer varsellogikken.
+- [ ] 4. Implementer health check-skjemaet.
+- [ ] 5. Implementer lagring og historikk.
+- [ ] 6. Implementer varsellogikken.
 - [ ] 7. Implementer dashboard.
 - [ ] 8. Implementer rapporteksport.
 - [ ] 9. Implementer StartOS package.
 - [ ] 10. Implementer persistent storage og backup.
 - [ ] 11. Test restart og restore.
 - [ ] 12. Bygg endeleg `.s9pk` og gjer første release.
+
+**Merk:** steg 4, 5 og 6 vart fullførte før §19 vart vedteken. §19 gjer dei om, så dei er sette tilbake til uticka og må gjerast på nytt.
 
 **Hovudregel:** Bygg den minste løysinga som oppfyller lista over. Ikkje legg til nye funksjonar, tenester eller arkitektur utan at dei er nødvendige for punkta i denne TODO-lista.
 
