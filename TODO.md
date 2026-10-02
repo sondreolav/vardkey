@@ -32,7 +32,7 @@ Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 - [x] Varsel når eit kontrollpunkt krev oppfølging.
 - [x] Historikk over gjennomførte health checks.
 - [x] Automatisk forslag til neste sjekk, ca. eitt år fram i tid.
-- [ ] Rapporteksport i Excel-kompatibelt format.
+- [x] Rapporteksport i CSV-format.
 - [x] Lokal SQLite-database.
 - [ ] Persistent lagring på StartOS.
 - [ ] StartOS health check.
@@ -360,23 +360,25 @@ Dashboardet skal vere enkelt.
 
 # 10. Rapporteksport
 
-Rapporten skal kunne brukast i Excel.
+Eksporten skal vere **rein CSV**. Ingen XLSX-eksport.
 
-- [ ] Implementer XLSX-eksport dersom dette kan gjerast enkelt.
-- [ ] Elles implementer CSV med tydeleg dokumentasjon om Excel-kompatibilitet.
-- [ ] Eksporter alle nødvendige felt frå health check.
-- [ ] Éin gjennomført health check skal kunne identifiserast som éi historisk kontroll.
-- [ ] Ta med dato.
-- [ ] Ta med nøkkelstatus.
-- [ ] Ta med hardware-/firmware-resultat.
-- [ ] Ta med seed/cloud-resultat.
-- [ ] Ta med adresse-sti.
-- [ ] Ta med programvareversjon og kompatibilitet.
-- [ ] Ta med BIP327/SLIP39.
-- [ ] Ta med KI-status.
-- [ ] Ta med kontaktinfo-verifisering.
-- [ ] Ta med neste sjekk.
-- [ ] Ta med kommentarar.
+- [x] Implementer CSV-eksport via `GET /api/export`. (Avgjort: CSV er nok, XLSX blir ikkje bygt.)
+- [x] Éi rad per nøkkelsjekk, med ein kolonne for sjekk-id som knyter saman rader frå same innsending.
+- [x] Eksporter alle nødvendige felt frå health check.
+- [x] Éin gjennomført health check skal kunne identifiserast som éi historisk kontroll.
+- [x] Ta med dato.
+- [x] Ta med nøkkelstatus.
+- [x] Ta med hardware-/firmware-resultat.
+- [x] Ta med seed/cloud-resultat.
+- [x] Ta med adresse-sti.
+- [x] Ta med programvareversjon og kompatibilitet.
+- [x] Ta med BIP327/SLIP39.
+- [x] Ta med KI-status.
+- [x] Ta med kontaktinfo-verifisering.
+- [x] Ta med neste sjekk.
+- [x] Ta med kommentarar.
+
+**Endra:** kravet om Excel er teke ut. Filen er rein CSV (UTF-8, komma, CRLF, header). Han kan opnast i eit rekneark, men appen lovar ikkje Excel-kompatibilitet. Resultat som har meir enn éin verdi per innsending (BIP327, SLIP39 og KI-status) ligg i éi celle som `SeedSigner: OK; Sparrow Wallet: PROBLEM`.
 
 ---
 
@@ -390,7 +392,7 @@ Vel den enklaste teknologien som passar godt for ein liten lokal web-app.
 - [x] Implementer lagring av health checks — éi innsending gjeld éin vald nøkkel (§19).
 - [x] Implementer historikk.
 - [x] Implementer varsellogikken — varseltekstane og vilkåra blir endra i §19.
-- [ ] Implementer rapporteksport.
+- [x] Implementer rapporteksport.
 - [x] Implementer health endpoint.
 
 Minimum:
@@ -400,7 +402,7 @@ Minimum:
 - [x] `GET /api/health-checks`
 - [x] `GET /api/health-checks/:id`
 - [x] `POST /api/health-checks` — kontrakten blir endra i §19.
-- [ ] `GET /api/export`
+- [x] `GET /api/export`
 
 **Merk:** `GET /api/alerts` og `GET /api/key-status` er ekstra endepunkt utanom minimumslista, fordi dashboardet treng varsla og statusen per nøkkel. Dei står ikkje i spesifikasjonen enno.
 
@@ -533,10 +535,12 @@ Før første release skal alle desse vere oppfylte:
 - [ ] Problem gir tydelege varsel.
 - [ ] Neste sjekk blir lagra.
 - [ ] Historikk fungerer.
-- [ ] Excel-kompatibel rapport kan eksporterast.
+- [ ] CSV-rapport kan eksporterast.
 - [ ] Data overlever restart.
 - [ ] Backup og restore fungerer.
 - [ ] Ingen wallet-hemmeligheiter blir lagra.
+
+**Endra:** punktet om Excel-kompatibel rapport er bytt til CSV-rapport, jf. §10.
 
 ---
 
@@ -551,13 +555,13 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 - [x] 5. Implementer lagring og historikk.
 - [x] 6. Implementer varsellogikken.
 - [x] 7. Implementer dashboard.
-- [ ] 8. Implementer rapporteksport.
+- [x] 8. Implementer rapporteksport.
 - [ ] 9. Implementer StartOS package.
 - [ ] 10. Implementer persistent storage og backup.
 - [ ] 11. Test restart og restore.
 - [ ] 12. Bygg endeleg `.s9pk` og gjer første release.
 
-**Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken. Dei vart sette tilbake til uticka og er no gjort på nytt i tråd med §19, med 65 grøne testar. Steg 7 er gjort etter §19 og byggjer på at kvar nøkkel har sitt eige intervall.
+**Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken. Dei vart sette tilbake til uticka og er no gjort på nytt i tråd med §19. Steg 7 og 8 er gjorde etter §19 og byggjer på at kvar nøkkel har sitt eige intervall. 76 grøne testar.
 
 **Hovudregel:** Bygg den minste løysinga som oppfyller lista over. Ikkje legg til nye funksjonar, tenester eller arkitektur utan at dei er nødvendige for punkta i denne TODO-lista.
 
