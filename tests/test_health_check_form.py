@@ -74,18 +74,25 @@ class HealthCheckFormTests(unittest.TestCase):
         script = read_static("health-check.js")
         self.assertIn('value="NOT_ASSESSED"', html)
         self.assertIn("NOT_ASSESSED", script)
-        # BIP327 and SLIP39 answer yes or no, so they have their own option list.
+        self.assertNotIn("IKKJE_VURDERT", script)
+        # BIP327 and SLIP39 answer yes or no, so they have their own option list,
+        # and both tool-check fields must use it.
         self.assertIn("standardsStatuses", script)
         self.assertIn('["YES", "Yes"]', script)
         self.assertIn('["NO", "No"]', script)
-        for old in ("IKKJE_VURDERT", '["OK", "OK"]'):
-            self.assertNotIn(old, script)
+        self.assertIn("makeSelect(standardsStatuses, `tool_${slug}_bip327_status`)", script)
+        self.assertIn("makeSelect(standardsStatuses, `tool_${slug}_slip39_status`)", script)
+        # The two verification results keep OK and PROBLEM.
+        self.assertIn('["OK", "OK"]', script)
+        self.assertIn('["PROBLEM", "Problem"]', script)
 
     def test_form_hides_the_address_path_until_it_is_verified(self):
         script = read_static("health-check.js")
         styles = read_static("styles.css")
         self.assertIn("syncAddressPathField", script)
         self.assertIn('verified.value === "OK"', script)
+        self.assertIn('form.querySelector(`[name="address_path"]`)', script)
+        self.assertIn('form.querySelector(`[name="address_path_verified"]`)', script)
         # The field is a grid container, so the hidden attribute needs a rule.
         self.assertIn(".field[hidden]", styles)
 
