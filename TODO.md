@@ -545,3 +545,45 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 - [ ] 12. Bygg endeleg `.s9pk` og gjer første release.
 
 **Hovudregel:** Bygg den minste løysinga som oppfyller lista over. Ikkje legg til nye funksjonar, tenester eller arkitektur utan at dei er nødvendige for punkta i denne TODO-lista.
+
+---
+
+# 19. Ny avgjerd: registrering per nøkkel
+
+Denne delen er den nyaste avgjerda og overstyrer motstridande krav ovanfor om at alle nøklane eller alle produkta må registrerast i same innsending. Eksisterande historiske data skal bevarast.
+
+## Kvar innsending
+
+- [ ] Ei innsending skal registrere kontrollen av éin vald nøkkel, ikkje alle tre samtidig.
+- [ ] Brukaren skal velje nøkkel 1 (SeedSigner), nøkkel 2 (Blockstream Jade) eller nøkkel 3 (Nunchuk).
+- [ ] Alle nøkkelkontrollar og nøkkelnotat i innsendinga skal gjelde berre den valde nøkkelen.
+- [ ] Brukaren vel sjekkdato. Neste sjekkdato skal automatisk vere eitt kalenderår etter sjekkdatoen, skal ikkje vere redigerbar i skjemaet, og skal reknast/validerast på serveren.
+- [ ] Kontaktstadfesting og overordna kommentar skal framleis kunne registrerast per innsending.
+
+## Programvarekompatibilitet
+
+- [ ] Brukaren skal velje éi wallet-programvare: Sparrow eller Nunchuk.
+- [ ] Registrer kompatibilitetsstatus og versjonen til den valde programvara for den valde nøkkelen.
+- [ ] Fjern dei separate Sparrow- og Nunchuk-versjonsfelta.
+
+## BIP327 / SLIP39
+
+- [ ] Registrer berre BIP327-status og SLIP39-status for den valde nøkkelen/produktet i kvar innsending.
+- [ ] Fjern «Version checked», «Date checked» og «Notes or source» frå denne delen.
+- [ ] Ikkje krev status for dei andre nøklane/produkta i same innsending.
+
+## Security status
+
+- [ ] SeedSigner-status skal berre følgje registreringar av nøkkel 1.
+- [ ] Blockstream Jade-status skal berre følgje registreringar av nøkkel 2.
+- [ ] Nunchuk- og Sparrow-status skal følgje kvar registrering, sidan dei også er wallet-programvare.
+- [ ] Ha berre éin Nunchuk-status per innsending. Ved nøkkel 3 gjeld den statusen Nunchuk-programvara og Nunchuk-nøkkelen; ikkje lag to dupliserte statusfelt.
+- [ ] Vis og krev berre security status-felt som er relevante for vald nøkkel og programvare. Ikkje krev status for alle tre nøklane i éi innsending.
+
+## Lagring, historikk og verifikasjon
+
+- [ ] Knytt nøkkelsjekk, programvarekompatibilitet, BIP327/SLIP39 og relevante security status-resultat til same innsending og vald nøkkel.
+- [ ] Oppdater historikkdetaljen slik at han tydeleg viser vald nøkkel og tilhøyrande resultat.
+- [ ] Bevar eksisterande lagra registreringar; bruk trygg, bakoverkompatibel databasemigrering dersom datamodellen må endrast.
+- [ ] Oppdater servervalidering og testar: ei innsending skal krevje éin konfigurert nøkkel og gyldige, relevante resultat, og avvise manglande eller dupliserte nøkkel-/produktregistreringar og ugyldige programvareval.
+- [ ] Test registrering av kvar nøkkel, automatisk neste dato, relevante programvare- og security status-resultat, og at eldre historikk framleis kan lesast.
