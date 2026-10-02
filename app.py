@@ -8,7 +8,7 @@ import re
 import sqlite3
 from urllib.parse import urlsplit
 
-from alerts import build_alerts
+from alerts import collect_alerts
 from database import (
     get_health_check,
     initialize_database,
@@ -149,19 +149,24 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json(500, {"error": "Saved health checks are unavailable"})
 
     def _send_alerts(self):
-        """Return the follow-up alerts of the most recent saved health check."""
+        """Return the merged follow-up alerts of every saved health check.
+
+        Every saved check is read, so a warning is never lost when a newer check
+        for another key is saved. Identical alerts are merged by
+        ``collect_alerts`` (section 21).
+        """
         database_path = get_database_path()
         try:
-            summaries = list_health_checks(database_path)
-            if not summaries:
-                self._send_json(200, [])
-                return
-            record = get_health_check(summaries[0]["id"], database_path)
+            records = []
+            for summary in list_health_checks(database_path):
+                record = get_health_check(summary["id"], database_path)
+                if record is not None:
+                    records.append(record)
         except (OSError, sqlite3.Error, ValueError):
             self._send_json(500, {"error": "Alerts are unavailable"})
             return
 
-        self._send_json(200, build_alerts(record) if record else [])
+        self._send_json(200, collect_alerts(records))
 
     def _send_export(self):
         """Return every saved key check as a CSV download."""
