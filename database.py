@@ -80,13 +80,19 @@ SCHEMA_STATEMENTS = (
         UNIQUE (health_check_id, provider)
     )
     """,
-    "CREATE INDEX IF NOT EXISTS idx_health_checks_checked_at ON health_checks(checked_at DESC)",
 )
 OPTIONAL_COLUMNS = (
     ("key_checks", "address_verified", "INTEGER CHECK (address_verified IN (0, 1))"),
     ("key_checks", "derivation_height", "TEXT"),
     ("health_checks", "software_comments", "TEXT"),
     ("key_checks", "seed_backup_verified", "INTEGER CHECK (seed_backup_verified IN (0, 1))"),
+)
+INDEX_STATEMENTS = (
+    (
+        "health_checks",
+        "checked_at",
+        "CREATE INDEX IF NOT EXISTS idx_health_checks_checked_at ON health_checks(checked_at DESC)",
+    ),
 )
 
 
@@ -109,6 +115,8 @@ def initialize_database(database_path="data/helsesjekk.sqlite3"):
                 connection.execute(statement)
             for table, column, definition in OPTIONAL_COLUMNS:
                 _ensure_column(connection, table, column, definition)
+            for table, column, statement in INDEX_STATEMENTS:
+                _ensure_index(connection, table, column, statement)
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             connection.commit()
         except Exception:
@@ -125,6 +133,18 @@ def _ensure_column(connection, table, column, definition):
     columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
     if column not in columns:
         connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def _ensure_index(connection, table, column, statement):
+    """Create an index only when its table has the indexed column.
+
+    A partially migrated database can contain the table without the column, and
+    creating the index would then fail. Such a database cannot serve health
+    checks until the column exists, so the index is skipped instead.
+    """
+    columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+    if column in columns:
+        connection.execute(statement)
 
 
 def seed_fixed_keys(database_path="data/helsesjekk.sqlite3"):
