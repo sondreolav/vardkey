@@ -53,6 +53,8 @@ Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 - [ ] Ingen avansert analyse eller grafar.
 - [ ] Ingen støtte for fleire multisig-oppsett i MVP.
 
+**Merk:** denne lista er eit varig forbod, ikkje ei oppgåveliste. Punkta blir difor ikkje kryssa av, men skal stadfestast på nytt før release.
+
 ---
 
 # 2. Viktige reglar for appen
@@ -79,7 +81,7 @@ Appen skal starte med eitt fast multisig-oppsett:
 
 - [x] Vis 2-av-3 som oppsettet i dashboardet.
 - [x] Ha tre nøkkelprofilar, éin for kvar nøkkel.
-- [ ] La brukaren gi nøklane lesbare namn dersom ønskjeleg.
+- [ ] La brukaren gi nøklane lesbare namn dersom ønskjeleg. (Avgjort: ikkje no — faste namn er nok for MVP.)
 - [x] Ikkje bygg generell støtte for mange oppsett enno.
 
 ---
@@ -310,6 +312,7 @@ Appen skal gi tydelege varsel når resultatet krev handling.
 - [x] Nøkkel ikkje tilgjengeleg → vis at nøkkelen må bytast ut før du går vidare, og at resten av nøkkelfelta ikkje kan registrerast (§19).
 - [x] Hardware fungerer ikkje → vis at seed-backup bør testast på annan kompatibel hardware.
 - [x] Seed-backup manglar eller er øydelagd → vis at PROTOKOLL 3: Nøkkeltap skal aktiverast. Skal ikkje utløysast når nøkkelen er utilgjengeleg.
+- [x] Cloud-helse er `PROBLEM` eller leverandøren er ikkje i drift → vis at leverandørstatusen bør kontrollerast før du går vidare. Skal ikkje utløysast når nøkkelen er utilgjengeleg.
 - [x] Adresseverifisering feilar → vis at adressa bør kontrollerast mot BSMS og testast på nytt. Skal ikkje utløysast når nøkkelen er utilgjengeleg.
 - [x] Programvare støttar ikkje lenger hardware → vis at alternativ programvare/løysing bør vurderast.
 - [x] BIP327-status er positiv → vis at framtidig BIP327-oppgradering kan vurderast.
@@ -399,6 +402,8 @@ Minimum:
 - [x] `POST /api/health-checks` — kontrakten blir endra i §19.
 - [ ] `GET /api/export`
 
+**Merk:** `GET /api/alerts` er eit ekstra endepunkt som er lagt til utanom minimumslista, fordi dashboardet treng varsla. Det står ikkje i spesifikasjonen enno.
+
 ---
 
 # 12. Frontend
@@ -444,6 +449,8 @@ Unngå:
 - [ ] Ingen ekstern backend.
 - [ ] Ingen ekstern cloud-service for appdata.
 - [ ] Ingen ekstra container utan konkret behov.
+
+**Merk:** denne lista er eit varig forbod, ikkje ei oppgåveliste. Punkta blir difor ikkje kryssa av, men skal stadfestast på nytt før release.
 
 ---
 
