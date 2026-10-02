@@ -1,4 +1,4 @@
-"""Alert rules derived from a saved health check.
+"""Alert rules derived from saved health checks.
 
 The rules follow the follow-up requirements for the annual health check. The
 application only reports these alerts; it never performs the follow-up actions
@@ -8,6 +8,9 @@ One saved check covers one key. A key that was not available produces a single
 critical alert, because the remaining checks for that key could not be
 performed. For the cloud key the cloud results are derived from availability
 (section 20), so that one alert mentions both facts.
+
+``collect_alerts`` builds the alerts of every saved check and merges them, which
+is what the dashboard shows (section 21).
 """
 
 CRITICAL = "critical"
@@ -43,6 +46,41 @@ def build_alerts(record):
     alerts.extend(_contact_alerts(record))
     alerts.sort(key=lambda alert: _SEVERITY_ORDER[alert["severity"]])
     return alerts
+
+
+def collect_alerts(records):
+    """Return the merged alerts of every saved check, critical and newest first.
+
+    Each alert carries the ``check_id`` and ``checked_at`` of the check it came
+    from, so the dashboard can show where a warning originated. Identical alerts
+    (same ``code`` and ``source``) are merged, and only the newest one is kept,
+    with its own date. Critical alerts are listed first, then the newest check
+    first inside each severity.
+    """
+    tagged = []
+    for record in records:
+        for alert in build_alerts(record):
+            tagged.append({
+                **alert,
+                "check_id": record.get("id"),
+                "checked_at": record.get("checked_at"),
+            })
+
+    # Newest first, so the first alert of a code and source pair is the newest.
+    tagged.sort(key=_recency_key, reverse=True)
+    newest = {}
+    for alert in tagged:
+        newest.setdefault((alert["code"], alert["source"]), alert)
+
+    merged = list(newest.values())
+    # A stable sort, so the newest-first order stays inside each severity.
+    merged.sort(key=lambda alert: _SEVERITY_ORDER[alert["severity"]])
+    return merged
+
+
+def _recency_key(alert):
+    """Return a sortable key for the check an alert came from."""
+    return (alert.get("checked_at") or "", alert.get("check_id") or 0)
 
 
 def _alert(code, severity, source, message):
@@ -108,18 +146,22 @@ def _software_alerts(record):
 
 
 def _tool_alerts(tool_check):
-    """Return the informational alerts for reported BIP327 or SLIP39 support."""
+    """Return the informational alerts for reported BIP327 or SLIP39 support.
+
+    Only a positive result raises an alert. ``NO`` is a reported lack of support
+    and ``NOT_ASSESSED`` is an open question, so neither needs follow-up.
+    """
     product = tool_check.get("product")
     alerts = []
 
-    if tool_check.get("bip327_status") == "OK":
+    if tool_check.get("bip327_status") == "YES":
         alerts.append(_alert(
             "bip327_available",
             INFO,
             f"{product} (BIP327)",
             "BIP327 support is reported as available. A future BIP327 upgrade can be considered.",
         ))
-    if tool_check.get("slip39_status") == "OK":
+    if tool_check.get("slip39_status") == "YES":
         alerts.append(_alert(
             "slip39_available",
             INFO,
