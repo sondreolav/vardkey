@@ -206,12 +206,15 @@ class AppHandlerTests(unittest.TestCase):
         self.assertIn('id="history-list"', body)
         self.assertIn("Saved health checks", body)
 
-    def test_dashboard_links_to_health_check_form(self):
+    def test_dashboard_links_to_the_form_the_history_and_the_export(self):
         with urlopen(self.base_url) as response:
             body = response.read().decode("utf-8")
 
         self.assertIn('href="/health-check"', body)
         self.assertIn('href="/history"', body)
+        self.assertIn('href="/api/export"', body)
+        self.assertIn("Download CSV", body)
+        self.assertNotIn("Report export is not implemented", body)
 
     def test_alerts_api_is_empty_before_anything_is_saved(self):
         with urlopen(f"{self.base_url}/api/alerts") as response:
