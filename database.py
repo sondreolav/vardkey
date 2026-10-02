@@ -4,14 +4,16 @@ from pathlib import Path
 import sqlite3
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 FIXED_KEYS = (
     (1, "SeedSigner", "hardware", "SeedSigner"),
     (2, "Blockstream Jade", "hardware", "Blockstream Jade"),
     (3, "Nunchuk", "cloud", "Nunchuk"),
 )
+# Table definitions use a {table} placeholder, so a migration can create the same
+# table under a temporary name while it rebuilds it.
 KEYS_TABLE = """
-    CREATE TABLE IF NOT EXISTS keys (
+    CREATE TABLE IF NOT EXISTS {table} (
         id INTEGER PRIMARY KEY,
         key_number INTEGER NOT NULL UNIQUE CHECK (key_number BETWEEN 1 AND 3),
         name TEXT NOT NULL,
@@ -21,14 +23,14 @@ KEYS_TABLE = """
     )
     """
 HEALTH_CHECKS_TABLE = """
-    CREATE TABLE IF NOT EXISTS health_checks (
+    CREATE TABLE IF NOT EXISTS {table} (
         id INTEGER PRIMARY KEY,
         checked_at TEXT NOT NULL,
         next_check_due TEXT NOT NULL,
         wallet_software TEXT CHECK (wallet_software IN ('Sparrow Wallet', 'Nunchuk')),
         software_version TEXT,
-        software_compatibility_status TEXT NOT NULL DEFAULT 'IKKJE_VURDERT'
-            CHECK (software_compatibility_status IN ('OK', 'PROBLEM', 'IKKJE_VURDERT')),
+        software_compatibility_status TEXT NOT NULL DEFAULT 'NOT_ASSESSED'
+            CHECK (software_compatibility_status IN ('OK', 'PROBLEM', 'NOT_ASSESSED')),
         sparrow_version TEXT,
         nunchuk_version TEXT,
         software_comments TEXT,
@@ -37,7 +39,7 @@ HEALTH_CHECKS_TABLE = """
     )
     """
 KEY_CHECKS_TABLE = """
-    CREATE TABLE IF NOT EXISTS key_checks (
+    CREATE TABLE IF NOT EXISTS {table} (
         id INTEGER PRIMARY KEY,
         health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
         key_id INTEGER NOT NULL REFERENCES keys(id) ON DELETE RESTRICT,
@@ -45,7 +47,7 @@ KEY_CHECKS_TABLE = """
         hardware_works INTEGER CHECK (hardware_works IN (0, 1)),
         firmware_version TEXT,
         seed_backup_verified TEXT CHECK (seed_backup_verified IN ('OK', 'PROBLEM')),
-        cloud_health_status TEXT CHECK (cloud_health_status IN ('OK', 'PROBLEM', 'IKKJE_VURDERT')),
+        cloud_health_status TEXT CHECK (cloud_health_status IN ('OK', 'PROBLEM', 'NOT_ASSESSED')),
         cloud_provider_operational INTEGER CHECK (cloud_provider_operational IN (0, 1)),
         address_path_verified TEXT CHECK (address_path_verified IN ('OK', 'PROBLEM')),
         address_path TEXT,
@@ -54,14 +56,14 @@ KEY_CHECKS_TABLE = """
     )
     """
 TOOL_CHECKS_TABLE = """
-    CREATE TABLE IF NOT EXISTS tool_checks (
+    CREATE TABLE IF NOT EXISTS {table} (
         id INTEGER PRIMARY KEY,
         health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
         product TEXT NOT NULL CHECK (product IN ('SeedSigner', 'Blockstream Jade', 'Nunchuk', 'Sparrow Wallet')),
-        bip327_status TEXT NOT NULL DEFAULT 'IKKJE_VURDERT'
-            CHECK (bip327_status IN ('OK', 'PROBLEM', 'IKKJE_VURDERT')),
-        slip39_status TEXT NOT NULL DEFAULT 'IKKJE_VURDERT'
-            CHECK (slip39_status IN ('OK', 'PROBLEM', 'IKKJE_VURDERT')),
+        bip327_status TEXT NOT NULL DEFAULT 'NOT_ASSESSED'
+            CHECK (bip327_status IN ('YES', 'NO', 'NOT_ASSESSED')),
+        slip39_status TEXT NOT NULL DEFAULT 'NOT_ASSESSED'
+            CHECK (slip39_status IN ('YES', 'NO', 'NOT_ASSESSED')),
         version TEXT,
         checked_at TEXT,
         notes TEXT,
@@ -69,7 +71,7 @@ TOOL_CHECKS_TABLE = """
     )
     """
 AI_SECURITY_CHECKS_TABLE = """
-    CREATE TABLE IF NOT EXISTS ai_security_checks (
+    CREATE TABLE IF NOT EXISTS {table} (
         id INTEGER PRIMARY KEY,
         health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
         provider TEXT NOT NULL CHECK (provider IN ('SeedSigner', 'Blockstream Jade', 'Nunchuk', 'Sparrow Wallet')),
@@ -78,12 +80,12 @@ AI_SECURITY_CHECKS_TABLE = """
         UNIQUE (health_check_id, provider)
     )
     """
-SCHEMA_STATEMENTS = (
-    KEYS_TABLE,
-    HEALTH_CHECKS_TABLE,
-    KEY_CHECKS_TABLE,
-    TOOL_CHECKS_TABLE,
-    AI_SECURITY_CHECKS_TABLE,
+TABLES = (
+    ("keys", KEYS_TABLE),
+    ("health_checks", HEALTH_CHECKS_TABLE),
+    ("key_checks", KEY_CHECKS_TABLE),
+    ("tool_checks", TOOL_CHECKS_TABLE),
+    ("ai_security_checks", AI_SECURITY_CHECKS_TABLE),
 )
 OPTIONAL_COLUMNS = (
     ("health_checks", "software_comments", "TEXT"),
@@ -106,6 +108,15 @@ SECURITY_STATUS_MIGRATION = (
     ("SÅRBAR", "VULNERABLE"),
     ("KOMPROMITTERT", "COMPROMISED"),
 )
+# Value mappings used when the general and standards status values became
+# English (section 21). "IKKJE_VURDERT" is the marker of a pre-section-21 table.
+NOT_ASSESSED_MIGRATION = (("IKKJE_VURDERT", "NOT_ASSESSED"),)
+STANDARDS_STATUS_MIGRATION = (
+    ("OK", "YES"),
+    ("PROBLEM", "NO"),
+    ("IKKJE_VURDERT", "NOT_ASSESSED"),
+)
+LEGACY_STATUS_VALUE = "IKKJE_VURDERT"
 # The newest saved check per key, used by the dashboard and the form. Duplicated
 # on purpose so the queries stay readable without a window function.
 _LATEST_CHECK_QUERY = """
@@ -124,7 +135,11 @@ def initialize_database(database_path="data/helsesjekk.sqlite3"):
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path, timeout=5)
     try:
-        connection.execute("PRAGMA foreign_keys = ON")
+        # Section 21 rebuilds health_checks, which is a parent table. Foreign
+        # keys are therefore disabled for the whole migration and verified
+        # before the transaction commits, so an incomplete migration is never
+        # kept.
+        connection.execute("PRAGMA foreign_keys = OFF")
         version = connection.execute("PRAGMA user_version").fetchone()[0]
         if version > SCHEMA_VERSION:
             raise RuntimeError(
@@ -133,23 +148,31 @@ def initialize_database(database_path="data/helsesjekk.sqlite3"):
 
         connection.execute("BEGIN IMMEDIATE")
         try:
-            for statement in SCHEMA_STATEMENTS:
-                connection.execute(statement)
+            for table, statement in TABLES:
+                _create_table(connection, table, statement)
             for table, column, definition in OPTIONAL_COLUMNS:
                 _ensure_column(connection, table, column, definition)
             _migrate_key_checks(connection)
             _migrate_ai_security_checks(connection)
+            _migrate_status_values(connection)
             for table, column, statement in INDEX_STATEMENTS:
                 _ensure_index(connection, table, column, statement)
+            _verify_foreign_keys(connection)
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             connection.commit()
         except Exception:
             connection.rollback()
             raise
+        connection.execute("PRAGMA foreign_keys = ON")
     finally:
         connection.close()
 
     return path
+
+
+def _create_table(connection, table, statement):
+    """Create one table, substituting the {table} placeholder in the definition."""
+    connection.execute(statement.format(table=table))
 
 
 def _table_columns(connection, table):
@@ -188,6 +211,16 @@ def _column_or_null(columns, name):
     return name if name in columns else "NULL"
 
 
+def _mapped_status_sql(column, mappings):
+    """Build a CASE expression that rewrites one column's legacy status values.
+
+    Values that are already current are passed through, so the expression is
+    safe to use even when only part of the table still uses the old values.
+    """
+    cases = " ".join(f"WHEN '{old}' THEN '{new}'" for old, new in mappings)
+    return f"CASE {column} {cases} ELSE {column} END"
+
+
 def _verification_expression(columns, mappings):
     """Build a CASE expression that maps legacy values to OK or PROBLEM.
 
@@ -204,6 +237,38 @@ def _verification_expression(columns, mappings):
     return "CASE " + " ".join(cases) + " ELSE NULL END"
 
 
+def _create_replacement(connection, table, statement):
+    """Create the temporary table a rebuild copies its rows into.
+
+    A leftover table from an interrupted attempt is dropped first, so the copy
+    can never run twice into the same table.
+    """
+    temporary = f"{table}_migrated"
+    connection.execute(f"DROP TABLE IF EXISTS {temporary}")
+    _create_table(connection, temporary, statement)
+    return temporary
+
+
+def _replace_table(connection, table, temporary):
+    """Drop a table and let its rebuilt replacement take its place.
+
+    Foreign keys are disabled while the migration runs, so the references from
+    the child tables survive the drop. They are verified before the transaction
+    commits.
+    """
+    connection.execute(f"DROP TABLE {table}")
+    connection.execute(f"ALTER TABLE {temporary} RENAME TO {table}")
+
+
+def _verify_foreign_keys(connection):
+    """Abort the migration when a rebuilt table broke a foreign key."""
+    violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        raise RuntimeError(
+            f"Foreign key check failed for table {violations[0][0]}"
+        )
+
+
 def _migrate_key_checks(connection):
     """Rebuild key_checks when it still uses the pre-section-19 layout.
 
@@ -217,7 +282,7 @@ def _migrate_key_checks(connection):
         return
 
     connection.execute("ALTER TABLE key_checks RENAME TO key_checks_legacy")
-    connection.execute(KEY_CHECKS_TABLE)
+    _create_table(connection, "key_checks", KEY_CHECKS_TABLE)
     if {"health_check_id", "key_id"} <= columns:
         seed_backup = _verification_expression(columns, (
             ("seed_backup_verified", 1, "OK"),
@@ -231,6 +296,10 @@ def _migrate_key_checks(connection):
             ("address_verified", 1, "OK"),
             ("address_verified", 0, "PROBLEM"),
         ))
+        if "cloud_health_status" in columns:
+            cloud_health = _mapped_status_sql("cloud_health_status", NOT_ASSESSED_MIGRATION)
+        else:
+            cloud_health = "NULL"
         connection.execute(f"""
             INSERT INTO key_checks (
                 id, health_check_id, key_id, available, hardware_works, firmware_version,
@@ -245,7 +314,7 @@ def _migrate_key_checks(connection):
                 {_column_or_null(columns, "hardware_works")},
                 {_column_or_null(columns, "firmware_version")},
                 {seed_backup},
-                {_column_or_null(columns, "cloud_health_status")},
+                {cloud_health},
                 {_column_or_null(columns, "cloud_provider_operational")},
                 {address_path},
                 {_column_or_null(columns, "address_path")},
@@ -263,7 +332,7 @@ def _migrate_ai_security_checks(connection):
         return
 
     connection.execute("ALTER TABLE ai_security_checks RENAME TO ai_security_checks_legacy")
-    connection.execute(AI_SECURITY_CHECKS_TABLE)
+    _create_table(connection, "ai_security_checks", AI_SECURITY_CHECKS_TABLE)
     cases = " ".join(
         f"WHEN '{old}' THEN '{new}'" for old, new in SECURITY_STATUS_MIGRATION
     )
@@ -275,6 +344,83 @@ def _migrate_ai_security_checks(connection):
         FROM ai_security_checks_legacy
     """)
     connection.execute("DROP TABLE ai_security_checks_legacy")
+
+
+def _migrate_status_values(connection):
+    """Rewrite the status columns that became English (section 21).
+
+    SQLite cannot change a CHECK constraint, so each affected table is rebuilt:
+    the replacement is created under a temporary name, the rows are copied with
+    the mapped values, and the replacement takes the old table's place.
+    """
+    if _uses_legacy_status_values(connection, "health_checks"):
+        _rebuild_health_checks(connection)
+    if _uses_legacy_status_values(connection, "key_checks"):
+        _rebuild_key_checks(connection)
+    if _uses_legacy_status_values(connection, "tool_checks"):
+        _rebuild_tool_checks(connection)
+
+
+def _uses_legacy_status_values(connection, table):
+    """Return True while a table still allows the pre-section-21 status values."""
+    sql = _table_sql(connection, table)
+    return sql is not None and LEGACY_STATUS_VALUE in sql
+
+
+def _rebuild_health_checks(connection):
+    """Rebuild health_checks with NOT_ASSESSED instead of IKKJE_VURDERT."""
+    temporary = _create_replacement(connection, "health_checks", HEALTH_CHECKS_TABLE)
+    compatibility = _mapped_status_sql(
+        "software_compatibility_status", NOT_ASSESSED_MIGRATION
+    )
+    connection.execute(f"""
+        INSERT INTO {temporary} (
+            id, checked_at, next_check_due, wallet_software, software_version,
+            software_compatibility_status, sparrow_version, nunchuk_version,
+            software_comments, contact_info_verified, comments
+        )
+        SELECT id, checked_at, next_check_due, wallet_software, software_version,
+               {compatibility},
+               sparrow_version, nunchuk_version, software_comments,
+               contact_info_verified, comments
+        FROM health_checks
+    """)
+    _replace_table(connection, "health_checks", temporary)
+
+
+def _rebuild_key_checks(connection):
+    """Rebuild key_checks with NOT_ASSESSED instead of IKKJE_VURDERT."""
+    temporary = _create_replacement(connection, "key_checks", KEY_CHECKS_TABLE)
+    cloud_health = _mapped_status_sql("cloud_health_status", NOT_ASSESSED_MIGRATION)
+    connection.execute(f"""
+        INSERT INTO {temporary} (
+            id, health_check_id, key_id, available, hardware_works, firmware_version,
+            seed_backup_verified, cloud_health_status, cloud_provider_operational,
+            address_path_verified, address_path, comments
+        )
+        SELECT id, health_check_id, key_id, available, hardware_works, firmware_version,
+               seed_backup_verified, {cloud_health}, cloud_provider_operational,
+               address_path_verified, address_path, comments
+        FROM key_checks
+    """)
+    _replace_table(connection, "key_checks", temporary)
+
+
+def _rebuild_tool_checks(connection):
+    """Rebuild tool_checks with the YES / NO / NOT_ASSESSED values."""
+    temporary = _create_replacement(connection, "tool_checks", TOOL_CHECKS_TABLE)
+    bip327 = _mapped_status_sql("bip327_status", STANDARDS_STATUS_MIGRATION)
+    slip39 = _mapped_status_sql("slip39_status", STANDARDS_STATUS_MIGRATION)
+    connection.execute(f"""
+        INSERT INTO {temporary} (
+            id, health_check_id, product, bip327_status, slip39_status,
+            version, checked_at, notes
+        )
+        SELECT id, health_check_id, product, {bip327}, {slip39},
+               version, checked_at, notes
+        FROM tool_checks
+    """)
+    _replace_table(connection, "tool_checks", temporary)
 
 
 def seed_fixed_keys(database_path="data/helsesjekk.sqlite3"):
