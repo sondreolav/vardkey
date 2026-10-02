@@ -67,6 +67,7 @@ h2 { margin-bottom: 0; font-size: 20px; letter-spacing: -.02em; }
 .alert-item { padding: 12px 14px; border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 9px; background: #fff; }
 .alert-item strong { display: block; margin-bottom: 4px; font-size: 13px; }
 .alert-item p { margin: 0; color: #43564a; font-size: 13px; line-height: 1.55; }
+.alert-item .alert-origin { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
 .alert-critical { border-left-color: #b4483c; background: #fdf5f4; }
 .alert-info { border-left-color: #c99a2e; background: #fffaf0; }
 .empty-state { margin: 0; padding: 14px 16px; border-radius: 8px; color: #55645a; background: #f5f7f4; font-size: 13px; line-height: 1.6; }
@@ -95,7 +96,7 @@ h2 { margin-bottom: 0; font-size: 20px; letter-spacing: -.02em; }
 .field-help { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .form-actions { display: flex; align-items: center; gap: 12px; margin-top: 24px; }
 .review-panel[hidden] { display: none; }
-.form-stack[hidden], .field-grid[hidden] { display: none; }
+.form-stack[hidden], .field-grid[hidden], .field[hidden] { display: none; }
 .review-panel h3 { margin: 18px 0 8px; font-size: 15px; }
 .review-panel ul { margin: 0; padding-left: 22px; color: #4b5850; font-size: 13px; line-height: 1.7; }
 
