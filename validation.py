@@ -7,6 +7,10 @@ the client.
 The stored status values are English (sections 19 and 21). General results use
 ``OK``, ``PROBLEM``, and ``NOT_ASSESSED``; the BIP327 and SLIP39 results use
 ``YES``, ``NO``, and ``NOT_ASSESSED``.
+
+``available`` is always recorded (section 22). When the key was not available,
+the wallet software, the standards, and the security statuses are not recorded
+either, so they may be left out of the payload.
 """
 
 from datetime import date
@@ -48,19 +52,22 @@ def validate_health_check(payload, keys):
 
     key = _select_key(entry.get("key_id"), keys)
     checked_at = _date(payload.get("checked_at"), "checked_at")
-    wallet_software = _wallet_software(payload.get("wallet_software"), key)
+    available = _availability(entry.get("available"))
+    # A key that was not available cannot be checked any further, so the wallet
+    # software, the standards, and the security statuses stay empty (section 22).
+    unavailable = available == 0
 
     return {
         "checked_at": checked_at,
         "next_check_due": next_check_due(checked_at),
-        "wallet_software": wallet_software,
+        "wallet_software": _wallet_software(
+            payload.get("wallet_software"), key, unavailable
+        ),
         "software_version": _text(
             payload.get("software_version"), "software_version", MAX_VERSION_LENGTH
         ),
-        "software_compatibility_status": _status(
-            payload.get("software_compatibility_status"),
-            "software_compatibility_status",
-            GENERAL_STATUSES,
+        "software_compatibility_status": _compatibility_status(
+            payload.get("software_compatibility_status"), unavailable
         ),
         "software_comments": _text(
             payload.get("software_comments"), "software_comments", MAX_NOTES_LENGTH
@@ -69,12 +76,12 @@ def validate_health_check(payload, keys):
             payload.get("contact_info_verified"), "contact_info_verified"
         ),
         "comments": _text(payload.get("comments"), "comments", MAX_COMMENTS_LENGTH),
-        "key_check": _key_check(entry, key),
+        "key_check": _key_check(entry, key, available),
         "tool_checks": _tool_checks(
-            payload.get("tool_checks"), _expected_products(key, wallet_software)
+            payload.get("tool_checks"), key, payload.get("wallet_software"), unavailable
         ),
         "ai_security_checks": _ai_security_checks(
-            payload.get("ai_security_checks"), _expected_providers(key)
+            payload.get("ai_security_checks"), key, unavailable
         ),
     }
 
@@ -89,13 +96,47 @@ def _select_key(key_id, keys):
     raise ValidationError("key_id is not a configured key")
 
 
-def _wallet_software(value, key):
-    """Return the selected wallet software, fixed to Nunchuk for the cloud key."""
+def _availability(value):
+    """Return 0 or 1. Availability is always recorded (section 22)."""
+    available = _flag(value, "available")
+    if available is None:
+        raise ValidationError("available is required")
+    return available
+
+
+def _wallet_software(value, key, unavailable):
+    """Return the selected wallet software, fixed to Nunchuk for the cloud key.
+
+    A key that was not available records no software, so the field must be left
+    out then (section 22).
+    """
+    if value is None or value == "":
+        if unavailable:
+            return None
+        raise ValidationError("wallet_software must be Sparrow Wallet or Nunchuk")
+    if unavailable:
+        raise ValidationError(
+            "wallet_software cannot be recorded when the key was not available"
+        )
     if value not in WALLET_SOFTWARE:
         raise ValidationError("wallet_software must be Sparrow Wallet or Nunchuk")
     if key["key_number"] == CLOUD_KEY_NUMBER and value != "Nunchuk":
         raise ValidationError("Nunchuk is the only wallet software for the cloud key")
     return value
+
+
+def _compatibility_status(value, unavailable):
+    """Return the compatibility result, defaulting to NOT_ASSESSED when skipped."""
+    if unavailable and (value is None or value == ""):
+        return "NOT_ASSESSED"
+    return _status(value, "software_compatibility_status", GENERAL_STATUSES)
+
+
+def _require_nothing_recorded(entries, field):
+    """Reject results for a key that was not available (section 22)."""
+    if entries is None or entries == []:
+        return
+    raise ValidationError(f"{field} cannot be recorded when the key was not available")
 
 
 def _expected_products(key, wallet_software):
@@ -110,9 +151,8 @@ def _expected_providers(key):
     return (KEY_PRODUCTS[key["key_number"]], "Sparrow Wallet", "Nunchuk")
 
 
-def _key_check(entry, key):
+def _key_check(entry, key, available):
     """Return the normalized check for the selected key."""
-    available = _flag(entry.get("available"), "available")
     check = {
         "key_id": key["id"],
         "available": available,
@@ -214,11 +254,14 @@ def _text(value, field, max_length):
     return text or None
 
 
-def _tool_checks(entries, expected):
+def _tool_checks(entries, key, wallet_software, unavailable):
     """Return the BIP327/SLIP39 rows for the key product and selected software."""
+    if unavailable:
+        _require_nothing_recorded(entries, "tool_checks")
+        return []
     if not isinstance(entries, list):
         raise ValidationError("tool_checks must be a list")
-    allowed = set(expected)
+    allowed = set(_expected_products(key, wallet_software))
     seen = set()
     normalized = []
     for entry in entries:
@@ -244,11 +287,14 @@ def _tool_checks(entries, expected):
     return normalized
 
 
-def _ai_security_checks(entries, expected):
+def _ai_security_checks(entries, key, unavailable):
     """Return the security status rows relevant to the selected key."""
+    if unavailable:
+        _require_nothing_recorded(entries, "ai_security_checks")
+        return []
     if not isinstance(entries, list):
         raise ValidationError("ai_security_checks must be a list")
-    allowed = set(expected)
+    allowed = set(_expected_providers(key))
     seen = set()
     normalized = []
     for entry in entries:
