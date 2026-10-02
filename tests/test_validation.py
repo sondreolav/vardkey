@@ -188,7 +188,7 @@ class ValidationTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             validate_health_check(payload, KEYS)
 
-    def test_an_unavailable_key_records_nothing_else(self):
+    def test_an_unavailable_hardware_key_records_nothing_else(self):
         payload = sample_payload()
         payload["key_check"] = {
             "key_id": 1,
@@ -210,6 +210,29 @@ class ValidationTests(unittest.TestCase):
         self.assertIsNone(result["key_check"]["address_path_verified"])
         self.assertIsNone(result["key_check"]["address_path"])
         self.assertEqual(result["key_check"]["comments"], "Key is with the third holder")
+
+    def test_an_unavailable_cloud_key_keeps_its_derived_cloud_results(self):
+        payload = sample_payload(key_number=3)
+        payload["software_compatibility_status"] = "IKKJE_VURDERT"
+        payload["key_check"] = {
+            "key_id": 3,
+            "available": 0,
+            "cloud_health_status": "PROBLEM",
+            "cloud_provider_operational": 0,
+            "address_path_verified": "PROBLEM",
+            "address_path": "m/48'/0'/0'/2'/0/0",
+            "comments": "The provider is down",
+        }
+
+        result = validate_health_check(payload, KEYS)
+
+        self.assertEqual(result["key_check"]["available"], 0)
+        self.assertEqual(result["key_check"]["cloud_health_status"], "PROBLEM")
+        self.assertEqual(result["key_check"]["cloud_provider_operational"], 0)
+        self.assertIsNone(result["key_check"]["address_path_verified"])
+        self.assertIsNone(result["key_check"]["address_path"])
+        self.assertEqual(result["software_compatibility_status"], "IKKJE_VURDERT")
+        self.assertEqual(result["key_check"]["comments"], "The provider is down")
 
     def test_invalid_flag_is_rejected(self):
         payload = sample_payload()
