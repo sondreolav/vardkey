@@ -183,7 +183,7 @@ Bruk enkle statusar som:
 - [x] Bruk same statuslogikk i database og UI.
 - [x] Ikkje bland saman «ikkje vurdert» og eit faktisk negativt resultat.
 
-**Endra i §21, ikkje implementert:** `IKKJE_VURDERT` blir bytt til `NOT_ASSESSED` på alle fire kolonnane som brukar han. Då er det ikkje norske ord att i koden; produktnamnet og databasefilnamnet blir dokumenterte som bevisste unntak.
+**Endra i §21, implementert, ikkje verifisert:** `IKKJE_VURDERT` er bytt til `NOT_ASSESSED` på alle fire kolonnane som brukar han. Då er det ikkje norske ord att i koden; produktnamnet «Helsesjekk» og databasefilnamnet `data/helsesjekk.sqlite3` er dokumenterte som bevisste unntak i `README.md`.
 
 ## 5.2 KI-sikkerheitsstatus
 
@@ -221,7 +221,7 @@ Ingen andre sikkerheitsstatusar skal brukast.
 - [x] Verifiser adresse, derivasjonshøgd og adresse-sti → `address_path_verified` (`OK` / `Problem`) og `address_path` (tekst).
 - [x] Kommentar ved behov.
 
-**Endra i §21, ikkje implementert:** `Address path` blir berre vist når `Address path verified` er `OK`.
+**Endra i §21, implementert, ikkje verifisert:** `Address path` blir berre vist når `Address path verified` er `OK`. Feltet blir skjult og tømt elles.
 
 ## Steg 3 — Kontroller nøkkel 2: Blockstream Jade
 
@@ -233,7 +233,7 @@ Ingen andre sikkerheitsstatusar skal brukast.
 - [x] Verifiser adresse, derivasjonshøgd og adresse-sti → `address_path_verified` (`OK` / `Problem`) og `address_path` (tekst).
 - [x] Kommentar ved behov.
 
-**Endra i §21, ikkje implementert:** `Address path` blir berre vist når `Address path verified` er `OK`.
+**Endra i §21, implementert, ikkje verifisert:** `Address path` blir berre vist når `Address path verified` er `OK`. Feltet blir skjult og tømt elles.
 
 ## Steg 4 — Kontroller nøkkel 3: Nunchuk sky-nøkkel
 
@@ -274,7 +274,7 @@ Alle fire produkta skal framleis kunne registrerast, men i ulike innsendingar.
 
 **Endra i §19:** «Version checked», «Date checked» og «Notes or source» er tekne ut.
 
-**Endra i §21, ikkje implementert:** statusane blir `YES`, `NO` eller `NOT_ASSESSED`. `No` utløyser ikkje varsel i dag, sidan støtta for BIP327 og SLIP39 er liten.
+**Endra i §21, implementert, ikkje verifisert:** statusane er `YES`, `NO` eller `NOT_ASSESSED`. `No` utløyser ikkje varsel i dag, sidan støtta for BIP327 og SLIP39 er liten. Migreringa mappar `OK` → `YES`, `PROBLEM` → `NO` og `IKKJE_VURDERT` → `NOT_ASSESSED`.
 
 ## Steg 7 — KI-sikkerheitsstatus
 
@@ -339,6 +339,8 @@ Appen skal gi tydelege varsel når resultatet krev handling.
 
 **Endra i §20:** når nøkkel 3 er utilgjengeleg, kjem det **eitt** samanslått kritisk varsel som nemner både at nøkkelen mangla og at leverandøren er registrert som nede. `cloud_provider_problem` held fram for rader der nøkkelen var tilgjengeleg (gamle rader).
 
+**Endra i §21, implementert, ikkje verifisert:** eit positivt BIP327-/SLIP39-varsel krev `YES`. Eit rapportert `NO` er eit negativt resultat og utløyser ikkje varsel.
+
 Appen skal ikkje automatisk utføre nokon av desse tiltaka.
 
 ---
@@ -359,7 +361,7 @@ Dashboardet skal vere enkelt.
 
 **Endra i §19, no implementert:** dei to oversiktskorta («Last completed» og «Next check») gjekk ut frå éin felles dato. Dei er no «Next check» (tidlegaste forfall blant nøklane, med kva nøkkel det gjeld) og «Attention» (kor mange nøklar som har passert fristen). Datoane per nøkkel står på nøkkelkorta, frå `GET /api/key-status`.
 
-**Endra i §21, ikkje implementert:** framsida skal vise alle varsel frå alle lagra registreringar, ikkje berre den siste.
+**Endra i §21, implementert, ikkje verifisert:** framsida viser alle varsel frå alle lagra registreringar, ikkje berre den siste. Kvart varsel viser òg kva registrering det kjem frå (`check_id` og `checked_at`).
 
 ---
 
@@ -401,7 +403,7 @@ Eksporten skal vere **rein CSV**. Ingen XLSX-eksport.
 
 **Endra:** kravet om Excel er teke ut. Filen er rein CSV (UTF-8, komma, CRLF, header). Han kan opnast i eit rekneark, men appen lovar ikkje Excel-kompatibilitet. Resultat som har meir enn éin verdi per innsending (BIP327, SLIP39 og KI-status) ligg i éi celle som `SeedSigner: OK; Sparrow Wallet: PROBLEM`.
 
-**Endra i §21, ikkje implementert:** eksporten skal skrive dei nye statusverdiane (`YES` / `NO` / `NOT_ASSESSED`).
+**Endra i §21, implementert, ikkje verifisert:** eksporten skriv dei nye statusverdiane (`YES` / `NO` / `NOT_ASSESSED`). Migrerte gamle rader blir eksporterte med dei nye verdiane, sidan verdiane blir mappa i databasen.
 
 ---
 
@@ -429,7 +431,7 @@ Minimum:
 
 **Merk:** `GET /api/alerts`, `GET /api/key-status` og `GET /api/previous-values` er ekstra endepunkt utanom minimumslista, fordi dashboardet og skjemaet treng dei. Dei står ikkje i spesifikasjonen enno.
 
-**Endra i §21, ikkje implementert:** `GET /api/alerts` skal summere alle lagra kontrollar, gje kvart varsel `check_id` og `checked_at`, og slå saman like varsel så berre den nyaste viser.
+**Endra i §21, implementert, ikkje verifisert:** `GET /api/alerts` summerer alle lagra kontrollar, gjev kvart varsel `check_id` og `checked_at`, og slår saman like varsel så berre den nyaste viser. Skjemaet går til versjon 6, og migreringa slår `PRAGMA foreign_keys` av før transaksjonen, køyrer `PRAGMA foreign_key_check` før commit og slår han på att etterpå.
 
 ---
 
@@ -443,7 +445,7 @@ Minimum:
 - [x] Vis kva som står att før ein health check kan lagrast.
 - [ ] Sørg for at appen fungerer godt i vanleg StartOS-browser.
 
-**Endra i §21, ikkje implementert:** `Address path` blir berre vist når `Address path verified` er `OK`, og framsida viser alle varsel.
+**Endra i §21, implementert, ikkje verifisert:** `Address path` blir berre vist når `Address path verified` er `OK`, og framsida viser alle varsel.
 
 ---
 
@@ -588,7 +590,9 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 - [ ] 11. Test restart og restore.
 - [ ] 12. Bygg endeleg `.s9pk` og gjer første release.
 
-**Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken. Dei vart sette tilbake til uticka og gjort på nytt i tråd med §19. Steg 7 og 8 er gjorde etter §19. Steg 4 og 6 er framleis uticka fordi §20 og §21 endrar delar av dei. 87 grøne testar.
+**Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken. Dei vart sette tilbake til uticka og gjort på nytt i tråd med §19. Steg 7 og 8 er gjorde etter §19. Steg 4 og 6 er framleis uticka fordi §20 og §21 endrar delar av dei.
+
+**Merk om testtalet:** ved slutten av §20 var det 87 grøne testar. Etter §21 er testane utvida til 111, men dei er ikkje køyrde enno. Køyr `python3 -m unittest discover -s tests`.
 
 **Hovudregel:** Bygg den minste løysinga som oppfyller lista over. Ikkje legg til nye funksjonar, tenester eller arkitektur utan at dei er nødvendige for punkta i denne TODO-lista.
 
@@ -684,7 +688,7 @@ Vedteken etter at steg 8 var ferdig. Endra delar av §4.2, §4.3, §6 (steg 4, 5
 
 Vedteken etter at §20 var ferdig. Endrar delar av §4.2, §4.3, §4.4, §5.1, §6 (steg 2, 3 og 6), §7, §8, §10, §11 og §12.
 
-**Ingenting av dette er implementert enno.**
+**Status:** implementert, men **ikkje verifisert**. Koden og testane er skrivne; brukaren må køyre `python3 -m unittest discover -s tests` før boksane under blir kryssa av.
 
 ## Engelske statusverdiar
 
@@ -712,3 +716,5 @@ Vedteken etter at §20 var ferdig. Endrar delar av §4.2, §4.3, §4.4, §5.1, �
 - [ ] Ein måte å lukke eller kvittere ut varsel på.
 
 **Teknisk merknad:** endringane i statusverdiane rører `CHECK`-reglane på `health_checks`, `key_checks` og `tool_checks`, og `health_checks` er ein foreldretabell med framandnøklar frå dei tre andre tabellane. Migreringa må difor slå `PRAGMA foreign_keys` av før transaksjonen, slå han på att etterpå og køyre `PRAGMA foreign_key_check`. Skjemaet går til versjon 6.
+
+**Implementert slik:** kvar tabell blir bygd opp att etter den dokumenterte SQLite-prosedyren – eit framandnøkkelsjekk blir køyrd før commit, og transaksjonen blir rulla tilbake dersom noko er gale. Varsla blir slegne saman i `collect_alerts()` i `alerts.py`, og `/api/alerts` les kvar lagra kontroll.
