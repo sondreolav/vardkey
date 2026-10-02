@@ -17,7 +17,12 @@ def clean_record(key_number=1, name="SeedSigner", key_type="hardware"):
         "address_path_verified": "OK",
     }
     if key_type == "cloud":
-        entry.update({"hardware_works": None, "seed_backup_verified": None})
+        entry.update({
+            "hardware_works": None,
+            "seed_backup_verified": None,
+            "cloud_health_status": "OK",
+            "cloud_provider_operational": 1,
+        })
     return {
         "checked_at": "2026-10-01",
         "next_check_due": "2027-10-01",
@@ -42,6 +47,7 @@ class AlertTests(unittest.TestCase):
 
     def test_a_check_without_problems_has_no_alerts(self):
         self.assertEqual(build_alerts(clean_record()), [])
+        self.assertEqual(build_alerts(clean_record(3, "Nunchuk", "cloud")), [])
 
     def test_an_unavailable_key_requires_immediate_follow_up(self):
         record = clean_record(key_number=2, name="Blockstream Jade")
@@ -56,11 +62,13 @@ class AlertTests(unittest.TestCase):
         self.assertIn("Replace the key", alerts[0]["message"])
 
     def test_an_unavailable_key_hides_the_other_results(self):
-        record = clean_record()
+        record = clean_record(key_number=3, name="Nunchuk", key_type="cloud")
         record["key_checks"][0].update({
             "available": 0,
             "hardware_works": 0,
             "seed_backup_verified": "PROBLEM",
+            "cloud_health_status": "PROBLEM",
+            "cloud_provider_operational": 0,
             "address_path_verified": "PROBLEM",
         })
 
@@ -84,6 +92,23 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(self.codes(record), ["seed_backup_problem"])
         self.assertEqual(alerts[0]["severity"], "critical")
         self.assertIn("PROTOCOL 3", alerts[0]["message"])
+
+    def test_a_cloud_health_problem_must_be_followed_up(self):
+        record = clean_record(key_number=3, name="Nunchuk", key_type="cloud")
+        record["key_checks"][0]["cloud_health_status"] = "PROBLEM"
+
+        alerts = build_alerts(record)
+
+        self.assertEqual(self.codes(record), ["cloud_provider_problem"])
+        self.assertEqual(alerts[0]["severity"], "critical")
+        self.assertEqual(alerts[0]["source"], "Key 3: Nunchuk")
+        self.assertIn("cloud provider", alerts[0]["message"])
+
+    def test_a_cloud_provider_outage_must_be_followed_up(self):
+        record = clean_record(key_number=3, name="Nunchuk", key_type="cloud")
+        record["key_checks"][0]["cloud_provider_operational"] = 0
+
+        self.assertEqual(self.codes(record), ["cloud_provider_problem"])
 
     def test_a_failed_address_path_verification_points_at_bsms(self):
         record = clean_record()
@@ -165,6 +190,8 @@ class AlertTests(unittest.TestCase):
             "available": None,
             "hardware_works": None,
             "seed_backup_verified": None,
+            "cloud_health_status": None,
+            "cloud_provider_operational": None,
             "address_path_verified": None,
         })
 
