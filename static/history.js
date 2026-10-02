@@ -74,57 +74,99 @@ function card(title, content) {
   return section;
 }
 
+function keyLabel(record) {
+  const labels = (record.key_checks || []).map(
+    (entry) => `Key ${entry.key_number}: ${entry.name}`,
+  );
+  return labels.length ? labels.join(", ") : "—";
+}
+
+function summaryEntries(record) {
+  const entries = [
+    ["Check date", record.checked_at],
+    ["Next check due", record.next_check_due],
+    ["Key checked", keyLabel(record)],
+    ["Wallet software", record.wallet_software],
+    ["Software version", record.software_version],
+    ["Software compatibility", record.software_compatibility_status],
+    ["Software notes", record.software_comments],
+    ["Contact details confirmed", displayFlag(record.contact_info_verified)],
+    ["Comments", record.comments],
+  ];
+  if (record.sparrow_version) {
+    entries.push(["Sparrow version (legacy record)", record.sparrow_version]);
+  }
+  if (record.nunchuk_version) {
+    entries.push(["Nunchuk version (legacy record)", record.nunchuk_version]);
+  }
+  return entries;
+}
+
+function keyEntries(keyCheck) {
+  const entries = [["Availability", displayFlag(keyCheck.available)]];
+  if (keyCheck.type === "hardware") {
+    entries.push(["Hardware works", displayFlag(keyCheck.hardware_works)]);
+    entries.push(["Firmware version", keyCheck.firmware_version]);
+    entries.push(["Seed backup verified", keyCheck.seed_backup_verified]);
+  } else {
+    entries.push(["Cloud health check", keyCheck.cloud_health_status]);
+    entries.push(["Provider operational", displayFlag(keyCheck.cloud_provider_operational)]);
+  }
+  entries.push(["Address path verified", keyCheck.address_path_verified]);
+  entries.push(["Address path", keyCheck.address_path]);
+  entries.push(["Comments", keyCheck.comments]);
+  return entries;
+}
+
+function toolCheckTable(toolChecks) {
+  const headers = ["Product", "BIP327", "SLIP39"];
+  // Older records stored a version, a date, and notes for each product.
+  const hasLegacyColumns = toolChecks.some(
+    (entry) => entry.version || entry.checked_at || entry.notes,
+  );
+  if (hasLegacyColumns) {
+    headers.push("Version", "Date checked", "Notes");
+  }
+  const rows = toolChecks.map((entry) => {
+    const row = [entry.product, entry.bip327_status, entry.slip39_status];
+    if (hasLegacyColumns) {
+      row.push(entry.version, entry.checked_at, entry.notes);
+    }
+    return row;
+  });
+  return dataTable(headers, rows);
+}
+
 function renderDetail(record) {
   detailTitle.textContent = `Check from ${record.checked_at}`;
   const fragment = document.createDocumentFragment();
 
-  fragment.append(card("Summary", definitionList([
-    ["Check date", record.checked_at],
-    ["Next check due", record.next_check_due],
-    ["Software compatibility", record.software_compatibility_status],
-    ["Sparrow version", record.sparrow_version],
-    ["Nunchuk version", record.nunchuk_version],
-    ["Software notes", record.software_comments],
-    ["Contact details confirmed", displayFlag(record.contact_info_verified)],
-    ["Comments", record.comments],
-  ])));
+  fragment.append(card("Summary", definitionList(summaryEntries(record))));
 
-  for (const keyCheck of record.key_checks) {
-    fragment.append(card(`Key ${keyCheck.key_number}: ${keyCheck.name}`, definitionList([
-      ["Availability", displayFlag(keyCheck.available)],
-      ["Hardware works", displayFlag(keyCheck.hardware_works)],
-      ["Firmware version", keyCheck.firmware_version],
-      ["Seed backup status", keyCheck.seed_backup_status],
-      ["Backup verified", displayFlag(keyCheck.seed_backup_verified)],
-      ["Cloud health check", keyCheck.cloud_health_status],
-      ["Provider operational", displayFlag(keyCheck.cloud_provider_operational)],
-      ["Address verified", displayFlag(keyCheck.address_verified)],
-      ["Derivation height", keyCheck.derivation_height],
-      ["Address path verified", displayFlag(keyCheck.address_path_verified)],
-      ["Address path", keyCheck.address_path],
-      ["Comments", keyCheck.comments],
-    ])));
+  for (const keyCheck of record.key_checks || []) {
+    fragment.append(card(
+      `Key ${keyCheck.key_number}: ${keyCheck.name}`,
+      definitionList(keyEntries(keyCheck)),
+    ));
   }
 
-  fragment.append(card("BIP327 and SLIP39", dataTable(
-    ["Product", "BIP327", "SLIP39", "Version", "Date checked", "Notes"],
-    record.tool_checks.map((entry) => [
-      entry.product,
-      entry.bip327_status,
-      entry.slip39_status,
-      entry.version,
-      entry.checked_at,
-      entry.notes,
-    ]),
-  )));
+  fragment.append(card("BIP327 and SLIP39", toolCheckTable(record.tool_checks || [])));
 
   fragment.append(card("Security status", dataTable(
     ["Provider", "Status", "Comment"],
-    record.ai_security_checks.map((entry) => [entry.provider, entry.status, entry.comments]),
+    (record.ai_security_checks || []).map((entry) => [entry.provider, entry.status, entry.comments]),
   )));
 
   detailBody.replaceChildren(fragment);
   detailSection.hidden = false;
+}
+
+function keyNumbersText(check) {
+  const numbers = check.key_numbers || [];
+  if (!numbers.length) {
+    return "Key not recorded";
+  }
+  return numbers.map((number) => `Key ${number}`).join(", ");
 }
 
 function renderList(checks) {
@@ -147,7 +189,7 @@ function renderList(checks) {
     const heading = document.createElement("h3");
     heading.textContent = check.checked_at;
     const meta = document.createElement("p");
-    meta.textContent = `Next check due ${check.next_check_due} · Software ${check.software_compatibility_status}`;
+    meta.textContent = `${keyNumbersText(check)} · Next check due ${check.next_check_due} · Software ${check.software_compatibility_status}`;
     text.append(heading, meta);
 
     const link = document.createElement("a");
