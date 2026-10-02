@@ -58,11 +58,27 @@ class ExportTests(unittest.TestCase):
         self.assertEqual(values["Key comments"], comment)
 
     def test_joined_multi_value_cells_survive_the_round_trip(self):
-        joined = "SeedSigner: OK; Sparrow Wallet: PROBLEM"
+        joined = "SeedSigner: YES; Sparrow Wallet: NO"
         rows = parse(build_csv([{"bip327_status": joined}]))
         values = dict(zip(HEADERS, rows[1]))
 
         self.assertEqual(values["BIP327"], joined)
+
+    def test_status_values_are_written_as_stored(self):
+        rows = parse(build_csv([{
+            "seed_backup_verified": "PROBLEM",
+            "address_path_verified": "OK",
+            "cloud_health_status": "NOT_ASSESSED",
+            "software_compatibility_status": "NOT_ASSESSED",
+            "slip39_status": "SeedSigner: NOT_ASSESSED",
+        }]))
+        values = dict(zip(HEADERS, rows[1]))
+
+        self.assertEqual(values["Seed backup verified"], "PROBLEM")
+        self.assertEqual(values["Address path verified"], "OK")
+        self.assertEqual(values["Cloud health status"], "NOT_ASSESSED")
+        self.assertEqual(values["Software compatibility"], "NOT_ASSESSED")
+        self.assertEqual(values["SLIP39"], "SeedSigner: NOT_ASSESSED")
 
 
 if __name__ == "__main__":
