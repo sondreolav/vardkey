@@ -16,6 +16,7 @@ from database import (
     list_health_checks,
     list_key_status,
     list_keys,
+    list_previous_values,
     save_health_check,
     seed_fixed_keys,
 )
@@ -55,6 +56,9 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/key-status":
             self._send_key_status()
+            return
+        if path == "/api/previous-values":
+            self._send_previous_values()
             return
         if path == "/api/health-checks":
             self._send_health_check_list()
@@ -130,6 +134,13 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json(200, list_key_status(get_database_path()))
         except (OSError, sqlite3.Error, ValueError):
             self._send_json(500, {"error": "Key status is unavailable"})
+
+    def _send_previous_values(self):
+        """Return the last saved values, so the form can pre-fill itself."""
+        try:
+            self._send_json(200, list_previous_values(get_database_path()))
+        except (OSError, sqlite3.Error, ValueError):
+            self._send_json(500, {"error": "Previous values are unavailable"})
 
     def _send_health_check_list(self):
         try:
