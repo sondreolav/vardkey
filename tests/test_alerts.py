@@ -5,55 +5,33 @@ import unittest
 from alerts import build_alerts
 
 
-PRODUCTS = ("SeedSigner", "Blockstream Jade", "Nunchuk", "Sparrow Wallet")
-
-
-def clean_record():
-    """Return a saved check whose results need no follow-up."""
+def clean_record(key_number=1, name="SeedSigner", key_type="hardware"):
+    """Return a saved check for one key whose results need no follow-up."""
+    entry = {
+        "key_number": key_number,
+        "name": name,
+        "type": key_type,
+        "available": 1,
+        "hardware_works": 1,
+        "seed_backup_verified": "OK",
+        "address_path_verified": "OK",
+    }
+    if key_type == "cloud":
+        entry.update({"hardware_works": None, "seed_backup_verified": None})
     return {
         "checked_at": "2026-10-01",
         "next_check_due": "2027-10-01",
         "software_compatibility_status": "OK",
         "contact_info_verified": 1,
-        "key_checks": [
-            {
-                "key_number": 1,
-                "name": "SeedSigner",
-                "type": "hardware",
-                "available": 1,
-                "hardware_works": 1,
-                "seed_backup_status": "OK",
-                "address_verified": 1,
-                "address_path_verified": 1,
-            },
-            {
-                "key_number": 2,
-                "name": "Blockstream Jade",
-                "type": "hardware",
-                "available": 1,
-                "hardware_works": 1,
-                "seed_backup_status": "OK",
-                "address_verified": 1,
-                "address_path_verified": 1,
-            },
-            {
-                "key_number": 3,
-                "name": "Nunchuk",
-                "type": "cloud",
-                "available": 1,
-                "hardware_works": None,
-                "seed_backup_status": None,
-                "address_verified": 1,
-                "address_path_verified": 1,
-            },
-        ],
+        "key_checks": [entry],
         "tool_checks": [
-            {"product": product, "bip327_status": "IKKJE_VURDERT", "slip39_status": "IKKJE_VURDERT"}
-            for product in PRODUCTS
+            {"product": "SeedSigner", "bip327_status": "IKKJE_VURDERT", "slip39_status": "IKKJE_VURDERT"},
+            {"product": "Sparrow Wallet", "bip327_status": "IKKJE_VURDERT", "slip39_status": "IKKJE_VURDERT"},
         ],
         "ai_security_checks": [
-            {"provider": product, "status": "TRYGG"}
-            for product in PRODUCTS
+            {"provider": "SeedSigner", "status": "SECURE"},
+            {"provider": "Sparrow Wallet", "status": "SECURE"},
+            {"provider": "Nunchuk", "status": "SECURE"},
         ],
     }
 
@@ -66,14 +44,27 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(build_alerts(clean_record()), [])
 
     def test_an_unavailable_key_requires_immediate_follow_up(self):
-        record = clean_record()
-        record["key_checks"][1]["available"] = 0
+        record = clean_record(key_number=2, name="Blockstream Jade")
+
+        record["key_checks"][0]["available"] = 0
 
         alerts = build_alerts(record)
 
         self.assertEqual(self.codes(record), ["key_unavailable"])
         self.assertEqual(alerts[0]["severity"], "critical")
         self.assertEqual(alerts[0]["source"], "Key 2: Blockstream Jade")
+        self.assertIn("Replace the key", alerts[0]["message"])
+
+    def test_an_unavailable_key_hides_the_other_results(self):
+        record = clean_record()
+        record["key_checks"][0].update({
+            "available": 0,
+            "hardware_works": 0,
+            "seed_backup_verified": "PROBLEM",
+            "address_path_verified": "PROBLEM",
+        })
+
+        self.assertEqual(self.codes(record), ["key_unavailable"])
 
     def test_a_hardware_failure_points_at_testing_the_backup_elsewhere(self):
         record = clean_record()
@@ -86,7 +77,7 @@ class AlertTests(unittest.TestCase):
 
     def test_a_damaged_seed_backup_points_at_protocol_3(self):
         record = clean_record()
-        record["key_checks"][0]["seed_backup_status"] = "PROBLEM"
+        record["key_checks"][0]["seed_backup_verified"] = "PROBLEM"
 
         alerts = build_alerts(record)
 
@@ -94,20 +85,14 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(alerts[0]["severity"], "critical")
         self.assertIn("PROTOCOL 3", alerts[0]["message"])
 
-    def test_a_failed_address_verification_points_at_bsms(self):
+    def test_a_failed_address_path_verification_points_at_bsms(self):
         record = clean_record()
-        record["key_checks"][0]["address_verified"] = 0
+        record["key_checks"][0]["address_path_verified"] = "PROBLEM"
 
         alerts = build_alerts(record)
 
         self.assertEqual(self.codes(record), ["address_verification_failed"])
         self.assertIn("BSMS", alerts[0]["message"])
-
-    def test_a_failed_address_path_verification_is_reported_once(self):
-        record = clean_record()
-        record["key_checks"][0]["address_path_verified"] = 0
-
-        self.assertEqual(self.codes(record), ["address_verification_failed"])
 
     def test_incompatible_software_suggests_an_alternative(self):
         record = clean_record()
@@ -135,26 +120,33 @@ class AlertTests(unittest.TestCase):
         alerts = build_alerts(record)
 
         self.assertEqual(self.codes(record), ["slip39_available"])
-        self.assertEqual(alerts[0]["source"], "Blockstream Jade (SLIP39)")
+        self.assertEqual(alerts[0]["source"], "Sparrow Wallet (SLIP39)")
 
     def test_a_vulnerable_security_status_must_be_followed_up(self):
         record = clean_record()
-        record["ai_security_checks"][2]["status"] = "SÅRBAR"
+        record["ai_security_checks"][2]["status"] = "VULNERABLE"
 
         alerts = build_alerts(record)
 
         self.assertEqual(self.codes(record), ["security_vulnerable"])
         self.assertEqual(alerts[0]["severity"], "critical")
         self.assertEqual(alerts[0]["source"], "Nunchuk")
+        self.assertIn("VULNERABLE", alerts[0]["message"])
 
     def test_a_compromised_security_status_points_at_the_key_loss_procedure(self):
         record = clean_record()
-        record["ai_security_checks"][0]["status"] = "KOMPROMITTERT"
+        record["ai_security_checks"][0]["status"] = "COMPROMISED"
 
         alerts = build_alerts(record)
 
         self.assertEqual(self.codes(record), ["security_compromised"])
         self.assertIn("key loss procedure", alerts[0]["message"])
+
+    def test_a_norwegian_legacy_status_is_not_treated_as_a_failure(self):
+        record = clean_record()
+        record["ai_security_checks"][0]["status"] = "TRYGG"
+
+        self.assertEqual(build_alerts(record), [])
 
     def test_unconfirmed_contact_information_is_reported(self):
         record = clean_record()
@@ -169,27 +161,25 @@ class AlertTests(unittest.TestCase):
         record = clean_record()
         record["contact_info_verified"] = None
         record["software_compatibility_status"] = "IKKJE_VURDERT"
-        record["key_checks"][0]["available"] = None
-        record["key_checks"][0]["hardware_works"] = None
-        record["key_checks"][0]["seed_backup_status"] = "IKKJE_VURDERT"
-        record["key_checks"][0]["address_verified"] = None
-        record["key_checks"][0]["address_path_verified"] = None
+        record["key_checks"][0].update({
+            "available": None,
+            "hardware_works": None,
+            "seed_backup_verified": None,
+            "address_path_verified": None,
+        })
 
         self.assertEqual(build_alerts(record), [])
 
     def test_critical_alerts_are_listed_before_informational_ones(self):
-        record = clean_record()
+        record = clean_record(key_number=3, name="Nunchuk", key_type="cloud")
         record["contact_info_verified"] = 0
         record["tool_checks"][0]["bip327_status"] = "OK"
-        record["ai_security_checks"][3]["status"] = "SÅRBAR"
-        record["key_checks"][2]["available"] = 0
+        record["ai_security_checks"][1]["status"] = "VULNERABLE"
+        record["key_checks"][0]["available"] = 0
 
         severities = [alert["severity"] for alert in build_alerts(record)]
 
-        self.assertEqual(
-            severities,
-            ["critical", "critical", "info", "info"],
-        )
+        self.assertEqual(severities, ["critical", "critical", "info", "info"])
         self.assertEqual(
             self.codes(record),
             ["key_unavailable", "security_vulnerable", "bip327_available", "contact_info_unconfirmed"],
