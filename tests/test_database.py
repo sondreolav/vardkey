@@ -1,4 +1,4 @@
-"""Tests for SQLite schema, storage, and constraints."""
+"""Tests for SQLite schema, migration, storage, and constraints."""
 
 from contextlib import contextmanager
 import sqlite3
@@ -18,54 +18,127 @@ from database import (
 from validation import validate_health_check
 
 
-PRODUCTS = ("SeedSigner", "Blockstream Jade", "Nunchuk", "Sparrow Wallet")
+KEY_PRODUCTS = {1: "SeedSigner", 2: "Blockstream Jade", 3: "Nunchuk"}
 
 
-def sample_payload(keys):
-    """Return a valid health check payload matching the given key profiles."""
+def sample_payload(key, wallet_software=None):
+    """Return a valid single-key payload for the given key profile."""
+    number = key["key_number"]
+    if wallet_software is None:
+        wallet_software = "Nunchuk" if number == 3 else "Sparrow Wallet"
+    products = list(dict.fromkeys((KEY_PRODUCTS[number], wallet_software)))
+    providers = ["Nunchuk"] if number == 3 else [KEY_PRODUCTS[number], "Sparrow Wallet", "Nunchuk"]
+    entry = {
+        "key_id": key["id"],
+        "available": 1,
+        "address_path_verified": "OK",
+        "address_path": "m/48'/0'/0'/2'/0/0",
+        "comments": "",
+    }
+    if key["type"] == "hardware":
+        entry.update({
+            "hardware_works": 1,
+            "firmware_version": "1.0.0",
+            "seed_backup_verified": "OK",
+        })
+    else:
+        entry.update({"cloud_health_status": "OK", "cloud_provider_operational": 1})
     return {
         "checked_at": "2026-10-01",
-        "next_check_due": "2027-10-01",
+        "wallet_software": wallet_software,
+        "software_version": "1.8.0",
         "software_compatibility_status": "OK",
-        "sparrow_version": "1.8.0",
-        "nunchuk_version": "",
         "software_comments": "",
         "contact_info_verified": 1,
         "comments": "Annual review",
-        "key_checks": [
-            {
-                "key_id": key["id"],
-                "available": 1,
-                "hardware_works": 1 if key["type"] == "hardware" else None,
-                "firmware_version": "1.0.0" if key["type"] == "hardware" else "",
-                "seed_backup_status": "OK" if key["type"] == "hardware" else None,
-                "seed_backup_verified": 1 if key["type"] == "hardware" else None,
-                "cloud_health_status": "OK" if key["type"] == "cloud" else None,
-                "cloud_provider_operational": 1 if key["type"] == "cloud" else None,
-                "address_verified": 1,
-                "derivation_height": "m/48'/0'/0'/2'",
-                "address_path_verified": 1,
-                "address_path": "m/48'/0'/0'/2'/0/0",
-                "comments": "",
-            }
-            for key in keys
-        ],
+        "key_check": entry,
         "tool_checks": [
-            {
-                "product": product,
-                "bip327_status": "IKKJE_VURDERT",
-                "slip39_status": "IKKJE_VURDERT",
-                "version": "",
-                "checked_at": "",
-                "notes": "",
-            }
-            for product in PRODUCTS
+            {"product": product, "bip327_status": "IKKJE_VURDERT", "slip39_status": "IKKJE_VURDERT"}
+            for product in products
         ],
         "ai_security_checks": [
-            {"provider": product, "status": "TRYGG", "comments": ""}
-            for product in PRODUCTS
+            {"provider": provider, "status": "SECURE", "comments": ""} for provider in providers
         ],
     }
+
+
+LEGACY_SCHEMA = """
+    CREATE TABLE keys (
+        id INTEGER PRIMARY KEY,
+        key_number INTEGER NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        device TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE health_checks (
+        id INTEGER PRIMARY KEY,
+        checked_at TEXT NOT NULL,
+        next_check_due TEXT NOT NULL,
+        software_compatibility_status TEXT NOT NULL DEFAULT 'IKKJE_VURDERT',
+        sparrow_version TEXT,
+        nunchuk_version TEXT,
+        software_comments TEXT,
+        contact_info_verified INTEGER,
+        comments TEXT
+    );
+    CREATE TABLE key_checks (
+        id INTEGER PRIMARY KEY,
+        health_check_id INTEGER NOT NULL,
+        key_id INTEGER NOT NULL,
+        available INTEGER,
+        hardware_works INTEGER,
+        firmware_version TEXT,
+        seed_backup_status TEXT,
+        cloud_health_status TEXT,
+        cloud_provider_operational INTEGER,
+        address_verified INTEGER,
+        seed_backup_verified INTEGER,
+        address_path_verified INTEGER,
+        derivation_height TEXT,
+        address_path TEXT,
+        comments TEXT,
+        UNIQUE (health_check_id, key_id)
+    );
+    CREATE TABLE tool_checks (
+        id INTEGER PRIMARY KEY,
+        health_check_id INTEGER NOT NULL,
+        product TEXT NOT NULL,
+        bip327_status TEXT NOT NULL DEFAULT 'IKKJE_VURDERT',
+        slip39_status TEXT NOT NULL DEFAULT 'IKKJE_VURDERT',
+        version TEXT,
+        checked_at TEXT,
+        notes TEXT,
+        UNIQUE (health_check_id, product)
+    );
+    CREATE TABLE ai_security_checks (
+        id INTEGER PRIMARY KEY,
+        health_check_id INTEGER NOT NULL,
+        provider TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('TRYGG', 'PATCHA', 'SÅRBAR', 'KOMPROMITTERT')),
+        comments TEXT,
+        UNIQUE (health_check_id, provider)
+    );
+    INSERT INTO keys (id, key_number, name, type, device) VALUES
+        (1, 1, 'SeedSigner', 'hardware', 'SeedSigner'),
+        (2, 2, 'Blockstream Jade', 'hardware', 'Blockstream Jade'),
+        (3, 3, 'Nunchuk', 'cloud', 'Nunchuk');
+    INSERT INTO health_checks (id, checked_at, next_check_due, sparrow_version)
+        VALUES (1, '2026-01-01', '2027-01-01', '1.7.0');
+    INSERT INTO key_checks (
+        health_check_id, key_id, available, hardware_works, firmware_version,
+        seed_backup_status, seed_backup_verified, address_verified,
+        address_path_verified, derivation_height, address_path
+    ) VALUES (1, 1, 1, 1, '1.0.0', 'OK', 1, 1, 1, 'm/48''/0''/0''/2''', 'm/48''/0''/0''/2''/0/0');
+    INSERT INTO key_checks (
+        health_check_id, key_id, available, seed_backup_status,
+        seed_backup_verified, address_verified, address_path_verified
+    ) VALUES (1, 2, 1, 'PROBLEM', 0, 0, 0);
+    INSERT INTO ai_security_checks (health_check_id, provider, status) VALUES
+        (1, 'SeedSigner', 'TRYGG'),
+        (1, 'Nunchuk', 'SÅRBAR');
+    PRAGMA user_version = 4;
+"""
 
 
 class DatabaseInitializationTests(unittest.TestCase):
@@ -105,7 +178,7 @@ class DatabaseInitializationTests(unittest.TestCase):
             <= tables
         )
 
-    def test_partial_schema_with_zero_version_is_repaired_idempotently(self):
+    def test_partial_schema_is_repaired_idempotently(self):
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(self.database_path) as connection:
             connection.executescript(
@@ -130,73 +203,51 @@ class DatabaseInitializationTests(unittest.TestCase):
 
         with self.connect() as connection:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            row = connection.execute(
-                "SELECT address_verified, derivation_height FROM key_checks"
-            ).fetchone()
-            columns = {
-                row[1] for row in connection.execute("PRAGMA table_info(key_checks)")
-            }
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(key_checks)")}
 
         self.assertEqual(version, SCHEMA_VERSION)
-        self.assertEqual(row, (1, "0"))
-        self.assertIn("seed_backup_verified", columns)
+        self.assertTrue({"available", "seed_backup_verified", "address_path_verified"} <= columns)
+        self.assertFalse({"address_verified", "derivation_height"} & columns)
 
-    def test_legacy_database_migrates_without_losing_existing_values(self):
+    def test_legacy_database_migrates_to_per_key_checks(self):
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(self.database_path) as connection:
-            connection.executescript(
-                """
-                CREATE TABLE keys (
-                    id INTEGER PRIMARY KEY,
-                    key_number INTEGER NOT NULL UNIQUE,
-                    name TEXT NOT NULL,
-                    type TEXT NOT NULL,
-                    device TEXT NOT NULL,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                );
-                CREATE TABLE health_checks (
-                    id INTEGER PRIMARY KEY,
-                    checked_at TEXT NOT NULL,
-                    next_check_due TEXT NOT NULL,
-                    software_compatibility_status TEXT NOT NULL DEFAULT 'IKKJE_VURDERT',
-                    sparrow_version TEXT,
-                    nunchuk_version TEXT,
-                    contact_info_verified INTEGER,
-                    comments TEXT
-                );
-                CREATE TABLE key_checks (
-                    id INTEGER PRIMARY KEY,
-                    health_check_id INTEGER NOT NULL,
-                    key_id INTEGER NOT NULL,
-                    available INTEGER,
-                    hardware_works INTEGER,
-                    firmware_version TEXT,
-                    seed_backup_status TEXT,
-                    cloud_health_status TEXT,
-                    cloud_provider_operational INTEGER,
-                    address_path_verified INTEGER,
-                    address_path TEXT,
-                    comments TEXT,
-                    UNIQUE (health_check_id, key_id)
-                );
-                INSERT INTO health_checks (checked_at, next_check_due) VALUES ('2026-01-01', '2027-01-01');
-                PRAGMA user_version = 1;
-                """
-            )
+            connection.executescript(LEGACY_SCHEMA)
 
         initialize_database(self.database_path)
+
         with self.connect() as connection:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            health_check_id = connection.execute("SELECT id FROM health_checks").fetchone()[0]
-            columns = {
-                row[1] for row in connection.execute("PRAGMA table_info(key_checks)")
-            }
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(key_checks)")}
+            rows = connection.execute(
+                "SELECT key_id, seed_backup_verified, address_path_verified "
+                "FROM key_checks ORDER BY key_id"
+            ).fetchall()
+            statuses = connection.execute(
+                "SELECT provider, status FROM ai_security_checks ORDER BY provider"
+            ).fetchall()
 
         self.assertEqual(version, SCHEMA_VERSION)
-        self.assertEqual(health_check_id, 1)
-        self.assertTrue(
-            {"address_verified", "derivation_height", "seed_backup_verified"} <= columns
-        )
+        self.assertFalse({"seed_backup_status", "address_verified", "derivation_height"} & columns)
+        self.assertEqual(rows, [(1, "OK", "OK"), (2, "PROBLEM", "PROBLEM")])
+        self.assertEqual(statuses, [("Nunchuk", "VULNERABLE"), ("SeedSigner", "SECURE")])
+
+        record = get_health_check(1, self.database_path)
+        self.assertEqual(record["checked_at"], "2026-01-01")
+        self.assertEqual(record["sparrow_version"], "1.7.0")
+        self.assertEqual(record["key_checks"][0]["seed_backup_verified"], "OK")
+        self.assertEqual(record["key_checks"][0]["address_path"], "m/48'/0'/0'/2'/0/0")
+        self.assertEqual(record["key_checks"][1]["seed_backup_verified"], "PROBLEM")
+        self.assertEqual([entry["status"] for entry in record["ai_security_checks"]], ["SECURE", "VULNERABLE"])
+
+        keys = list_keys(self.database_path)
+        new_id = save_health_check(validate_health_check(sample_payload(keys[2]), keys), self.database_path)
+        new_record = get_health_check(new_id, self.database_path)
+        self.assertEqual(new_record["wallet_software"], "Nunchuk")
+        self.assertEqual(len(new_record["key_checks"]), 1)
+        self.assertEqual(new_record["key_checks"][0]["key_number"], 3)
+        self.assertEqual([entry["product"] for entry in new_record["tool_checks"]], ["Nunchuk"])
+        self.assertEqual([entry["provider"] for entry in new_record["ai_security_checks"]], ["Nunchuk"])
 
     def test_seed_fixed_keys_is_idempotent_and_preserves_custom_names(self):
         initialize_database(self.database_path)
@@ -223,7 +274,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         initialize_database(self.database_path)
         seed_fixed_keys(self.database_path)
         keys = list_keys(self.database_path)
-        data = validate_health_check(sample_payload(keys), {key["id"] for key in keys})
+        data = validate_health_check(sample_payload(keys[0]), keys)
 
         first_id = save_health_check(data, self.database_path)
         second_id = save_health_check(data, self.database_path)
@@ -231,16 +282,35 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertNotEqual(first_id, second_id)
         summaries = list_health_checks(self.database_path)
         self.assertEqual([entry["id"] for entry in summaries], [second_id, first_id])
+        self.assertEqual(summaries[0]["key_numbers"], [1])
 
         record = get_health_check(first_id, self.database_path)
         self.assertEqual(record["checked_at"], "2026-10-01")
+        self.assertEqual(record["next_check_due"], "2027-10-01")
         self.assertEqual(record["comments"], "Annual review")
-        self.assertEqual(len(record["key_checks"]), 3)
-        self.assertEqual(len(record["tool_checks"]), 4)
-        self.assertEqual(len(record["ai_security_checks"]), 4)
+        self.assertEqual(len(record["key_checks"]), 1)
         self.assertEqual(record["key_checks"][0]["key_number"], 1)
-        self.assertEqual(record["ai_security_checks"][0]["status"], "TRYGG")
+        self.assertEqual(record["key_checks"][0]["seed_backup_verified"], "OK")
+        self.assertEqual(
+            [entry["product"] for entry in record["tool_checks"]],
+            ["SeedSigner", "Sparrow Wallet"],
+        )
+        self.assertEqual(record["ai_security_checks"][0]["status"], "SECURE")
         self.assertIsNone(get_health_check(9999, self.database_path))
+
+    def test_each_key_can_be_recorded_separately(self):
+        initialize_database(self.database_path)
+        seed_fixed_keys(self.database_path)
+        keys = list_keys(self.database_path)
+
+        for key in keys:
+            data = validate_health_check(sample_payload(key), keys)
+            saved_id = save_health_check(data, self.database_path)
+            record = get_health_check(saved_id, self.database_path)
+            self.assertEqual(record["key_checks"][0]["key_number"], key["key_number"])
+
+        summaries = list_health_checks(self.database_path)
+        self.assertEqual([entry["key_numbers"] for entry in summaries], [[3], [2], [1]])
 
     def test_invalid_status_and_duplicate_key_numbers_are_rejected(self):
         initialize_database(self.database_path)
@@ -259,7 +329,7 @@ class DatabaseInitializationTests(unittest.TestCase):
                     "INSERT INTO keys (key_number, name, type, device) VALUES (1, 'Duplicate', 'hardware', 'SeedSigner')"
                 )
 
-    def test_ai_security_status_is_limited_to_required_values(self):
+    def test_ai_security_status_is_limited_to_the_english_values(self):
         initialize_database(self.database_path)
         with self.connect() as connection:
             connection.execute(
@@ -269,13 +339,14 @@ class DatabaseInitializationTests(unittest.TestCase):
             health_check_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
             connection.execute(
                 "INSERT INTO ai_security_checks (health_check_id, provider, status) VALUES (?, ?, ?)",
-                (health_check_id, "SeedSigner", "TRYGG"),
+                (health_check_id, "SeedSigner", "SECURE"),
             )
-            with self.assertRaises(sqlite3.IntegrityError):
-                connection.execute(
-                    "INSERT INTO ai_security_checks (health_check_id, provider, status) VALUES (?, ?, ?)",
-                    (health_check_id, "Nunchuk", "UNKNOWN"),
-                )
+            for value in ("TRYGG", "UNKNOWN"):
+                with self.assertRaises(sqlite3.IntegrityError):
+                    connection.execute(
+                        "INSERT INTO ai_security_checks (health_check_id, provider, status) VALUES (?, ?, ?)",
+                        (health_check_id, "Nunchuk", value),
+                    )
 
     def test_unknown_future_schema_version_is_rejected(self):
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
