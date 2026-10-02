@@ -34,21 +34,22 @@
         <section class="form-section" aria-labelledby="schedule-title">
           <div class="form-section-heading">
             <p class="eyebrow">01 / Schedule</p>
-            <h2 id="schedule-title">Check dates</h2>
+            <h2 id="schedule-title">Check date</h2>
           </div>
           <div class="field-grid">
             <label class="field"><span>Check date</span><input id="checked-at" name="checked_at" type="date" required></label>
-            <label class="field"><span>Next check due</span><input id="next-check-due" name="next_check_due" type="date" required></label>
           </div>
-          <p class="field-help">The next check date is suggested one calendar year after the check date. You can change it.</p>
+          <p class="field-help" id="next-check-preview">Next check due is calculated automatically as one calendar year after the check date.</p>
         </section>
 
         <section class="form-section" aria-labelledby="key-checks-title">
           <div class="form-section-heading">
-            <p class="eyebrow">02 / Keys</p>
-            <h2 id="key-checks-title">Key checks</h2>
+            <p class="eyebrow">02 / Key</p>
+            <h2 id="key-checks-title">Key check</h2>
           </div>
-          <div id="key-checks" class="form-stack"><p class="empty-state">Loading key profiles…</p></div>
+          <label class="field"><span>Key being checked</span><select id="key-select" name="key_id" required><option value="">Select a key</option></select></label>
+          <p class="field-help">One submission records one key. The other keys keep their own next check date.</p>
+          <div id="key-check" class="form-stack"><p class="empty-state">Loading key profiles…</p></div>
         </section>
 
         <section class="form-section" aria-labelledby="software-title">
@@ -57,10 +58,11 @@
             <h2 id="software-title">Software compatibility</h2>
           </div>
           <div class="field-grid">
+            <label class="field"><span>Wallet software</span><select id="wallet-software" name="wallet_software" required><option value="">Select software</option><option value="Sparrow Wallet">Sparrow Wallet</option><option value="Nunchuk">Nunchuk</option></select></label>
             <label class="field"><span>Compatibility status</span><select name="software_compatibility_status"><option value="IKKJE_VURDERT">Not assessed</option><option value="OK">OK</option><option value="PROBLEM">Problem</option></select></label>
-            <label class="field"><span>Sparrow version <span class="optional">(if used)</span></span><input name="sparrow_version" type="text" maxlength="100" autocomplete="off"></label>
-            <label class="field"><span>Nunchuk version <span class="optional">(if used)</span></span><input name="nunchuk_version" type="text" maxlength="100" autocomplete="off"></label>
+            <label class="field"><span>Software version <span class="optional">(if used)</span></span><input name="software_version" type="text" maxlength="100" autocomplete="off"></label>
           </div>
+          <p class="field-help" id="software-help">Record the version of the software you selected for this key.</p>
           <label class="field"><span>Compatibility notes</span><textarea name="software_comments" rows="3" maxlength="2000"></textarea></label>
         </section>
 
@@ -69,8 +71,8 @@
             <p class="eyebrow">04 / Standards</p>
             <h2 id="tool-checks-title">BIP327 and SLIP39 support</h2>
           </div>
-          <p class="field-help">Record the result and source. This app does not verify support or perform upgrades.</p>
-          <div id="tool-checks" class="form-stack"><p class="empty-state">Loading products…</p></div>
+          <p class="field-help">Record the result for the selected key and the selected software. This app does not verify support or perform upgrades.</p>
+          <div id="tool-checks" class="form-stack"><p class="empty-state">Select a key and software to see the products to check.</p></div>
         </section>
 
         <section class="form-section" aria-labelledby="security-title">
@@ -79,7 +81,7 @@
             <h2 id="security-title">Security status</h2>
           </div>
           <p class="field-help">Enter results from your external research; the app does not contact AI or product providers.</p>
-          <div id="security-checks" class="form-stack"><p class="empty-state">Loading products…</p></div>
+          <div id="security-checks" class="form-stack"><p class="empty-state">Select a key to see the providers to check.</p></div>
         </section>
 
         <section class="form-section" aria-labelledby="contact-title">
