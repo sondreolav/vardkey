@@ -16,8 +16,8 @@ Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 
 ## Språkkrav
 
-- [ ] Brukargrensesnittet, app-tekst, kjeldekode, variabel- og funksjonsnamn, kommentarar og teknisk dokumentasjon skal vere på engelsk.
-- [ ] `TODO.md` kan vere på norsk; dette er det einaste unntaket.
+- [x] Brukargrensesnittet, app-tekst, kjeldekode, variabel- og funksjonsnamn, kommentarar og teknisk dokumentasjon skal vere på engelsk.
+- [x] `TODO.md` kan vere på norsk; dette er det einaste unntaket.
 
 ---
 
@@ -26,14 +26,14 @@ Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 ## Dette skal vere med
 
 - [x] Ein enkel web-app med dashboard.
-- [ ] Registrering av dei tre nøklane.
-- [ ] Registrering av årleg health check.
-- [ ] Kontroll av alle punkta i den årlege sjekklista.
-- [ ] Varsel når eit kontrollpunkt krev oppfølging.
-- [ ] Historikk over gjennomførte health checks.
-- [ ] Automatisk forslag til neste sjekk, ca. eitt år fram i tid.
+- [x] Registrering av dei tre nøklane.
+- [x] Registrering av årleg health check.
+- [x] Kontroll av alle punkta i den årlege sjekklista.
+- [x] Varsel når eit kontrollpunkt krev oppfølging.
+- [x] Historikk over gjennomførte health checks.
+- [x] Automatisk forslag til neste sjekk, ca. eitt år fram i tid.
 - [ ] Rapporteksport i Excel-kompatibelt format.
-- [ ] Lokal SQLite-database.
+- [x] Lokal SQLite-database.
 - [ ] Persistent lagring på StartOS.
 - [ ] StartOS health check.
 - [ ] StartOS backup og restore.
@@ -57,13 +57,13 @@ Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 
 # 2. Viktige reglar for appen
 
-- [ ] Appen skal aldri spørje etter seed phrase.
-- [ ] Appen skal aldri spørje etter private keys.
-- [ ] Appen skal aldri lagre PIN, passord eller wallet-hemmeligheiter.
-- [ ] Kontaktinformasjon til nøkkelhaldarar skal ikkje lagrast i appen; berre om kontaktinfo er verifisert.
-- [ ] Appen skal ikkje late som han sjølv har utført ein hardware-test. Brukaren registrerer resultatet av testen.
-- [ ] Appen skal vere lokal og enkel.
-- [ ] Dersom noko ikkje er nødvendig for den årlege health check-en, skal det ikkje byggjast i MVP.
+- [x] Appen skal aldri spørje etter seed phrase.
+- [x] Appen skal aldri spørje etter private keys.
+- [x] Appen skal aldri lagre PIN, passord eller wallet-hemmeligheiter.
+- [x] Kontaktinformasjon til nøkkelhaldarar skal ikkje lagrast i appen; berre om kontaktinfo er verifisert.
+- [x] Appen skal ikkje late som han sjølv har utført ein hardware-test. Brukaren registrerer resultatet av testen.
+- [x] Appen skal vere lokal og enkel.
+- [x] Dersom noko ikkje er nødvendig for den årlege health check-en, skal det ikkje byggjast i MVP.
 
 ---
 
@@ -77,10 +77,10 @@ Appen skal starte med eitt fast multisig-oppsett:
 | 2 | Hardware | Blockstream Jade |
 | 3 | Cloud | Nunchuk |
 
-- [ ] Vis 2-av-3 som oppsettet i dashboardet.
-- [ ] Ha tre nøkkelprofilar, éin for kvar nøkkel.
+- [x] Vis 2-av-3 som oppsettet i dashboardet.
+- [x] Ha tre nøkkelprofilar, éin for kvar nøkkel.
 - [ ] La brukaren gi nøklane lesbare namn dersom ønskjeleg.
-- [ ] Ikkje bygg generell støtte for mange oppsett enno.
+- [x] Ikkje bygg generell støtte for mange oppsett enno.
 
 ---
 
@@ -90,50 +90,50 @@ Bruk SQLite med så få tabellar som mogleg.
 
 ## 4.1 `keys`
 
-- [ ] `id`
-- [ ] `key_number` = 1, 2 eller 3
-- [ ] `name`
-- [ ] `type` = `hardware` eller `cloud`
-- [ ] `device` = SeedSigner / Blockstream Jade / Nunchuk
-- [ ] `created_at`
+- [x] `id`
+- [x] `key_number` = 1, 2 eller 3
+- [x] `name`
+- [x] `type` = `hardware` eller `cloud`
+- [x] `device` = SeedSigner / Blockstream Jade / Nunchuk
+- [x] `created_at`
 
 ## 4.2 `health_checks`
 
 Ein rad/record for kvar årlege health check.
 
-- [ ] `id`
-- [ ] `checked_at`
-- [ ] `next_check_due`
-- [ ] `software_compatibility_status`
-- [ ] `sparrow_version`
-- [ ] `nunchuk_version`
+- [x] `id`
+- [x] `checked_at`
+- [x] `next_check_due`
+- [x] `software_compatibility_status`
+- [x] `sparrow_version`
+- [x] `nunchuk_version`
 - [ ] `ai_security_status`
-- [ ] `contact_info_verified`
-- [ ] `comments`
+- [x] `contact_info_verified`
+- [x] `comments`
 
 ## 4.3 `key_checks`
 
 Eitt record per nøkkel i kvar health check.
 
-- [ ] `id`
-- [ ] `health_check_id`
-- [ ] `key_id`
-- [ ] `available`
-- [ ] `hardware_works`
-- [ ] `firmware_version`
-- [ ] `seed_backup_status`
-- [ ] `cloud_health_status`
-- [ ] `cloud_provider_operational`
-- [ ] `address_path_verified`
-- [ ] `address_path`
-- [ ] `comments`
+- [x] `id`
+- [x] `health_check_id`
+- [x] `key_id`
+- [x] `available`
+- [x] `hardware_works`
+- [x] `firmware_version`
+- [x] `seed_backup_status`
+- [x] `cloud_health_status`
+- [x] `cloud_provider_operational`
+- [x] `address_path_verified`
+- [x] `address_path`
+- [x] `comments`
 
 Reglar:
 
-- [ ] `hardware_works` skal vere relevant for nøkkel 1 og 2.
-- [ ] `firmware_version` skal vere relevant for nøkkel 1 og 2.
-- [ ] `cloud_health_status` og `cloud_provider_operational` skal vere relevante for nøkkel 3.
-- [ ] `address_path` skal kunne lagre den verifiserte adressestien.
+- [x] `hardware_works` skal vere relevant for nøkkel 1 og 2.
+- [x] `firmware_version` skal vere relevant for nøkkel 1 og 2.
+- [x] `cloud_health_status` og `cloud_provider_operational` skal vere relevante for nøkkel 3.
+- [x] `address_path` skal kunne lagre den verifiserte adressestien.
 
 ## 4.4 `tool_checks`
 
@@ -148,14 +148,14 @@ Produkta som skal vurderast:
 
 Felt:
 
-- [ ] `id`
-- [ ] `health_check_id`
-- [ ] `product`
-- [ ] `bip327_status`
-- [ ] `slip39_status`
-- [ ] `version`
-- [ ] `checked_at`
-- [ ] `notes`
+- [x] `id`
+- [x] `health_check_id`
+- [x] `product`
+- [x] `bip327_status`
+- [x] `slip39_status`
+- [x] `version`
+- [x] `checked_at`
+- [x] `notes`
 
 ---
 
@@ -169,17 +169,17 @@ Bruk enkle statusar som:
 - `PROBLEM`
 - `IKKJE_VURDERT`
 
-- [ ] Bruk same statuslogikk i database og UI.
-- [ ] Ikkje bland saman «ikkje vurdert» og eit faktisk negativt resultat.
+- [x] Bruk same statuslogikk i database og UI.
+- [x] Ikkje bland saman «ikkje vurdert» og eit faktisk negativt resultat.
 
 ## 5.2 KI-sikkerheitsstatus
 
 Bruk nøyaktig desse fire verdiane:
 
-- [ ] `TRYGG`
-- [ ] `PATCHA`
-- [ ] `SÅRBAR`
-- [ ] `KOMPROMITTERT`
+- [x] `TRYGG`
+- [x] `PATCHA`
+- [x] `SÅRBAR`
+- [x] `KOMPROMITTERT`
 
 Ingen andre sikkerheitsstatusar skal brukast.
 
@@ -189,70 +189,70 @@ Ingen andre sikkerheitsstatusar skal brukast.
 
 ## Steg 1 — Start kontroll
 
-- [ ] Brukaren trykkjer `Start årleg health check`.
-- [ ] Dagens dato blir føreslått automatisk.
-- [ ] Neste sjekk blir føreslått ca. eitt år fram i tid.
+- [x] Brukaren trykkjer `Start årleg health check`.
+- [x] Dagens dato blir føreslått automatisk.
+- [x] Neste sjekk blir føreslått ca. eitt år fram i tid.
 
 ## Steg 2 — Kontroller nøkkel 1: SeedSigner
 
-- [ ] Tilgjengeleg / ikkje tilgjengeleg.
-- [ ] Hardware fungerer / fungerer ikkje.
-- [ ] Registrer firmware-versjon.
-- [ ] Kontroller seed-backup.
-- [ ] Kontroller at backupen er intakt og stemmer med hardware.
-- [ ] Verifiser adresse.
-- [ ] Verifiser derivasjonshøgd.
-- [ ] Verifiser adresse-sti.
-- [ ] Kommentar ved behov.
+- [x] Tilgjengeleg / ikkje tilgjengeleg.
+- [x] Hardware fungerer / fungerer ikkje.
+- [x] Registrer firmware-versjon.
+- [x] Kontroller seed-backup.
+- [x] Kontroller at backupen er intakt og stemmer med hardware.
+- [x] Verifiser adresse.
+- [x] Verifiser derivasjonshøgd.
+- [x] Verifiser adresse-sti.
+- [x] Kommentar ved behov.
 
 ## Steg 3 — Kontroller nøkkel 2: Blockstream Jade
 
-- [ ] Tilgjengeleg / ikkje tilgjengeleg.
-- [ ] Hardware fungerer / fungerer ikkje.
-- [ ] Registrer firmware-versjon.
-- [ ] Kontroller seed-backup.
-- [ ] Kontroller at backupen er intakt og stemmer med hardware.
-- [ ] Verifiser adresse.
-- [ ] Verifiser derivasjonshøgd.
-- [ ] Verifiser adresse-sti.
-- [ ] Kommentar ved behov.
+- [x] Tilgjengeleg / ikkje tilgjengeleg.
+- [x] Hardware fungerer / fungerer ikkje.
+- [x] Registrer firmware-versjon.
+- [x] Kontroller seed-backup.
+- [x] Kontroller at backupen er intakt og stemmer med hardware.
+- [x] Verifiser adresse.
+- [x] Verifiser derivasjonshøgd.
+- [x] Verifiser adresse-sti.
+- [x] Kommentar ved behov.
 
 ## Steg 4 — Kontroller nøkkel 3: Nunchuk sky-nøkkel
 
-- [ ] Tilgjengeleg / ikkje tilgjengeleg.
-- [ ] Gjennomfør cloud health check.
-- [ ] Verifiser at Nunchuk framleis er i drift.
-- [ ] Registrer resultatet av leverandør-kontrollen.
-- [ ] Verifiser relevant adresse/oppsett.
-- [ ] Kommentar ved behov.
+- [x] Tilgjengeleg / ikkje tilgjengeleg.
+- [x] Gjennomfør cloud health check.
+- [x] Verifiser at Nunchuk framleis er i drift.
+- [x] Registrer resultatet av leverandør-kontrollen.
+- [x] Verifiser relevant adresse/oppsett.
+- [x] Kommentar ved behov.
 
 ## Steg 5 — Programvare-kompatibilitet
 
-- [ ] Registrer Sparrow-versjon dersom Sparrow blir brukt.
-- [ ] Registrer Nunchuk-versjon dersom Nunchuk blir brukt.
-- [ ] Verifiser at Sparrow og/eller Nunchuk støttar hardware-oppsettet.
-- [ ] Registrer `OK` eller `PROBLEM`.
-- [ ] Legg inn kommentar dersom det er problem.
+- [x] Registrer Sparrow-versjon dersom Sparrow blir brukt.
+- [x] Registrer Nunchuk-versjon dersom Nunchuk blir brukt.
+- [x] Verifiser at Sparrow og/eller Nunchuk støttar hardware-oppsettet.
+- [x] Registrer `OK` eller `PROBLEM`.
+- [x] Legg inn kommentar dersom det er problem.
 
 ## Steg 6 — BIP327 / SLIP39
 
 Sjekk status for kvart av desse fire produkta:
 
-- [ ] SeedSigner — BIP327
-- [ ] SeedSigner — SLIP39
-- [ ] Blockstream Jade — BIP327
-- [ ] Blockstream Jade — SLIP39
-- [ ] Nunchuk — BIP327
-- [ ] Nunchuk — SLIP39
-- [ ] Sparrow Wallet — BIP327
-- [ ] Sparrow Wallet — SLIP39
+- [x] SeedSigner — BIP327
+- [x] SeedSigner — SLIP39
+- [x] Blockstream Jade — BIP327
+- [x] Blockstream Jade — SLIP39
+- [x] Nunchuk — BIP327
+- [x] Nunchuk — SLIP39
+- [x] Sparrow Wallet — BIP327
+- [x] Sparrow Wallet — SLIP39
 
 For kvart resultat:
 
-- [ ] Registrer status.
-- [ ] Registrer versjon dersom relevant.
-- [ ] Registrer dato.
-- [ ] Registrer kommentar/kjelde dersom relevant.
+- [x] Registrer status.
+- [x] Registrer versjon dersom relevant.
+- [x] Registrer dato.
+- [x] Registrer kommentar/kjelde dersom relevant.
 
 Appen skal berre **registrere** dette resultatet. Han skal ikkje starte ei oppgradering.
 
@@ -262,40 +262,40 @@ Brukaren skal registrere resultat frå ein ekstern KI-/research-sjekk av leveran
 
 Leverandørar:
 
-- [ ] SeedSigner
-- [ ] Blockstream Jade
-- [ ] Nunchuk
-- [ ] Sparrow Wallet
+- [x] SeedSigner
+- [x] Blockstream Jade
+- [x] Nunchuk
+- [x] Sparrow Wallet
 
 For kvar leverandør:
 
-- [ ] Registrer status: TRYGG / PATCHA / SÅRBAR / KOMPROMITTERT.
-- [ ] Registrer kort kommentar.
+- [x] Registrer status: TRYGG / PATCHA / SÅRBAR / KOMPROMITTERT.
+- [x] Registrer kort kommentar.
 
 Appen skal ikkje kontakte KI sjølv i MVP.
 
 ## Steg 8 — Kontaktinfo
 
-- [ ] Stadfest at kontaktinformasjonen til alle nøkkelhaldarane er gyldig.
-- [ ] Lagre berre `JA` / `NEI`.
-- [ ] Ikkje lagre namn, telefonnummer, e-post eller anna kontaktinnhald.
+- [x] Stadfest at kontaktinformasjonen til alle nøkkelhaldarane er gyldig.
+- [x] Lagre berre `JA` / `NEI`.
+- [x] Ikkje lagre namn, telefonnummer, e-post eller anna kontaktinnhald.
 
 ## Steg 9 — Kommentar
 
-- [ ] Eitt overordna kommentarfelt for observasjonar.
-- [ ] Eigne kommentarar per nøkkel der nødvendig.
+- [x] Eitt overordna kommentarfelt for observasjonar.
+- [x] Eigne kommentarar per nøkkel der nødvendig.
 
 ## Steg 10 — Oppsummering
 
 Før lagring skal appen vise:
 
-- [ ] Alle kontrollpunkt.
-- [ ] Alle problem.
-- [ ] Alle manglande kontrollar.
-- [ ] Neste sjekkdato.
-- [ ] Eventuelle handlingar som bør følgjast opp.
+- [x] Alle kontrollpunkt.
+- [x] Alle problem.
+- [x] Alle manglande kontrollar.
+- [x] Neste sjekkdato.
+- [x] Eventuelle handlingar som bør følgjast opp.
 
-- [ ] Brukaren må trykkje `Lagre health check` for å lagre kontrollen.
+- [x] Brukaren må trykkje `Lagre health check` for å lagre kontrollen.
 
 ---
 
@@ -303,16 +303,16 @@ Før lagring skal appen vise:
 
 Appen skal gi tydelege varsel når resultatet krev handling.
 
-- [ ] Nøkkel ikkje tilgjengeleg → vis at dette krev umiddelbar oppfølging.
-- [ ] Hardware fungerer ikkje → vis at seed-backup bør testast på annan kompatibel hardware.
-- [ ] Seed-backup manglar eller er øydelagd → vis at PROTOKOLL 3: Nøkkeltap skal aktiverast.
-- [ ] Adresseverifisering feilar → vis at adressa bør kontrollerast mot BSMS og testast på nytt.
-- [ ] Programvare støttar ikkje lenger hardware → vis at alternativ programvare/løysing bør vurderast.
-- [ ] BIP327-status er positiv → vis at framtidig BIP327-oppgradering kan vurderast.
-- [ ] SLIP39-status er positiv → vis at framtidig SLIP39-aktivering kan vurderast.
-- [ ] KI-status `SÅRBAR` → vis at firmware-/sikkerheitsproblem må følgjast opp.
-- [ ] KI-status `KOMPROMITTERT` → vis at nøkkeltapsprosedyre må følgjast.
-- [ ] Kontaktinfo er ikkje stadfesta → vis at kontaktinformasjon må oppdaterast i den eksterne dokumentasjonen.
+- [x] Nøkkel ikkje tilgjengeleg → vis at dette krev umiddelbar oppfølging.
+- [x] Hardware fungerer ikkje → vis at seed-backup bør testast på annan kompatibel hardware.
+- [x] Seed-backup manglar eller er øydelagd → vis at PROTOKOLL 3: Nøkkeltap skal aktiverast.
+- [x] Adresseverifisering feilar → vis at adressa bør kontrollerast mot BSMS og testast på nytt.
+- [x] Programvare støttar ikkje lenger hardware → vis at alternativ programvare/løysing bør vurderast.
+- [x] BIP327-status er positiv → vis at framtidig BIP327-oppgradering kan vurderast.
+- [x] SLIP39-status er positiv → vis at framtidig SLIP39-aktivering kan vurderast.
+- [x] KI-status `SÅRBAR` → vis at firmware-/sikkerheitsproblem må følgjast opp.
+- [x] KI-status `KOMPROMITTERT` → vis at nøkkeltapsprosedyre må følgjast.
+- [x] Kontaktinfo er ikkje stadfesta → vis at kontaktinformasjon må oppdaterast i den eksterne dokumentasjonen.
 
 Appen skal ikkje automatisk utføre nokon av desse tiltaka.
 
@@ -322,30 +322,30 @@ Appen skal ikkje automatisk utføre nokon av desse tiltaka.
 
 Dashboardet skal vere enkelt.
 
-- [ ] Vis 2-av-3 oppsettet.
+- [x] Vis 2-av-3 oppsettet.
 - [ ] Vis status for nøkkel 1.
 - [ ] Vis status for nøkkel 2.
 - [ ] Vis status for nøkkel 3.
-- [ ] Vis dato for siste health check.
-- [ ] Vis neste health check.
-- [ ] Vis aktive varsel.
-- [ ] Knapp: `Start årleg health check`.
-- [ ] Knapp/lenke: `Historikk`.
+- [x] Vis dato for siste health check.
+- [x] Vis neste health check.
+- [x] Vis aktive varsel.
+- [x] Knapp: `Start årleg health check`.
+- [x] Knapp/lenke: `Historikk`.
 
 ---
 
 # 9. Historikk
 
-- [ ] Vis alle gjennomførte health checks kronologisk.
-- [ ] Opne ein health check i read-only-visning.
-- [ ] Vis dato.
-- [ ] Vis neste sjekk.
-- [ ] Vis status per nøkkel.
-- [ ] Vis programvarestatus.
-- [ ] Vis BIP327/SLIP39-resultat.
-- [ ] Vis KI-status.
-- [ ] Vis kommentarar.
-- [ ] Gamle health checks skal ikkje overskrivast når ein ny blir registrert.
+- [x] Vis alle gjennomførte health checks kronologisk.
+- [x] Opne ein health check i read-only-visning.
+- [x] Vis dato.
+- [x] Vis neste sjekk.
+- [x] Vis status per nøkkel.
+- [x] Vis programvarestatus.
+- [x] Vis BIP327/SLIP39-resultat.
+- [x] Vis KI-status.
+- [x] Vis kommentarar.
+- [x] Gamle health checks skal ikkje overskrivast når ein ny blir registrert.
 
 ---
 
@@ -375,34 +375,34 @@ Rapporten skal kunne brukast i Excel.
 
 Vel den enklaste teknologien som passar godt for ein liten lokal web-app.
 
-- [ ] Implementer SQLite.
-- [ ] Implementer database-initialisering/migrering.
-- [ ] Implementer lagring av nøklar.
-- [ ] Implementer lagring av health checks.
-- [ ] Implementer historikk.
-- [ ] Implementer varsellogikken.
+- [x] Implementer SQLite.
+- [x] Implementer database-initialisering/migrering.
+- [x] Implementer lagring av nøklar.
+- [x] Implementer lagring av health checks.
+- [x] Implementer historikk.
+- [x] Implementer varsellogikken.
 - [ ] Implementer rapporteksport.
-- [ ] Implementer health endpoint.
+- [x] Implementer health endpoint.
 
 Minimum:
 
-- [ ] `GET /health`
-- [ ] `GET /api/keys`
-- [ ] `GET /api/health-checks`
-- [ ] `GET /api/health-checks/:id`
-- [ ] `POST /api/health-checks`
+- [x] `GET /health`
+- [x] `GET /api/keys`
+- [x] `GET /api/health-checks`
+- [x] `GET /api/health-checks/:id`
+- [x] `POST /api/health-checks`
 - [ ] `GET /api/export`
 
 ---
 
 # 12. Frontend
 
-- [ ] Lag enkel responsiv web-UI.
-- [ ] Prioriter enkelheit framfor grafisk kompleksitet.
-- [ ] Bruk tydelege statusfelt.
-- [ ] Bruk faste val der status skal vere ein avgrensa verdi.
-- [ ] Vis problem tydeleg.
-- [ ] Vis kva som står att før ein health check kan lagrast.
+- [x] Lag enkel responsiv web-UI.
+- [x] Prioriter enkelheit framfor grafisk kompleksitet.
+- [x] Bruk tydelege statusfelt.
+- [x] Bruk faste val der status skal vere ein avgrensa verdi.
+- [x] Vis problem tydeleg.
+- [x] Vis kva som står att før ein health check kan lagrast.
 - [ ] Sørg for at appen fungerer godt i vanleg StartOS-browser.
 
 ---
@@ -454,16 +454,16 @@ Unngå:
 
 # 15. Sikkerheit og personvern
 
-- [ ] Ingen seed phrase i database.
-- [ ] Ingen private keys i database.
-- [ ] Ingen wallet-passord i database.
-- [ ] Ingen sky-passord eller tokens i database.
-- [ ] Ingen unødvendige personopplysningar.
-- [ ] Kontaktinfo blir berre registrert som verifisert/ikkje verifisert.
-- [ ] Valider input på serveren.
-- [ ] Bruk parameteriserte SQL-spørringar.
-- [ ] Ikkje implementer eigen kryptografi.
-- [ ] Ikkje send data til eksterne tenester i MVP.
+- [x] Ingen seed phrase i database.
+- [x] Ingen private keys i database.
+- [x] Ingen wallet-passord i database.
+- [x] Ingen sky-passord eller tokens i database.
+- [x] Ingen unødvendige personopplysningar.
+- [x] Kontaktinfo blir berre registrert som verifisert/ikkje verifisert.
+- [x] Valider input på serveren.
+- [x] Bruk parameteriserte SQL-spørringar.
+- [x] Ikkje implementer eigen kryptografi.
+- [x] Ikkje send data til eksterne tenester i MVP.
 
 ---
 
@@ -529,14 +529,14 @@ Før første release skal alle desse vere oppfylte:
 
 # 18. Arbeidsrekkefølgje for AI-programmeraren
 
-Utfør oppgåvene i denne rekkefølgja og ikkje hopp fram til avanserte funksjonar:
+Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjonar:
 
 - [x] 1. Opprett grunnleggande web-app.
 - [x] 2. Opprett SQLite og datamodellen.
 - [x] 3. Implementer dei tre faste nøklane.
-- [ ] 4. Implementer health check-skjemaet.
-- [ ] 5. Implementer lagring og historikk.
-- [ ] 6. Implementer varsellogikken.
+- [x] 4. Implementer health check-skjemaet.
+- [x] 5. Implementer lagring og historikk.
+- [x] 6. Implementer varsellogikken.
 - [ ] 7. Implementer dashboard.
 - [ ] 8. Implementer rapporteksport.
 - [ ] 9. Implementer StartOS package.
