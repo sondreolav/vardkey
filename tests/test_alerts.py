@@ -6,7 +6,11 @@ from alerts import build_alerts, collect_alerts
 
 
 def clean_record(key_number=1, name="SeedSigner", key_type="hardware"):
-    """Return a saved check for one key whose results need no follow-up."""
+    """Return a saved check for one key whose results need no follow-up.
+
+    The provider list is fixed, so a test that needs another provider has to
+    replace one of the entries itself.
+    """
     entry = {
         "key_number": key_number,
         "name": name,
@@ -297,7 +301,7 @@ class CollectAlertsTests(unittest.TestCase):
         first = dated_record(1, "2025-10-01")
         first["ai_security_checks"][0]["status"] = "VULNERABLE"
         second = dated_record(2, "2026-10-01", key_number=2, name="Blockstream Jade")
-        second["ai_security_checks"][0]["status"] = "VULNERABLE"
+        second["ai_security_checks"][0] = {"provider": "Blockstream Jade", "status": "VULNERABLE"}
 
         alerts = collect_alerts([second, first])
 
