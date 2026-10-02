@@ -4,7 +4,7 @@ Helsesjekk is a local web application for recording annual checks of a fixed 2-o
 
 ## Current status
 
-The English dashboard shows the three fixed key profiles, the latest saved check dates, and the active follow-up alerts. Each key card shows its own last check date and next due date, and the summary cards above the alerts show the earliest upcoming date and any key that has passed its due date. The annual health-check form records the checklist for **one selected key per submission** and saves it to a local SQLite database, and `/history` lists saved checks with a read-only detail view. Report export and the StartOS package are not implemented yet. The application does not claim that any device or backup has been tested.
+The English dashboard shows the three fixed key profiles, the latest saved check dates, and the active follow-up alerts. Each key card shows its own last check date and next due date, and the summary cards above the alerts show the earliest upcoming date and any key that has passed its due date. The annual health-check form records the checklist for **one selected key per submission** and saves it to a local SQLite database, and `/history` lists saved checks with a read-only detail view. `GET /api/export` returns every saved check as a CSV download. The StartOS package is not implemented yet. The application does not claim that any device or backup has been tested.
 
 Each key has its own next-check date, calculated on the server as one calendar year after the check date (29 February is clamped to 28 February). The date is not editable in the form, and a submission for one key never changes another key's interval.
 
@@ -34,6 +34,7 @@ python3 -m unittest discover -s tests
 | GET | `/api/health-checks` | Returns saved check summaries, newest first, including the checked key numbers. |
 | GET | `/api/health-checks/<id>` | Returns one saved check with its related rows. |
 | GET | `/api/alerts` | Returns the follow-up alerts of the most recent saved check. |
+| GET | `/api/export` | Returns every saved key check as a CSV download. |
 | POST | `/api/health-checks` | Validates and stores one check for one selected key. |
 
 `GET /api/key-status` returns one entry per key with `key_id`, `key_number`, `name`, `type`, `device`, `last_checked_at`, and `next_check_due`. A key that has never been checked has `null` dates. Whether a date is overdue is decided by the client from `next_check_due`, so the endpoint stays independent of the current date.
@@ -49,6 +50,17 @@ python3 -m unittest discover -s tests
 
 Unknown statuses, unknown key ids, irrelevant or duplicated products and providers, invalid dates, and over-long text are rejected with `400`.
 
+## CSV export
+
+`GET /api/export` sends `helsesjekk-export.csv` as a download: UTF-8, comma separated, CRLF line endings, with a header row. It contains every saved key check, oldest first.
+
+One row is one key check. The `Check id` column identifies the submission a row belongs to, so records saved before section 19 (up to three keys in one submission) stay grouped. Results that have more than one value per submission are joined into a single cell as `Label: value; Label: value`:
+
+- `BIP327` and `SLIP39` list the key's product and the chosen wallet software.
+- `Security status` lists the key's product, `Sparrow Wallet`, and `Nunchuk`, or `Nunchuk` alone for the cloud key.
+
+Stored `0`/`1` values are written as `No`/`Yes`, matching the history view. Empty values are written as empty cells. Text that contains a comma, a quote, or a semicolon is quoted and escaped by the standard CSV rules, so the file can be opened directly in a spreadsheet.
+
 ## Alerts
 
 `GET /api/alerts` returns `[]` when no check has been saved, and otherwise one entry per result that needs follow-up in the most recent saved check:
@@ -63,7 +75,7 @@ The application only reports these alerts. It never performs the follow-up actio
 
 ## Development
 
-The web server, validation, alert rules, and database use Python's standard library. The server serves only explicitly listed static assets. Keep application data local; never add fields for seed phrases, private keys, wallet passwords, cloud credentials, or contact details.
+The web server, validation, alert rules, export, and database use Python's standard library. The server serves only explicitly listed static assets. Keep application data local; never add fields for seed phrases, private keys, wallet passwords, cloud credentials, or contact details.
 
 The application UI, source code, comments, and technical documentation are in English. `TODO.md` is intentionally written in Norwegian. The stored data values are `OK`, `PROBLEM`, and `IKKJE_VURDERT` for general results, `OK` and `PROBLEM` for the two verification results, and `SECURE`, `PATCHED`, `VULNERABLE`, and `COMPROMISED` for the security status.
 
