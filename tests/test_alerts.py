@@ -86,7 +86,7 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(alerts[0]["severity"], "critical")
         self.assertEqual(alerts[0]["source"], "Key 3: Nunchuk")
         self.assertIn("cloud provider", alerts[0]["message"])
-        self.assertIn("Replace the key", alerts[0]["message"])
+        self.assertIn("replace the key", alerts[0]["message"])
 
     def test_a_hardware_failure_points_at_testing_the_backup_elsewhere(self):
         record = clean_record()
