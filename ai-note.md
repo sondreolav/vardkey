@@ -2,9 +2,9 @@
 
 ## Status
 
-The requirements in section 19 of `TODO.md` are **implemented and verified**. The full test suite passes (60 tests, run by the user with `python3 -m unittest discover -s tests`). Section 19 of `TODO.md` and the items that section 19 changed in sections 4, 5, 6, 7, 9, 11 and 18 are ticked.
+The requirements in section 19 of `TODO.md` are **implemented and verified**. The full test suite passed (60 tests, run by the user with `python3 -m unittest discover -s tests`). Section 19 of `TODO.md` and the items that section 19 changed in sections 4, 5, 6, 7, 9, 11 and 18 are ticked.
 
-A follow-up round of questions was then answered by the user; see "Decisions of the follow-up round". The cloud provider alert from that round is implemented, and 62 tests pass.
+A follow-up round of questions was then answered by the user; see "Decisions of the follow-up round". The cloud provider alert from that round is implemented, with two new tests for it. The suite now has 62 tests and should be re-run to confirm.
 
 Treat section 19 as authoritative wherever older requirements elsewhere in `TODO.md` conflict with it. Do not re-open the decisions below; they are settled and built.
 
@@ -43,7 +43,7 @@ These were settled in a question-by-question review. Do not re-open them.
 
 7. **OK / Problem is mandatory for the two verification fields.** There is no "not assessed" option and an empty value is rejected at save. They are required only when the key is available, per decision 8.
 
-8. **Unavailable key.** When `available = No`, the remaining key fields (hardware works, firmware version, seed backup, address path) are hidden and not required. The key note stays available, for example to record why the key is missing or that a replacement has been ordered. The only alert in this case is the critical one: *"This key was not available. Replace the key before continuing; the remaining checks for this key could not be recorded."* The app must not raise a seed-backup or address alert for an unavailable key, because those checks could not be performed.
+8. **Unavailable key.** When `available = No`, the remaining key fields (hardware works, firmware version, seed backup, address path) are hidden and not required. The key note stays available, for example to record why the key is missing or that a replacement has been ordered. The only alert in this case is the critical one: *"This key was not available. Replace the key before continuing; the remaining checks for this key cannot be recorded."* The app must not raise a seed-backup or address alert for an unavailable key, because those checks could not be performed.
 
 9. **Legacy records stay readable.** Existing multi-key records must keep rendering in the history. The migration must map old boolean flags to the new status values (`1` → `OK`, `0` → `Problem`) and fold the old `seed_backup_status` into `seed_backup_verified`.
 
