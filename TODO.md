@@ -14,7 +14,7 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 
 Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 
-**Om dokumentet:** §1–§18 er kravspecen. §19–§22 er avgjerder som overstyrer delar av han; der dei strir mot kvarandre, gjeld den nyaste avgjerda. §19–§21 er implementerte og verifiserte og er komprimerte til samandrag. §22 er vedteken men ikkje implementert.
+**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. §19–§22 er avgjerder som vart vedtekne undervegs, alle implementerte og verifiserte, og som er innarbeidde i §1–§18. Dei står att nedst som ein kort historikk over kva som vart endra og kvifor.
 
 ## Språkkrav
 
@@ -114,7 +114,7 @@ Reglar:
 - [x] `address_path` lagrar den verifiserte adressestien.
 - [x] Når `available` er Nei, blir dei andre nøkkelfelta tømde, medan nøkkelnotatet blir behalde. For nøkkel 3 blir dei to cloud-felta likevel lagra, utleidde (§20).
 - [x] `seed_backup_status`, `address_verified` og `derivation_height` er fjerna (§19).
-- [ ] Når `available` er Nei, skal `wallet_software`, `tool_checks` og `ai_security_checks` kunne utelatast heilt (§22).
+- [x] Når `available` er Nei, blir `wallet_software`, `tool_checks` og `ai_security_checks` ikkje registrerte i det heile (§22).
 
 ---
 
@@ -262,8 +262,8 @@ Minimumsendepunkt:
 
 **Merk:** `GET /api/key-status`, `GET /api/previous-values` og `GET /api/alerts` er ekstra endepunkt utanom minimumslista, fordi dashboardet og skjemaet treng dei. Dei står ikkje i spesifikasjonen enno.
 
-- [x] `POST /api/health-checks` krev éin konfigurert nøkkel og gyldige, relevante resultat, og avviser manglande eller dupliserte registreringar.
-- [ ] `POST /api/health-checks` skal krevje `available`, og skal ikkje krevje programvare, standardar eller KI-status når nøkkelen er utilgjengeleg (§22).
+- [x] `POST /api/health-checks` krev éin konfigurert nøkkel, `available` og gyldige, relevante resultat, og avviser manglande eller dupliserte registreringar (§22).
+- [x] `POST /api/health-checks` krev ikkje programvare, standardar eller KI-status når nøkkelen er utilgjengeleg (§22).
 
 ---
 
@@ -274,7 +274,7 @@ Minimumsendepunkt:
 - [x] Vis problem tydeleg.
 - [x] Vis kva som står att før ein health check kan lagrast.
 - [x] Skjul felt som ikkje gjeld for vald nøkkel eller vald programvare (§20, §21).
-- [ ] Skjul programvare, standardar og KI-status når nøkkelen er utilgjengeleg (§22).
+- [x] Skjul programvare, standardar og KI-status når nøkkelen er utilgjengeleg (§22).
 - [ ] Sørg for at appen fungerer godt i vanleg StartOS-browser.
 
 ---
@@ -404,9 +404,9 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 - [x] 1. Opprett grunnleggande web-app.
 - [x] 2. Opprett SQLite og datamodellen.
 - [x] 3. Implementer dei tre faste nøklane.
-- [ ] 4. Implementer health check-skjemaet.
+- [x] 4. Implementer health check-skjemaet.
 - [x] 5. Implementer lagring og historikk.
-- [ ] 6. Implementer varsellogikken.
+- [x] 6. Implementer varsellogikken.
 - [x] 7. Implementer dashboard.
 - [x] 8. Implementer rapporteksport.
 - [ ] 9. Implementer StartOS package.
@@ -414,7 +414,9 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 - [ ] 11. Test restart og restore.
 - [ ] 12. Bygg endeleg `.s9pk` og gjer første release.
 
-**Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken, og gjorde på nytt etterpå. Steg 7 og 8 er gjorde etter §19. Steg 4 og 6 er framleis uticka fordi §22 endrar delar av dei; dei blir kryssa av når §22 er verifisert.
+**Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken, og gjorde på nytt etterpå. Steg 4 og 6 vart kryssa av då §22 var verifisert.
+
+**Testar:** 123 grøne testar etter §22. Køyr `python3 -m unittest discover -s tests`.
 
 **Hovudregel:** Bygg den minste løysinga som oppfyller lista over. Ikkje legg til nye funksjonar, tenester eller arkitektur utan at dei er nødvendige for punkta i denne TODO-lista.
 
@@ -454,7 +456,7 @@ Endra §4, §6 (steg 4, 5, 7 og 10), §7, §11 og §19.
 
 # 21. Avgjerd (implementert og verifisert): engelske statusverdiar, adressesti og alle varsel
 
-Endra §4, §5, §6 (steg 2, 3 og 6), §7, §8, §10, §11 og §12. Verifisert med 112 grøne testar.
+Endra §4, §5, §6 (steg 2, 3 og 6), §7, §8, §10, §11 og §12.
 
 - [x] `IKKJE_VURDERT` er bytt til `NOT_ASSESSED` på alle fire kolonnane som brukar han: `health_checks.software_compatibility_status`, `key_checks.cloud_health_status`, `tool_checks.bip327_status` og `tool_checks.slip39_status`.
 - [x] BIP327- og SLIP39-statusane har verdiane `YES`, `NO` og `NOT_ASSESSED` i staden for `OK`, `PROBLEM` og `IKKJE_VURDERT`. Berre `YES` utløyser varsel; eit rapportert `NO` er eit negativt resultat og gir ingen.
@@ -471,32 +473,32 @@ Endra §4, §5, §6 (steg 2, 3 og 6), §7, §8, §10, §11 og §12. Verifisert m
 
 ---
 
-# 22. Avgjerd (IKKJE IMPLEMENTERT): utilgjengeleg nøkkel gjer resten valfritt
+# 22. Avgjerd (implementert og verifisert): utilgjengeleg nøkkel gjer resten valfritt
 
-Vedteken etter §21. Endrar §4 (reglane for `key_checks`), §6 (steg 1, 5, 6 og 7), §7, §11 og §12.
+Vedteken etter §21. Endra §4 (reglane for `key_checks`), §6 (steg 1, 5, 6 og 7), §7, §11 og §12.
 
-**Bakgrunn:** i dag krev skjemaet `Wallet software` og alle `Security status`-felta, og serveren krev `wallet_software`, `tool_checks` og `ai_security_checks`. Når nøkkelen ikkje er tilgjengeleg, finst det ingenting å registrere, så innsendinga blir blokkert utan grunn. Ei innsending som berre seier at nøkkelen mangla, er eit fullgodt resultat og skal gi varselet `key_unavailable`.
+**Bakgrunn:** fram til no kravde skjemaet `Wallet software` og alle `Security status`-felta, og serveren kravde `wallet_software`, `tool_checks` og `ai_security_checks`. Når nøkkelen ikkje er tilgjengeleg, finst det ingenting å registrere, så innsendinga vart blokkert utan grunn. Ei innsending som berre seier at nøkkelen mangla, er eit fullgodt resultat og skal gi varselet `key_unavailable`.
 
 ## Availability blir obligatorisk
 
-- [ ] `Availability` skal berre ha verdiane Ja og Nei. «Not assessed» skal ikkje vere eit alternativ.
-- [ ] Serveren skal krevje `available` og avvise ein POST utan det med `400`.
+- [x] `Availability` har berre verdiane Ja og Nei. «Not assessed» er ikkje eit alternativ.
+- [x] Serveren krev `available` og avviser ein POST utan det med `400`.
 
 ## Når nøkkelen ikkje er tilgjengeleg
 
-- [ ] `Software compatibility`, `BIP327 and SLIP39 support` og `Security status` skal skjulast i skjemaet og ikkje krevjast.
-- [ ] Innsendinga treng berre `Availability`, nøkkelnotat, kontaktstadfesting og overordna kommentar.
-- [ ] `wallet_software`, `tool_checks` og `ai_security_checks` skal vere tomme. Er dei ikkje tomme, skal serveren avvise med `400` — data skal ikkje kastast i det stille.
-- [ ] `software_compatibility_status` kan utelatast og blir då lagra som `NOT_ASSESSED`.
-- [ ] Det skal ikkje lagrast `tool_checks`- eller `ai_security_checks`-rader, og `wallet_software` skal vere `NULL`.
-- [ ] Nøkkel 3 held fram med å lagre dei utleidde cloud-verdiane sine (§20) og gir det samanslåtte kritiske varselet (§7).
+- [x] `Software compatibility`, `BIP327 and SLIP39 support` og `Security status` er skjulte i skjemaet og blir ikkje kravde.
+- [x] Innsendinga treng berre `Availability`, nøkkelnotat, kontaktstadfesting og overordna kommentar.
+- [x] `wallet_software`, `tool_checks` og `ai_security_checks` er tomme. Er dei ikkje tomme, avviser serveren med `400` — data blir ikkje kasta i det stille.
+- [x] `software_compatibility_status` kan utelatast og blir då lagra som `NOT_ASSESSED`.
+- [x] Det blir ikkje lagra `tool_checks`- eller `ai_security_checks`-rader, og `wallet_software` er `NULL`.
+- [x] Nøkkel 3 held fram med å lagre dei utleidde cloud-verdiane sine (§20) og gir det samanslåtte kritiske varselet (§7).
 
 ## Uendra
 
-- [ ] Varselet er framleis `key_unavailable`; det er sjølve poenget med innsendinga.
-- [ ] Databasen krev ingen kolonneendring, og skjemaet held fram som versjon 6.
-- [ ] Historikk og CSV viser tomt for dei felta som ikkje er registrerte.
-- [ ] Når nøkkelen er tilgjengeleg, er krava uendra.
-- [ ] Innsendinga skal framleis krevje kontaktstadfesting og overordna kommentar som valfrie felt, som i dag.
+- [x] Varselet er framleis `key_unavailable`; det er sjølve poenget med innsendinga.
+- [x] Databasen kravde ingen kolonneendring, og skjemaet held fram som versjon 6.
+- [x] Historikk og CSV viser tomt for dei felta som ikkje er registrerte.
+- [x] Når nøkkelen er tilgjengeleg, er krava uendra.
+- [x] Kontaktstadfesting og overordna kommentar er framleis valfrie felt.
 
-**Etter implementering:** køyr testane, kryss av §22, og kryss då òg av steg 4 og 6 i §18.
+**Merknad:** ein `required`-kontroll inne i ein skjult container blir framleis validert av nettlesaren, så dei tre delane teiknar eit tomt-notat i staden for påkravde felt når nøkkelen er utilgjengeleg. Elles ville skjemaet sett rett ut, men ikkje kunne lagrast.
