@@ -14,7 +14,7 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 
 Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 
-**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. §19–§22 er avgjerder som vart vedtekne undervegs, alle implementerte og verifiserte, og som er innarbeidde i §1–§18. Dei står att nedst som ein kort historikk over kva som vart endra og kvifor.
+**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. Fire avgjerder vart tekne undervegs, alle implementerte og verifiserte, og er innarbeidde i §1–§18. Dei står att som eit kort vedlegg i §19–§22, mest for å forklare kvar referansane i §1–§18 peikar. Den fulle grunngjevinga for kvar avgjerd ligg i git-historikken.
 
 ## Språkkrav
 
@@ -393,7 +393,7 @@ Før første release skal alle desse vere oppfylte:
 - [ ] CSV-rapport kan eksporterast.
 - [ ] Data overlever restart.
 - [ ] Backup og restore fungerer.
-- [ ] Ingen wallet-hemmeligheiter blir lagra.
+- [ ] Ingen wallet-hemmelegheiter blir lagra.
 
 ---
 
@@ -416,89 +416,25 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 
 **Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken, og gjorde på nytt etterpå. Steg 4 og 6 vart kryssa av då §22 var verifisert.
 
-**Testar:** 123 grøne testar etter §22. Køyr `python3 -m unittest discover -s tests`.
+**Testar:** 123 grøne testar. Køyr `python3 -m unittest discover -s tests`.
 
 **Hovudregel:** Bygg den minste løysinga som oppfyller lista over. Ikkje legg til nye funksjonar, tenester eller arkitektur utan at dei er nødvendige for punkta i denne TODO-lista.
 
 ---
 
-# 19. Avgjerd (implementert og verifisert): registrering per nøkkel
+# 19–22. Vedtekne avgjerder (implementerte og verifiserte)
 
-Overstyrer kravet om at alle nøklane må registrerast i same innsending. Eksisterande historiske data er bevarte. Endra §4, §6, §7, §8, §9, §10 og §11.
+Desse fire vart tekne undervegs og er no innarbeidde i §1–§18. Kvar referanse i §1–§18 peikar på avsnittet nedanfor. Den fulle grunngjevinga ligg i git-historikken.
 
-- [x] Ei innsending gjeld kontrollen av **éin vald nøkkel**, ikkje alle tre.
-- [x] Alle nøkkelkontrollar og nøkkelnotat i innsendinga gjeld berre den valde nøkkelen.
-- [x] Brukaren vel sjekkdato. Neste sjekkdato blir rekna på serveren som eitt kalenderår etterpå, og kan ikkje redigerast.
-- [x] Brukaren vel éi wallet-programvare: `Sparrow Wallet` eller `Nunchuk`. Nøkkel 3 er låst til Nunchuk. Eitt programvarefelt og eitt versjonsfelt erstattar dei separate versjonsfelta.
-- [x] BIP327/SLIP39 blir registrert for nøkkelproduktet pluss vald programvare, utan duplikat: maks to rader, éi rad for nøkkel 3.
-- [x] Security status følgjer vald nøkkel: nøkkelproduktet og vald programvare, og for nøkkel 3 berre Nunchuk — éin gong.
-- [x] `seed_backup_verified` (nøkkel 1 og 2) og `address_path_verified` er `OK`/`PROBLEM` og obligatoriske når nøkkelen er tilgjengeleg.
-- [x] `seed_backup_status`, `address_verified` og `derivation_height` er fjerna. Sjekkpunktet «Verifiser derivasjonshøgd» blir dekt av `address_path`.
-- [x] Migreringa er bakoverkompatibel, og eldre historikk blir framleis vist.
+**§19 — registrering per nøkkel.** Ei innsending gjeld **éin vald nøkkel**, ikkje alle tre. Brukaren vel éi wallet-programvare (`Sparrow Wallet` eller `Nunchuk`; nøkkel 3 er låst til Nunchuk) med eitt versjonsfelt. `seed_backup_status`, `address_verified` og `derivation_height` er fjerna. Migreringa er bakoverkompatibel, og eldre historikk blir framleis vist.
 
----
+**§20 — skjulte felt som blir utleidde eller vidareførte.** Nøkkel 3 samlar berre `Availability`; cloud-helse, «leverandøren er i drift» og kompatibilitet blir utleidde. For nøkkel 1 og 2 blir den tredje leverandøren vidareført, men kjem tilbake av seg sjølv om statusen var `VULNERABLE` eller `COMPROMISED`. Førre lagra verdi blir vist som placeholder. Alt utleidd og vidareført blir lista i Review-oppsummeringa, merkt som nettopp det.
 
-# 20. Avgjerd (implementert og verifisert): skjulte felt som blir utleidde eller vidareførte
+**§21 — engelske statusverdiar, adressesti og alle varsel.** `IKKJE_VURDERT` → `NOT_ASSESSED`, og BIP327/SLIP39 får `YES`/`NO`/`NOT_ASSESSED`. Skjema versjon 6: kvar råka tabell blir bygd opp att med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit. `Address path` blir berre vist og lagra når verifiseringa er `OK`. `GET /api/alerts` summerer alle lagra kontrollar, med `check_id` og `checked_at`, slår saman like varsel og listar kritiske først. «Helsesjekk» og `data/helsesjekk.sqlite3` er dokumenterte unntak frå engelskregelen.
 
-Endra §4, §6 (steg 4, 5, 7 og 10), §7, §11 og §19.
+**§22 — utilgjengeleg nøkkel gjer resten valfritt.** `Availability` er obligatorisk med berre Ja/Nei. Når han er Nei, blir programvare, standardar og KI-status skjulte og ikkje kravde, og dei må vere tomme i POST — elles svarar serveren `400`. Det blir ikkje lagra nokon slike rader, `wallet_software` er `NULL`, og `software_compatibility_status` blir `NOT_ASSESSED`. Nøkkel 3 held fram med dei utleidde cloud-verdiane sine og gir det samanslåtte varselet. Databasen kravde inga endring.
 
-- [x] Nøkkel 3 samlar berre `Availability`. `Cloud health check` og `Provider operational` er fjerna frå skjemaet og blir utleidde: Ja → `cloud_health_status` = `OK` og `cloud_provider_operational` = 1; Nei → `PROBLEM` og 0. Ubesvart → begge tomme.
-- [x] `Software compatibility` for nøkkel 3 er skjult og utleidd: Ja → `OK`, Nei → `NOT_ASSESSED`. Nøkkel 3 kan difor ikkje lenger gi varselet `software_incompatible`.
-- [x] For nøkkel 1 og 2 viser `Security status` berre nøkkelproduktet og vald programvare. Den tredje leverandøren er skjult og får siste lagra status — men blir synleg att om den statusen var `VULNERABLE` eller `COMPROMISED`. Manglar han tidlegare status, startar han som `SECURE`.
-- [x] Dei skjulte verdiane blir framleis sende inn, slik at POST-kontrakten, historikken og eksporten er uendra.
-- [x] `Firmware version` og `Address path` viser førre lagra verdi som placeholder. `Software version` viser førre verdi berre når same programvare er vald no.
-- [x] Alle utleidde og vidareførte verdiar blir lista i Review-oppsummeringa, merkte som utleidde eller vidareførte.
-- [x] Når nøkkel 3 er utilgjengeleg, kjem det **eitt** samanslått kritisk varsel: «This key was not available and the cloud provider is recorded as not operating. Check the provider status and replace the key before continuing; the remaining checks for this key cannot be recorded.»
-- [x] `cloud_provider_problem` held fram for rader der nøkkelen var tilgjengeleg (gamle rader).
-- [x] Kolonnane `cloud_health_status`, `cloud_provider_operational` og `software_compatibility_status` er behaldne for gamle rader.
+## Framtidig arbeid, ikkje no
 
----
-
-# 21. Avgjerd (implementert og verifisert): engelske statusverdiar, adressesti og alle varsel
-
-Endra §4, §5, §6 (steg 2, 3 og 6), §7, §8, §10, §11 og §12.
-
-- [x] `IKKJE_VURDERT` er bytt til `NOT_ASSESSED` på alle fire kolonnane som brukar han: `health_checks.software_compatibility_status`, `key_checks.cloud_health_status`, `tool_checks.bip327_status` og `tool_checks.slip39_status`.
-- [x] BIP327- og SLIP39-statusane har verdiane `YES`, `NO` og `NOT_ASSESSED` i staden for `OK`, `PROBLEM` og `IKKJE_VURDERT`. Berre `YES` utløyser varsel; eit rapportert `NO` er eit negativt resultat og gir ingen.
-- [x] Migreringa mappar gamle rader: `OK` → `YES`, `PROBLEM` → `NO`, `IKKJE_VURDERT` → `NOT_ASSESSED`. Skjemaet går til versjon 6.
-- [x] Kvar råka tabell blir bygd opp att etter den dokumenterte SQLite-prosedyren. `health_checks` er ein foreldretabell, så migreringa køyrer med `PRAGMA foreign_keys = OFF`, sjekkar `PRAGMA foreign_key_check` før commit og rullar tilbake ved feil.
-- [x] Skjemaval, validering, varsel, CSV-eksport og testar brukar dei nye verdiane.
-- [x] `Address path` blir berre vist og lagra når `Address path verified` er `OK`; elles er feltet skjult og tømt.
-- [x] `GET /api/alerts` summerer varsla frå alle lagra kontrollar, ikkje berre den siste. Kvart varsel har med `check_id` og `checked_at`.
-- [x] Like varsel (same `code` og `source`) blir slegne saman, og berre den nyaste blir vist, med datoen sin.
-- [x] Varsla blir lista med dei kritiske først, og deretter nyaste først. Framsida viser alle varsla frå endepunktet.
-- [x] Produktnamnet «Helsesjekk» og databasefilnamnet `data/helsesjekk.sqlite3` er behaldne og dokumenterte som bevisste unntak frå engelskregelen i `README.md`.
-- [ ] Framtidig, ikkje no: varsel om at oppsettet kan oppgraderast når alle nøklar og all programvare svarar `YES` på anten BIP327 eller SLIP39. Krev at appen ser på tvers av alle registreringar.
-- [ ] Framtidig, ikkje no: ein måte å lukke eller kvittere ut varsel på.
-
----
-
-# 22. Avgjerd (implementert og verifisert): utilgjengeleg nøkkel gjer resten valfritt
-
-Vedteken etter §21. Endra §4 (reglane for `key_checks`), §6 (steg 1, 5, 6 og 7), §7, §11 og §12.
-
-**Bakgrunn:** fram til no kravde skjemaet `Wallet software` og alle `Security status`-felta, og serveren kravde `wallet_software`, `tool_checks` og `ai_security_checks`. Når nøkkelen ikkje er tilgjengeleg, finst det ingenting å registrere, så innsendinga vart blokkert utan grunn. Ei innsending som berre seier at nøkkelen mangla, er eit fullgodt resultat og skal gi varselet `key_unavailable`.
-
-## Availability blir obligatorisk
-
-- [x] `Availability` har berre verdiane Ja og Nei. «Not assessed» er ikkje eit alternativ.
-- [x] Serveren krev `available` og avviser ein POST utan det med `400`.
-
-## Når nøkkelen ikkje er tilgjengeleg
-
-- [x] `Software compatibility`, `BIP327 and SLIP39 support` og `Security status` er skjulte i skjemaet og blir ikkje kravde.
-- [x] Innsendinga treng berre `Availability`, nøkkelnotat, kontaktstadfesting og overordna kommentar.
-- [x] `wallet_software`, `tool_checks` og `ai_security_checks` er tomme. Er dei ikkje tomme, avviser serveren med `400` — data blir ikkje kasta i det stille.
-- [x] `software_compatibility_status` kan utelatast og blir då lagra som `NOT_ASSESSED`.
-- [x] Det blir ikkje lagra `tool_checks`- eller `ai_security_checks`-rader, og `wallet_software` er `NULL`.
-- [x] Nøkkel 3 held fram med å lagre dei utleidde cloud-verdiane sine (§20) og gir det samanslåtte kritiske varselet (§7).
-
-## Uendra
-
-- [x] Varselet er framleis `key_unavailable`; det er sjølve poenget med innsendinga.
-- [x] Databasen kravde ingen kolonneendring, og skjemaet held fram som versjon 6.
-- [x] Historikk og CSV viser tomt for dei felta som ikkje er registrerte.
-- [x] Når nøkkelen er tilgjengeleg, er krava uendra.
-- [x] Kontaktstadfesting og overordna kommentar er framleis valfrie felt.
-
-**Merknad:** ein `required`-kontroll inne i ein skjult container blir framleis validert av nettlesaren, så dei tre delane teiknar eit tomt-notat i staden for påkravde felt når nøkkelen er utilgjengeleg. Elles ville skjemaet sett rett ut, men ikkje kunne lagrast.
+- [ ] Varsel om at oppsettet kan oppgraderast når alle nøklar og all programvare svarar `YES` på anten BIP327 eller SLIP39. Krev at appen ser på tvers av alle registreringar.
+- [ ] Ein måte å lukke eller kvittere ut varsel på.
