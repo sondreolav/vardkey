@@ -330,15 +330,15 @@ Appen skal ikkje automatisk utføre nokon av desse tiltaka.
 Dashboardet skal vere enkelt.
 
 - [x] Vis 2-av-3 oppsettet.
-- [ ] Vis status for nøkkel 1.
-- [ ] Vis status for nøkkel 2.
-- [ ] Vis status for nøkkel 3.
-- [ ] Vis siste sjekk og neste forfall per nøkkel (§19: kvar nøkkel har sitt eige intervall).
+- [x] Vis status for nøkkel 1.
+- [x] Vis status for nøkkel 2.
+- [x] Vis status for nøkkel 3.
+- [x] Vis siste sjekk og neste forfall per nøkkel (§19: kvar nøkkel har sitt eige intervall).
 - [x] Vis aktive varsel.
 - [x] Knapp: `Start årleg health check`.
 - [x] Knapp/lenke: `Historikk`.
 
-**Endra i §19:** dei to oversiktskorta («Last completed» og «Next check») går ut frå éin felles dato og må gjerast om.
+**Endra i §19, no implementert:** dei to oversiktskorta («Last completed» og «Next check») gjekk ut frå éin felles dato. Dei er no «Next check» (tidlegaste forfall blant nøklane, med kva nøkkel det gjeld) og «Attention» (kor mange nøklar som har passert fristen). Datoane per nøkkel står på nøkkelkorta, frå `GET /api/key-status`.
 
 ---
 
@@ -402,7 +402,7 @@ Minimum:
 - [x] `POST /api/health-checks` — kontrakten blir endra i §19.
 - [ ] `GET /api/export`
 
-**Merk:** `GET /api/alerts` er eit ekstra endepunkt som er lagt til utanom minimumslista, fordi dashboardet treng varsla. Det står ikkje i spesifikasjonen enno.
+**Merk:** `GET /api/alerts` og `GET /api/key-status` er ekstra endepunkt utanom minimumslista, fordi dashboardet treng varsla og statusen per nøkkel. Dei står ikkje i spesifikasjonen enno.
 
 ---
 
@@ -550,14 +550,14 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 - [x] 4. Implementer health check-skjemaet.
 - [x] 5. Implementer lagring og historikk.
 - [x] 6. Implementer varsellogikken.
-- [ ] 7. Implementer dashboard.
+- [x] 7. Implementer dashboard.
 - [ ] 8. Implementer rapporteksport.
 - [ ] 9. Implementer StartOS package.
 - [ ] 10. Implementer persistent storage og backup.
 - [ ] 11. Test restart og restore.
 - [ ] 12. Bygg endeleg `.s9pk` og gjer første release.
 
-**Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken. Dei vart sette tilbake til uticka og er no gjort på nytt i tråd med §19, med 60 grøne testar.
+**Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken. Dei vart sette tilbake til uticka og er no gjort på nytt i tråd med §19, med 65 grøne testar. Steg 7 er gjort etter §19 og byggjer på at kvar nøkkel har sitt eige intervall.
 
 **Hovudregel:** Bygg den minste løysinga som oppfyller lista over. Ikkje legg til nye funksjonar, tenester eller arkitektur utan at dei er nødvendige for punkta i denne TODO-lista.
 
@@ -567,7 +567,7 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 
 Denne delen er den nyaste avgjerda og overstyrer motstridande krav ovanfor om at alle nøklane eller alle produkta må registrerast i same innsending. Eksisterande historiske data skal bevarast.
 
-**Status:** implementert og verifisert (60 grøne testar).
+**Status:** implementert og verifisert.
 
 ## Kvar innsending
 
