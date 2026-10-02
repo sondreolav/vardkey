@@ -122,6 +122,15 @@ def _key_check(entry, key):
     }
     if available == 0:
         # The remaining checks could not be performed, so nothing is recorded.
+        # The cloud key keeps its derived cloud results, because those describe
+        # the provider rather than a check that could not be run (section 20).
+        if key["type"] == "cloud":
+            check["cloud_health_status"] = _optional_status(
+                entry.get("cloud_health_status"), "cloud_health_status"
+            )
+            check["cloud_provider_operational"] = _flag(
+                entry.get("cloud_provider_operational"), "cloud_provider_operational"
+            )
         return check
 
     required = available == 1
