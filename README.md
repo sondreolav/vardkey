@@ -4,7 +4,7 @@ Helsesjekk is a local web application for recording annual checks of a fixed 2-o
 
 ## Current status
 
-The English dashboard shows the three fixed key profiles, the latest saved check dates, and the active follow-up alerts. The annual health-check form records the checklist for **one selected key per submission** and saves it to a local SQLite database, and `/history` lists saved checks with a read-only detail view. Report export and the StartOS package are not implemented yet. The application does not claim that any device or backup has been tested.
+The English dashboard shows the three fixed key profiles, the latest saved check dates, and the active follow-up alerts. Each key card shows its own last check date and next due date, and the summary cards above the alerts show the earliest upcoming date and any key that has passed its due date. The annual health-check form records the checklist for **one selected key per submission** and saves it to a local SQLite database, and `/history` lists saved checks with a read-only detail view. Report export and the StartOS package are not implemented yet. The application does not claim that any device or backup has been tested.
 
 Each key has its own next-check date, calculated on the server as one calendar year after the check date (29 February is clamped to 28 February). The date is not editable in the form, and a submission for one key never changes another key's interval.
 
@@ -30,10 +30,13 @@ python3 -m unittest discover -s tests
 | --- | --- | --- |
 | GET | `/health` | Returns `{"status":"ok"}` for service health checks. |
 | GET | `/api/keys` | Returns the three fixed key profiles. |
+| GET | `/api/key-status` | Returns each key with the dates of its newest saved check. |
 | GET | `/api/health-checks` | Returns saved check summaries, newest first, including the checked key numbers. |
 | GET | `/api/health-checks/<id>` | Returns one saved check with its related rows. |
 | GET | `/api/alerts` | Returns the follow-up alerts of the most recent saved check. |
 | POST | `/api/health-checks` | Validates and stores one check for one selected key. |
+
+`GET /api/key-status` returns one entry per key with `key_id`, `key_number`, `name`, `type`, `device`, `last_checked_at`, and `next_check_due`. A key that has never been checked has `null` dates. Whether a date is overdue is decided by the client from `next_check_due`, so the endpoint stays independent of the current date.
 
 `POST /api/health-checks` accepts JSON and records exactly one configured key:
 
