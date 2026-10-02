@@ -82,7 +82,7 @@ class AppHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
-        """Store one validated annual health check."""
+        """Store one validated health check for a single selected key."""
         path = urlsplit(self.path).path
         if path != "/api/health-checks":
             self.send_error(404, "Not Found")
@@ -96,8 +96,8 @@ class AppHandler(BaseHTTPRequestHandler):
 
         database_path = get_database_path()
         try:
-            key_ids = {key["id"] for key in list_keys(database_path)}
-            data = validate_health_check(payload, key_ids)
+            keys = list_keys(database_path)
+            data = validate_health_check(payload, keys)
             health_check_id = save_health_check(data, database_path)
         except ValidationError as error:
             self._send_json(400, {"error": str(error)})
