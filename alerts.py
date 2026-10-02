@@ -6,13 +6,24 @@ itself.
 
 One saved check covers one key. A key that was not available produces a single
 critical alert, because the remaining checks for that key could not be
-performed.
+performed. For the cloud key the cloud results are derived from availability
+(section 20), so that one alert mentions both facts.
 """
 
 CRITICAL = "critical"
 INFO = "info"
 
 _SEVERITY_ORDER = {CRITICAL: 0, INFO: 1}
+
+_KEY_UNAVAILABLE_MESSAGE = (
+    "This key was not available. Replace the key before continuing; "
+    "the remaining checks for this key cannot be recorded."
+)
+_CLOUD_KEY_UNAVAILABLE_MESSAGE = (
+    "This key was not available and the cloud provider is recorded as not operating. "
+    "Check the provider status and replace the key before continuing; "
+    "the remaining checks for this key cannot be recorded."
+)
 
 
 def build_alerts(record):
@@ -43,13 +54,12 @@ def _key_alerts(key_check):
     source = f"Key {key_check.get('key_number')}: {key_check.get('name')}"
     if key_check.get("available") == 0:
         # The remaining checks for this key could not be performed.
-        return [_alert(
-            "key_unavailable",
-            CRITICAL,
-            source,
-            "This key was not available. Replace the key before continuing; "
-            "the remaining checks for this key cannot be recorded.",
-        )]
+        message = (
+            _CLOUD_KEY_UNAVAILABLE_MESSAGE
+            if key_check.get("type") == "cloud"
+            else _KEY_UNAVAILABLE_MESSAGE
+        )
+        return [_alert("key_unavailable", CRITICAL, source, message)]
 
     alerts = []
     if key_check.get("hardware_works") == 0:
