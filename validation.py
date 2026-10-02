@@ -3,12 +3,17 @@
 One submission records one selected key only, as decided in section 19 of the
 requirements. The next check date is derived on the server and never taken from
 the client.
+
+The stored status values are English (sections 19 and 21). General results use
+``OK``, ``PROBLEM``, and ``NOT_ASSESSED``; the BIP327 and SLIP39 results use
+``YES``, ``NO``, and ``NOT_ASSESSED``.
 """
 
 from datetime import date
 
-GENERAL_STATUSES = ("OK", "PROBLEM", "IKKJE_VURDERT")
+GENERAL_STATUSES = ("OK", "PROBLEM", "NOT_ASSESSED")
 VERIFICATION_STATUSES = ("OK", "PROBLEM")
+STANDARDS_STATUSES = ("YES", "NO", "NOT_ASSESSED")
 SECURITY_STATUSES = ("SECURE", "PATCHED", "VULNERABLE", "COMPROMISED")
 WALLET_SOFTWARE = ("Sparrow Wallet", "Nunchuk")
 KEY_PRODUCTS = {1: "SeedSigner", 2: "Blockstream Jade", 3: "Nunchuk"}
@@ -227,8 +232,12 @@ def _tool_checks(entries, expected):
         seen.add(product)
         normalized.append({
             "product": product,
-            "bip327_status": _status(entry.get("bip327_status"), "bip327_status", GENERAL_STATUSES),
-            "slip39_status": _status(entry.get("slip39_status"), "slip39_status", GENERAL_STATUSES),
+            "bip327_status": _status(
+                entry.get("bip327_status"), "bip327_status", STANDARDS_STATUSES
+            ),
+            "slip39_status": _status(
+                entry.get("slip39_status"), "slip39_status", STANDARDS_STATUSES
+            ),
         })
     if seen != allowed:
         raise ValidationError("every relevant product must be checked")
