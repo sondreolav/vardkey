@@ -45,7 +45,7 @@ def sample_payload(key_number=1, wallet_software=None):
         "comments": "Annual review",
         "key_check": entry,
         "tool_checks": [
-            {"product": product, "bip327_status": "IKKJE_VURDERT", "slip39_status": "IKKJE_VURDERT"}
+            {"product": product, "bip327_status": "NOT_ASSESSED", "slip39_status": "NOT_ASSESSED"}
             for product in products
         ],
         "ai_security_checks": [
@@ -111,6 +111,34 @@ class ValidationTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             validate_health_check(payload, KEYS)
 
+    def test_general_status_accepts_not_assessed_and_rejects_the_norwegian_value(self):
+        payload = sample_payload()
+        payload["software_compatibility_status"] = "NOT_ASSESSED"
+        self.assertEqual(
+            validate_health_check(payload, KEYS)["software_compatibility_status"],
+            "NOT_ASSESSED",
+        )
+
+        payload["software_compatibility_status"] = "IKKJE_VURDERT"
+        with self.assertRaises(ValidationError):
+            validate_health_check(payload, KEYS)
+
+    def test_standards_status_accepts_yes_no_and_not_assessed(self):
+        for field in ("bip327_status", "slip39_status"):
+            for value in ("YES", "NO", "NOT_ASSESSED"):
+                payload = sample_payload()
+                payload["tool_checks"][0][field] = value
+                result = validate_health_check(payload, KEYS)
+                self.assertEqual(result["tool_checks"][0][field], value)
+
+    def test_standards_status_rejects_the_general_values(self):
+        for field in ("bip327_status", "slip39_status"):
+            for value in ("OK", "PROBLEM", "IKKJE_VURDERT", ""):
+                payload = sample_payload()
+                payload["tool_checks"][0][field] = value
+                with self.assertRaises(ValidationError):
+                    validate_health_check(payload, KEYS)
+
     def test_security_status_must_use_the_four_english_values(self):
         for value in ("TRYGG", "UNKNOWN", ""):
             payload = sample_payload()
@@ -148,8 +176,8 @@ class ValidationTests(unittest.TestCase):
         payload = sample_payload(key_number=3)
         payload["wallet_software"] = "Sparrow Wallet"
         payload["tool_checks"] = [
-            {"product": "Nunchuk", "bip327_status": "OK", "slip39_status": "OK"},
-            {"product": "Sparrow Wallet", "bip327_status": "OK", "slip39_status": "OK"},
+            {"product": "Nunchuk", "bip327_status": "YES", "slip39_status": "YES"},
+            {"product": "Sparrow Wallet", "bip327_status": "YES", "slip39_status": "YES"},
         ]
 
         with self.assertRaises(ValidationError):
@@ -158,8 +186,8 @@ class ValidationTests(unittest.TestCase):
     def test_irrelevant_product_is_rejected(self):
         payload = sample_payload(key_number=1)
         payload["tool_checks"] = [
-            {"product": "SeedSigner", "bip327_status": "OK", "slip39_status": "OK"},
-            {"product": "Blockstream Jade", "bip327_status": "OK", "slip39_status": "OK"},
+            {"product": "SeedSigner", "bip327_status": "YES", "slip39_status": "YES"},
+            {"product": "Blockstream Jade", "bip327_status": "YES", "slip39_status": "YES"},
         ]
 
         with self.assertRaises(ValidationError):
@@ -168,7 +196,7 @@ class ValidationTests(unittest.TestCase):
     def test_every_relevant_product_is_required(self):
         payload = sample_payload(key_number=1)
         payload["tool_checks"] = [
-            {"product": "SeedSigner", "bip327_status": "OK", "slip39_status": "OK"},
+            {"product": "SeedSigner", "bip327_status": "YES", "slip39_status": "YES"},
         ]
 
         with self.assertRaises(ValidationError):
@@ -183,7 +211,7 @@ class ValidationTests(unittest.TestCase):
 
     def test_verification_status_rejects_not_assessed(self):
         payload = sample_payload()
-        payload["key_check"]["seed_backup_verified"] = "IKKJE_VURDERT"
+        payload["key_check"]["seed_backup_verified"] = "NOT_ASSESSED"
 
         with self.assertRaises(ValidationError):
             validate_health_check(payload, KEYS)
@@ -213,7 +241,7 @@ class ValidationTests(unittest.TestCase):
 
     def test_an_unavailable_cloud_key_keeps_its_derived_cloud_results(self):
         payload = sample_payload(key_number=3)
-        payload["software_compatibility_status"] = "IKKJE_VURDERT"
+        payload["software_compatibility_status"] = "NOT_ASSESSED"
         payload["key_check"] = {
             "key_id": 3,
             "available": 0,
@@ -231,7 +259,7 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(result["key_check"]["cloud_provider_operational"], 0)
         self.assertIsNone(result["key_check"]["address_path_verified"])
         self.assertIsNone(result["key_check"]["address_path"])
-        self.assertEqual(result["software_compatibility_status"], "IKKJE_VURDERT")
+        self.assertEqual(result["software_compatibility_status"], "NOT_ASSESSED")
         self.assertEqual(result["key_check"]["comments"], "The provider is down")
 
     def test_invalid_flag_is_rejected(self):
