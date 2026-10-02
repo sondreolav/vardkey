@@ -1,8 +1,8 @@
-"""Tests for the follow-up alerts derived from a saved health check."""
+"""Tests for the follow-up alerts derived from saved health checks."""
 
 import unittest
 
-from alerts import build_alerts
+from alerts import build_alerts, collect_alerts
 
 
 def clean_record(key_number=1, name="SeedSigner", key_type="hardware"):
@@ -30,8 +30,8 @@ def clean_record(key_number=1, name="SeedSigner", key_type="hardware"):
         "contact_info_verified": 1,
         "key_checks": [entry],
         "tool_checks": [
-            {"product": "SeedSigner", "bip327_status": "IKKJE_VURDERT", "slip39_status": "IKKJE_VURDERT"},
-            {"product": "Sparrow Wallet", "bip327_status": "IKKJE_VURDERT", "slip39_status": "IKKJE_VURDERT"},
+            {"product": "SeedSigner", "bip327_status": "NOT_ASSESSED", "slip39_status": "NOT_ASSESSED"},
+            {"product": "Sparrow Wallet", "bip327_status": "NOT_ASSESSED", "slip39_status": "NOT_ASSESSED"},
         ],
         "ai_security_checks": [
             {"provider": "SeedSigner", "status": "SECURE"},
@@ -39,6 +39,14 @@ def clean_record(key_number=1, name="SeedSigner", key_type="hardware"):
             {"provider": "Nunchuk", "status": "SECURE"},
         ],
     }
+
+
+def dated_record(check_id, checked_at, **overrides):
+    """Return a clean saved check carrying an id and a check date."""
+    record = clean_record(**overrides)
+    record["id"] = check_id
+    record["checked_at"] = checked_at
+    return record
 
 
 class AlertTests(unittest.TestCase):
@@ -144,7 +152,7 @@ class AlertTests(unittest.TestCase):
 
     def test_reported_bip327_support_is_an_informational_alert(self):
         record = clean_record()
-        record["tool_checks"][0]["bip327_status"] = "OK"
+        record["tool_checks"][0]["bip327_status"] = "YES"
 
         alerts = build_alerts(record)
 
@@ -154,12 +162,26 @@ class AlertTests(unittest.TestCase):
 
     def test_reported_slip39_support_is_an_informational_alert(self):
         record = clean_record()
-        record["tool_checks"][1]["slip39_status"] = "OK"
+        record["tool_checks"][1]["slip39_status"] = "YES"
 
         alerts = build_alerts(record)
 
         self.assertEqual(self.codes(record), ["slip39_available"])
         self.assertEqual(alerts[0]["source"], "Sparrow Wallet (SLIP39)")
+
+    def test_a_reported_lack_of_support_raises_no_alert(self):
+        record = clean_record()
+        record["tool_checks"][0]["bip327_status"] = "NO"
+        record["tool_checks"][1]["slip39_status"] = "NO"
+
+        self.assertEqual(build_alerts(record), [])
+
+    def test_the_old_standards_values_raise_no_alert(self):
+        record = clean_record()
+        record["tool_checks"][0]["bip327_status"] = "OK"
+        record["tool_checks"][1]["slip39_status"] = "PROBLEM"
+
+        self.assertEqual(build_alerts(record), [])
 
     def test_a_vulnerable_security_status_must_be_followed_up(self):
         record = clean_record()
@@ -199,7 +221,7 @@ class AlertTests(unittest.TestCase):
     def test_unassessed_values_are_not_treated_as_failures(self):
         record = clean_record()
         record["contact_info_verified"] = None
-        record["software_compatibility_status"] = "IKKJE_VURDERT"
+        record["software_compatibility_status"] = "NOT_ASSESSED"
         record["key_checks"][0].update({
             "available": None,
             "hardware_works": None,
@@ -214,7 +236,7 @@ class AlertTests(unittest.TestCase):
     def test_critical_alerts_are_listed_before_informational_ones(self):
         record = clean_record(key_number=3, name="Nunchuk", key_type="cloud")
         record["contact_info_verified"] = 0
-        record["tool_checks"][0]["bip327_status"] = "OK"
+        record["tool_checks"][0]["bip327_status"] = "YES"
         record["ai_security_checks"][1]["status"] = "VULNERABLE"
         record["key_checks"][0]["available"] = 0
 
@@ -225,6 +247,89 @@ class AlertTests(unittest.TestCase):
             self.codes(record),
             ["key_unavailable", "security_vulnerable", "bip327_available", "contact_info_unconfirmed"],
         )
+
+
+class CollectAlertsTests(unittest.TestCase):
+    """The dashboard shows the merged alerts of every saved check (section 21)."""
+
+    def codes(self, alerts):
+        return [alert["code"] for alert in alerts]
+
+    def test_no_saved_checks_give_no_alerts(self):
+        self.assertEqual(collect_alerts([]), [])
+
+    def test_every_alert_carries_its_check_id_and_date(self):
+        record = dated_record(7, "2026-10-01")
+        record["key_checks"][0]["available"] = 0
+
+        alerts = collect_alerts([record])
+
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0]["check_id"], 7)
+        self.assertEqual(alerts[0]["checked_at"], "2026-10-01")
+
+    def test_alerts_from_every_saved_check_are_included(self):
+        older = dated_record(1, "2025-10-01")
+        older["ai_security_checks"][2]["status"] = "VULNERABLE"
+        newer = dated_record(2, "2026-10-01", key_number=2, name="Blockstream Jade")
+        newer["key_checks"][0]["hardware_works"] = 0
+
+        alerts = collect_alerts([newer, older])
+
+        self.assertEqual(self.codes(alerts), ["hardware_failure", "security_vulnerable"])
+        self.assertEqual(alerts[1]["check_id"], 1)
+        self.assertEqual(alerts[1]["checked_at"], "2025-10-01")
+
+    def test_identical_alerts_are_merged_and_only_the_newest_is_kept(self):
+        older = dated_record(1, "2025-10-01")
+        older["key_checks"][0]["available"] = 0
+        newer = dated_record(2, "2026-10-01")
+        newer["key_checks"][0]["available"] = 0
+
+        alerts = collect_alerts([newer, older])
+
+        self.assertEqual(self.codes(alerts), ["key_unavailable"])
+        self.assertEqual(alerts[0]["check_id"], 2)
+        self.assertEqual(alerts[0]["checked_at"], "2026-10-01")
+
+    def test_alerts_with_the_same_code_but_another_source_are_kept(self):
+        first = dated_record(1, "2025-10-01")
+        first["ai_security_checks"][2]["status"] = "VULNERABLE"
+        second = dated_record(2, "2026-10-01", key_number=2, name="Blockstream Jade")
+        second["ai_security_checks"][2]["status"] = "VULNERABLE"
+
+        alerts = collect_alerts([second, first])
+
+        self.assertEqual(self.codes(alerts), ["security_vulnerable", "security_vulnerable"])
+        self.assertEqual([alert["check_id"] for alert in alerts], [2, 1])
+
+    def test_critical_alerts_come_first_and_then_the_newest(self):
+        older = dated_record(1, "2025-10-01")
+        older["key_checks"][0]["hardware_works"] = 0
+        newer = dated_record(2, "2026-10-01", key_number=2, name="Blockstream Jade")
+        newer["key_checks"][0]["seed_backup_verified"] = "PROBLEM"
+        newer["contact_info_verified"] = 0
+
+        alerts = collect_alerts([newer, older])
+
+        self.assertEqual(
+            [alert["severity"] for alert in alerts],
+            ["critical", "critical", "info"],
+        )
+        self.assertEqual(
+            self.codes(alerts),
+            ["seed_backup_problem", "hardware_failure", "contact_info_unconfirmed"],
+        )
+
+    def test_a_check_without_problems_contributes_nothing(self):
+        quiet = dated_record(1, "2026-10-01")
+        noisy = dated_record(2, "2025-10-01")
+        noisy["key_checks"][0]["available"] = 0
+
+        alerts = collect_alerts([quiet, noisy])
+
+        self.assertEqual(self.codes(alerts), ["key_unavailable"])
+        self.assertEqual(alerts[0]["check_id"], 2)
 
 
 if __name__ == "__main__":
