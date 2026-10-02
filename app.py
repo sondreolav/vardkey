@@ -12,12 +12,14 @@ from alerts import build_alerts
 from database import (
     get_health_check,
     initialize_database,
+    list_export_rows,
     list_health_checks,
     list_key_status,
     list_keys,
     save_health_check,
     seed_fixed_keys,
 )
+from export import build_csv
 from validation import ValidationError, validate_health_check
 
 
@@ -32,6 +34,7 @@ STATIC_FILES = {
     "/history.js": ("history.js", "text/javascript; charset=utf-8"),
 }
 HEALTH_CHECK_PATH = re.compile(r"^/api/health-checks/([1-9][0-9]*)$")
+EXPORT_FILENAME = "helsesjekk-export.csv"
 MAX_REQUEST_BYTES = 262144
 
 
@@ -58,6 +61,9 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/alerts":
             self._send_alerts()
+            return
+        if path == "/api/export":
+            self._send_export()
             return
 
         detail = HEALTH_CHECK_PATH.match(path)
@@ -145,6 +151,23 @@ class AppHandler(BaseHTTPRequestHandler):
             return
 
         self._send_json(200, build_alerts(record) if record else [])
+
+    def _send_export(self):
+        """Return every saved key check as a CSV download."""
+        try:
+            body = build_csv(list_export_rows(get_database_path())).encode("utf-8")
+        except (OSError, sqlite3.Error, ValueError):
+            self._send_json(500, {"error": "The export is unavailable"})
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/csv; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="{EXPORT_FILENAME}"')
+        self.send_header("Cache-Control", "no-store")
+        self._send_security_headers()
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _send_health_check(self, health_check_id):
         try:
