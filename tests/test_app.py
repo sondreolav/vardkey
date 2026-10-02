@@ -55,7 +55,7 @@ def sample_payload(key, wallet_software=None):
         "comments": "Annual review",
         "key_check": entry,
         "tool_checks": [
-            {"product": product, "bip327_status": "IKKJE_VURDERT", "slip39_status": "IKKJE_VURDERT"}
+            {"product": product, "bip327_status": "NOT_ASSESSED", "slip39_status": "NOT_ASSESSED"}
             for product in products
         ],
         "ai_security_checks": [
@@ -101,6 +101,17 @@ class AppHandlerTests(unittest.TestCase):
         )
         return urlopen(request)
 
+    def post_health_check(self, payload):
+        """Store one check and return its id."""
+        with self.post_json("/api/health-checks", payload) as response:
+            self.assertEqual(response.status, 201)
+            return json.load(response)["id"]
+
+    def get_alerts(self):
+        with urlopen(f"{self.base_url}/api/alerts") as response:
+            self.assertEqual(response.status, 200)
+            return json.load(response)
+
     def assert_rejected(self, payload):
         try:
             with self.post_json("/api/health-checks", payload) as response:
@@ -138,8 +149,7 @@ class AppHandlerTests(unittest.TestCase):
     def test_key_status_api_lists_each_key_with_its_newest_check(self):
         payload = sample_payload(self.key_profiles()[0])
         payload["checked_at"] = "2027-03-01"
-        with self.post_json("/api/health-checks", payload) as response:
-            self.assertEqual(response.status, 201)
+        self.post_health_check(payload)
 
         with urlopen(f"{self.base_url}/api/key-status") as response:
             status = json.load(response)
@@ -169,8 +179,7 @@ class AppHandlerTests(unittest.TestCase):
         payload["checked_at"] = "2027-06-01"
         payload["software_version"] = "1.8.5"
         payload["key_check"]["firmware_version"] = "1.2.3"
-        with self.post_json("/api/health-checks", payload) as response:
-            self.assertEqual(response.status, 201)
+        self.post_health_check(payload)
 
         with urlopen(f"{self.base_url}/api/previous-values") as response:
             values = json.load(response)
@@ -188,9 +197,7 @@ class AppHandlerTests(unittest.TestCase):
     def test_export_api_returns_a_csv_download(self):
         payload = sample_payload(self.key_profiles()[0])
         payload["checked_at"] = "2027-04-01"
-        with self.post_json("/api/health-checks", payload) as response:
-            self.assertEqual(response.status, 201)
-            saved = json.load(response)
+        saved_id = self.post_health_check(payload)
 
         with urlopen(f"{self.base_url}/api/export") as response:
             body = response.read().decode("utf-8")
@@ -204,7 +211,7 @@ class AppHandlerTests(unittest.TestCase):
         rows = list(csv.reader(io.StringIO(body)))
         self.assertEqual(rows[0], list(HEADERS))
         self.assertEqual(len(rows), 2)
-        self.assertEqual(rows[1][0], str(saved["id"]))
+        self.assertEqual(rows[1][0], str(saved_id))
 
         values = dict(zip(HEADERS, rows[1]))
         self.assertEqual(values["Check date"], "2027-04-01")
@@ -215,7 +222,7 @@ class AppHandlerTests(unittest.TestCase):
         self.assertEqual(values["Seed backup verified"], "OK")
         self.assertEqual(values["Wallet software"], "Sparrow Wallet")
         self.assertEqual(values["Contact details confirmed"], "Yes")
-        self.assertIn("SeedSigner: IKKJE_VURDERT", values["BIP327"])
+        self.assertIn("SeedSigner: NOT_ASSESSED", values["BIP327"])
         self.assertIn("Nunchuk: SECURE", values["Security status"])
 
     def test_health_check_form_is_served_in_english(self):
@@ -252,34 +259,84 @@ class AppHandlerTests(unittest.TestCase):
         with urlopen(f"{self.base_url}/api/alerts") as response:
             self.assertEqual(json.load(response), [])
 
-    def test_alerts_api_reports_follow_up_for_the_latest_check(self):
-        key = self.key_profiles()[1]
-        payload = sample_payload(key)
+    def test_alerts_api_reports_follow_up_from_the_saved_check(self):
+        payload = sample_payload(self.key_profiles()[1])
         payload["key_check"]["available"] = 0
+        saved_id = self.post_health_check(payload)
 
-        with self.post_json("/api/health-checks", payload) as response:
-            self.assertEqual(response.status, 201)
+        alerts = self.get_alerts()
 
-        with urlopen(f"{self.base_url}/api/alerts") as response:
-            alerts = json.load(response)
-
-        self.assertEqual(response.status, 200)
         self.assertEqual([alert["code"] for alert in alerts], ["key_unavailable"])
         self.assertEqual(alerts[0]["severity"], "critical")
         self.assertIn("Key 2", alerts[0]["source"])
+        self.assertEqual(alerts[0]["check_id"], saved_id)
+        self.assertEqual(alerts[0]["checked_at"], "2026-10-01")
+
+    def test_alerts_api_keeps_alerts_from_older_checks(self):
+        older = sample_payload(self.key_profiles()[1])
+        older["key_check"]["available"] = 0
+        older_id = self.post_health_check(older)
+
+        newer = sample_payload(self.key_profiles()[0])
+        newer["checked_at"] = "2027-01-01"
+        self.post_health_check(newer)
+
+        alerts = self.get_alerts()
+
+        self.assertEqual([alert["code"] for alert in alerts], ["key_unavailable"])
+        self.assertEqual(alerts[0]["check_id"], older_id)
+
+    def test_alerts_api_merges_identical_alerts_and_keeps_the_newest(self):
+        older = sample_payload(self.key_profiles()[1])
+        older["checked_at"] = "2026-01-01"
+        older["key_check"]["available"] = 0
+        older_id = self.post_health_check(older)
+
+        newer = sample_payload(self.key_profiles()[1])
+        newer["checked_at"] = "2027-01-01"
+        newer["key_check"]["available"] = 0
+        newer_id = self.post_health_check(newer)
+
+        alerts = self.get_alerts()
+
+        self.assertNotEqual(older_id, newer_id)
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0]["code"], "key_unavailable")
+        self.assertEqual(alerts[0]["check_id"], newer_id)
+        self.assertEqual(alerts[0]["checked_at"], "2027-01-01")
+
+    def test_alerts_api_lists_critical_alerts_before_informational_ones(self):
+        older = sample_payload(self.key_profiles()[1])
+        older["checked_at"] = "2026-01-01"
+        older["key_check"]["hardware_works"] = 0
+        self.post_health_check(older)
+
+        newer = sample_payload(self.key_profiles()[0])
+        newer["checked_at"] = "2027-01-01"
+        newer["contact_info_verified"] = 0
+        self.post_health_check(newer)
+
+        alerts = self.get_alerts()
+
+        self.assertEqual(
+            [alert["severity"] for alert in alerts],
+            ["critical", "info"],
+        )
+        self.assertEqual(
+            [alert["code"] for alert in alerts],
+            ["hardware_failure", "contact_info_unconfirmed"],
+        )
 
     def test_saved_health_check_can_be_read_back(self):
         key = self.key_profiles()[0]
-        with self.post_json("/api/health-checks", sample_payload(key)) as response:
-            self.assertEqual(response.status, 201)
-            saved = json.load(response)
+        saved_id = self.post_health_check(sample_payload(key))
 
         with urlopen(f"{self.base_url}/api/health-checks") as response:
             summaries = json.load(response)
-        summary = next(entry for entry in summaries if entry["id"] == saved["id"])
+        summary = next(entry for entry in summaries if entry["id"] == saved_id)
         self.assertEqual(summary["key_numbers"], [1])
 
-        with urlopen(f"{self.base_url}/api/health-checks/{saved['id']}") as response:
+        with urlopen(f"{self.base_url}/api/health-checks/{saved_id}") as response:
             record = json.load(response)
         self.assertEqual(record["checked_at"], "2026-10-01")
         self.assertEqual(record["next_check_due"], "2027-10-01")
@@ -290,40 +347,36 @@ class AppHandlerTests(unittest.TestCase):
             [entry["product"] for entry in record["tool_checks"]],
             ["SeedSigner", "Sparrow Wallet"],
         )
+        self.assertEqual(record["tool_checks"][0]["bip327_status"], "NOT_ASSESSED")
         self.assertEqual(len(record["ai_security_checks"]), 3)
 
     def test_each_key_can_be_posted_and_read_back(self):
         for key in self.key_profiles():
-            with self.post_json("/api/health-checks", sample_payload(key)) as response:
-                self.assertEqual(response.status, 201)
-                saved = json.load(response)
-            with urlopen(f"{self.base_url}/api/health-checks/{saved['id']}") as response:
+            saved_id = self.post_health_check(sample_payload(key))
+            with urlopen(f"{self.base_url}/api/health-checks/{saved_id}") as response:
                 record = json.load(response)
             self.assertEqual(record["key_checks"][0]["key_number"], key["key_number"])
 
     def test_an_unavailable_cloud_key_keeps_its_derived_cloud_results(self):
         key = self.key_profiles()[2]
         payload = sample_payload(key)
-        payload["software_compatibility_status"] = "IKKJE_VURDERT"
+        payload["software_compatibility_status"] = "NOT_ASSESSED"
         payload["key_check"].update({
             "available": 0,
             "cloud_health_status": "PROBLEM",
             "cloud_provider_operational": 0,
         })
+        saved_id = self.post_health_check(payload)
 
-        with self.post_json("/api/health-checks", payload) as response:
-            self.assertEqual(response.status, 201)
-            saved = json.load(response)
-
-        with urlopen(f"{self.base_url}/api/health-checks/{saved['id']}") as response:
+        with urlopen(f"{self.base_url}/api/health-checks/{saved_id}") as response:
             record = json.load(response)
 
+        self.assertEqual(record["software_compatibility_status"], "NOT_ASSESSED")
         self.assertEqual(record["key_checks"][0]["cloud_health_status"], "PROBLEM")
         self.assertEqual(record["key_checks"][0]["cloud_provider_operational"], 0)
         self.assertIsNone(record["key_checks"][0]["address_path_verified"])
 
-        with urlopen(f"{self.base_url}/api/alerts") as response:
-            alerts = json.load(response)
+        alerts = self.get_alerts()
 
         self.assertEqual([alert["code"] for alert in alerts], ["key_unavailable"])
         self.assertIn("cloud provider", alerts[0]["message"])
@@ -334,10 +387,22 @@ class AppHandlerTests(unittest.TestCase):
 
         self.assert_rejected(payload)
 
+    def test_the_old_status_values_are_rejected(self):
+        payload = sample_payload(self.key_profiles()[0])
+        payload["software_compatibility_status"] = "IKKJE_VURDERT"
+
+        self.assert_rejected(payload)
+
+    def test_the_old_standards_values_are_rejected(self):
+        payload = sample_payload(self.key_profiles()[0])
+        payload["tool_checks"][0]["bip327_status"] = "OK"
+
+        self.assert_rejected(payload)
+
     def test_irrelevant_product_is_rejected(self):
         payload = sample_payload(self.key_profiles()[0])
         payload["tool_checks"].append(
-            {"product": "Blockstream Jade", "bip327_status": "OK", "slip39_status": "OK"}
+            {"product": "Blockstream Jade", "bip327_status": "YES", "slip39_status": "YES"}
         )
 
         self.assert_rejected(payload)
