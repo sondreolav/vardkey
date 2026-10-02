@@ -46,6 +46,29 @@ class HealthCheckFormTests(unittest.TestCase):
         for removed in ("seed_backup_status", "address_verified", "derivation_height"):
             self.assertNotIn(removed, script)
 
+    def test_form_script_derives_and_carries_values(self):
+        script = (ROOT / "static" / "health-check.js").read_text(encoding="utf-8")
+        self.assertIn("/api/previous-values", script)
+        self.assertIn("derivedValues", script)
+        self.assertIn("carriedSecurity", script)
+        self.assertIn("Derived from availability", script)
+        self.assertIn("Carried forward from the last saved check", script)
+        self.assertIn("placeholder", script)
+        # The cloud key no longer asks for the cloud results in the form.
+        self.assertNotIn("Cloud health check", script)
+        self.assertNotIn("Provider operational", script)
+
+    def test_form_can_hide_the_compatibility_grid_for_the_cloud_key(self):
+        html = (ROOT / "static" / "health-check.html").read_text(encoding="utf-8")
+        script = (ROOT / "static" / "health-check.js").read_text(encoding="utf-8")
+        self.assertIn('id="software-section"', html)
+        self.assertIn("#software-section .field-grid", script)
+
+    def test_stylesheet_makes_the_hidden_attribute_work_on_grid_containers(self):
+        styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+        self.assertIn(".form-stack[hidden]", styles)
+        self.assertIn(".field-grid[hidden]", styles)
+
 
 if __name__ == "__main__":
     unittest.main()
