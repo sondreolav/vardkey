@@ -2,9 +2,9 @@
 
 ## Status
 
-The requirements in section 19 of `TODO.md` are **implemented and verified**. The full test suite passed (60 tests, run by the user with `python3 -m unittest discover -s tests`). Section 19 of `TODO.md` and the items that section 19 changed in sections 4, 5, 6, 7, 9, 11 and 18 are ticked.
+The requirements in section 19 of `TODO.md` are **implemented and verified**. Section 19 of `TODO.md` and the items that section 19 changed in sections 4, 5, 6, 7, 9, 11 and 18 are ticked.
 
-A follow-up round of questions was then answered by the user; see "Decisions of the follow-up round". The cloud provider alert from that round is implemented, with two new tests for it. The suite now has 62 tests and should be re-run to confirm.
+A follow-up round of questions was then answered by the user; see "Decisions of the follow-up round". The cloud provider alert from that round is implemented. The full suite passes (62 tests, run by the user with `python3 -m unittest discover -s tests`).
 
 Treat section 19 as authoritative wherever older requirements elsewhere in `TODO.md` conflict with it. Do not re-open the decisions below; they are settled and built.
 
