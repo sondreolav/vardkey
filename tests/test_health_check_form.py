@@ -85,6 +85,33 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn('["OK", "OK"]', script)
         self.assertIn('["PROBLEM", "Problem"]', script)
 
+    def test_form_requires_availability_without_a_not_assessed_value(self):
+        script = read_static("health-check.js")
+        self.assertIn("availabilityOptions", script)
+        self.assertIn('["", "Select availability"]', script)
+        self.assertIn('makeSelect(availabilityOptions, "available")', script)
+        self.assertIn("available.required = true", script)
+
+    def test_form_hides_the_rest_of_the_check_for_an_unavailable_key(self):
+        script = read_static("health-check.js")
+        self.assertIn("keyIsUnavailable", script)
+        self.assertIn("syncUnavailableState", script)
+        self.assertIn("softwareSection.hidden", script)
+        self.assertIn("toolChecksSection.hidden", script)
+        self.assertIn("securityChecksSection.hidden", script)
+        self.assertIn("walletSoftwareSelect.required", script)
+        self.assertIn("UNAVAILABLE_MESSAGE", script)
+        # The three parts render an empty state instead of required fields, so a
+        # hidden required control can never block the submission.
+        self.assertIn("emptyState(UNAVAILABLE_MESSAGE)", script)
+
+    def test_form_sends_nothing_else_for_an_unavailable_key(self):
+        script = read_static("health-check.js")
+        self.assertIn("unavailable ? null : data.get", script)
+        self.assertIn("unavailable ? [] : expectedProducts", script)
+        self.assertIn("unavailable ? [] : expectedProviders", script)
+        self.assertIn('unavailable ? "NOT_ASSESSED"', script)
+
     def test_form_hides_the_address_path_until_it_is_verified(self):
         script = read_static("health-check.js")
         styles = read_static("styles.css")
@@ -102,10 +129,17 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("alert.checked_at", script)
         self.assertIn(".alert-origin", styles)
 
+    def test_history_shows_a_note_when_nothing_was_recorded(self):
+        script = read_static("history.js")
+        self.assertIn("securityTable", script)
+        self.assertIn("No BIP327 or SLIP39 results were recorded", script)
+        self.assertIn("No security statuses were recorded", script)
+
     def test_stylesheet_makes_the_hidden_attribute_work_on_grid_containers(self):
         styles = read_static("styles.css")
         self.assertIn(".form-stack[hidden]", styles)
         self.assertIn(".field-grid[hidden]", styles)
+        self.assertIn(".form-section[hidden]", styles)
 
 
 if __name__ == "__main__":
