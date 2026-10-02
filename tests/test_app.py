@@ -153,6 +153,38 @@ class AppHandlerTests(unittest.TestCase):
         self.assertIsNone(status[1]["last_checked_at"])
         self.assertIsNone(status[2]["last_checked_at"])
 
+    def test_previous_values_api_is_empty_before_anything_is_saved(self):
+        with urlopen(f"{self.base_url}/api/previous-values") as response:
+            values = json.load(response)
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual([entry["key_id"] for entry in values["keys"]], [1, 2, 3])
+        self.assertEqual(values["security"], {})
+        self.assertIsNone(values["keys"][0]["firmware_version"])
+        self.assertIsNone(values["keys"][0]["software_version"])
+
+    def test_previous_values_api_reports_the_last_saved_values(self):
+        key = self.key_profiles()[0]
+        payload = sample_payload(key)
+        payload["checked_at"] = "2027-06-01"
+        payload["software_version"] = "1.8.5"
+        payload["key_check"]["firmware_version"] = "1.2.3"
+        with self.post_json("/api/health-checks", payload) as response:
+            self.assertEqual(response.status, 201)
+
+        with urlopen(f"{self.base_url}/api/previous-values") as response:
+            values = json.load(response)
+
+        self.assertEqual(response.status, 200)
+        by_key = {entry["key_id"]: entry for entry in values["keys"]}
+        self.assertEqual(by_key[key["id"]]["firmware_version"], "1.2.3")
+        self.assertEqual(by_key[key["id"]]["address_path"], "m/48'/0'/0'/2'/0/0")
+        self.assertEqual(by_key[key["id"]]["wallet_software"], "Sparrow Wallet")
+        self.assertEqual(by_key[key["id"]]["software_version"], "1.8.5")
+        self.assertEqual(values["security"]["SeedSigner"], "SECURE")
+        self.assertEqual(values["security"]["Sparrow Wallet"], "SECURE")
+        self.assertEqual(values["security"]["Nunchuk"], "SECURE")
+
     def test_export_api_returns_a_csv_download(self):
         payload = sample_payload(self.key_profiles()[0])
         payload["checked_at"] = "2027-04-01"
@@ -268,6 +300,33 @@ class AppHandlerTests(unittest.TestCase):
             with urlopen(f"{self.base_url}/api/health-checks/{saved['id']}") as response:
                 record = json.load(response)
             self.assertEqual(record["key_checks"][0]["key_number"], key["key_number"])
+
+    def test_an_unavailable_cloud_key_keeps_its_derived_cloud_results(self):
+        key = self.key_profiles()[2]
+        payload = sample_payload(key)
+        payload["software_compatibility_status"] = "IKKJE_VURDERT"
+        payload["key_check"].update({
+            "available": 0,
+            "cloud_health_status": "PROBLEM",
+            "cloud_provider_operational": 0,
+        })
+
+        with self.post_json("/api/health-checks", payload) as response:
+            self.assertEqual(response.status, 201)
+            saved = json.load(response)
+
+        with urlopen(f"{self.base_url}/api/health-checks/{saved['id']}") as response:
+            record = json.load(response)
+
+        self.assertEqual(record["key_checks"][0]["cloud_health_status"], "PROBLEM")
+        self.assertEqual(record["key_checks"][0]["cloud_provider_operational"], 0)
+        self.assertIsNone(record["key_checks"][0]["address_path_verified"])
+
+        with urlopen(f"{self.base_url}/api/alerts") as response:
+            alerts = json.load(response)
+
+        self.assertEqual([alert["code"] for alert in alerts], ["key_unavailable"])
+        self.assertIn("cloud provider", alerts[0]["message"])
 
     def test_invalid_health_check_is_rejected(self):
         payload = sample_payload(self.key_profiles()[0])
