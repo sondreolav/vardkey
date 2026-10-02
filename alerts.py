@@ -4,9 +4,9 @@ The rules follow the follow-up requirements for the annual health check. The
 application only reports these alerts; it never performs the follow-up actions
 itself.
 
-The stored status values are intentionally Norwegian (``PROBLEM``,
-``IKKJE_VURDERT``, ``SÅRBAR``, ``KOMPROMITTERT``) because they are data values
-from the requirement specification. Only the surrounding copy is English.
+One saved check covers one key. A key that was not available produces a single
+critical alert, because the remaining checks for that key could not be
+performed.
 """
 
 CRITICAL = "critical"
@@ -41,15 +41,17 @@ def _alert(code, severity, source, message):
 def _key_alerts(key_check):
     """Return the alerts for one key check."""
     source = f"Key {key_check.get('key_number')}: {key_check.get('name')}"
-    alerts = []
-
     if key_check.get("available") == 0:
-        alerts.append(_alert(
+        # The remaining checks for this key could not be performed.
+        return [_alert(
             "key_unavailable",
             CRITICAL,
             source,
-            "This key was not available. Immediate follow-up is required.",
-        ))
+            "This key was not available. Replace the key before continuing; "
+            "the remaining checks for this key cannot be recorded.",
+        )]
+
+    alerts = []
     if key_check.get("hardware_works") == 0:
         alerts.append(_alert(
             "hardware_failure",
@@ -57,14 +59,14 @@ def _key_alerts(key_check):
             source,
             "The hardware does not work. Test the seed backup on another compatible device.",
         ))
-    if key_check.get("seed_backup_status") == "PROBLEM":
+    if key_check.get("seed_backup_verified") == "PROBLEM":
         alerts.append(_alert(
             "seed_backup_problem",
             CRITICAL,
             source,
             "The seed backup is missing or damaged. Activate PROTOCOL 3: key loss.",
         ))
-    if key_check.get("address_verified") == 0 or key_check.get("address_path_verified") == 0:
+    if key_check.get("address_path_verified") == "PROBLEM":
         alerts.append(_alert(
             "address_verification_failed",
             CRITICAL,
@@ -113,19 +115,19 @@ def _security_alerts(security_check):
     provider = security_check.get("provider")
     status = security_check.get("status")
 
-    if status == "SÅRBAR":
+    if status == "VULNERABLE":
         return [_alert(
             "security_vulnerable",
             CRITICAL,
             provider,
-            "Security status SÅRBAR: the firmware or security problem must be followed up.",
+            "Security status VULNERABLE: the firmware or security problem must be followed up.",
         )]
-    if status == "KOMPROMITTERT":
+    if status == "COMPROMISED":
         return [_alert(
             "security_compromised",
             CRITICAL,
             provider,
-            "Security status KOMPROMITTERT: follow the key loss procedure.",
+            "Security status COMPROMISED: follow the key loss procedure.",
         )]
     return []
 
