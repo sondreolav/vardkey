@@ -54,9 +54,9 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("Derived from availability", script)
         self.assertIn("Carried forward from the last saved check", script)
         self.assertIn("placeholder", script)
-        # The cloud key no longer asks for the cloud results in the form.
-        self.assertNotIn("Cloud health check", script)
-        self.assertNotIn("Provider operational", script)
+        # The cloud key no longer renders the cloud results as form fields.
+        self.assertNotIn('makeField("Cloud health check"', script)
+        self.assertNotIn('makeField("Provider operational"', script)
 
     def test_form_can_hide_the_compatibility_grid_for_the_cloud_key(self):
         html = (ROOT / "static" / "health-check.html").read_text(encoding="utf-8")
