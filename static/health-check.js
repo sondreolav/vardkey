@@ -1,22 +1,40 @@
 "use strict";
 
 const form = document.querySelector("#health-check-form");
-const keyChecks = document.querySelector("#key-checks");
+const keySelect = document.querySelector("#key-select");
+const keyCheck = document.querySelector("#key-check");
+const walletSoftwareSelect = document.querySelector("#wallet-software");
+const softwareHelp = document.querySelector("#software-help");
 const toolChecks = document.querySelector("#tool-checks");
 const securityChecks = document.querySelector("#security-checks");
+const nextCheckPreview = document.querySelector("#next-check-preview");
 const reviewPanel = document.querySelector("#review-panel");
 const reviewSummary = document.querySelector("#review-summary");
 const saveButton = document.querySelector("#save-check");
 const saveStatus = document.querySelector("#save-status");
+
+const CLOUD_KEY_NUMBER = 3;
+const KEY_PRODUCTS = { 1: "SeedSigner", 2: "Blockstream Jade", 3: "Nunchuk" };
+const WALLET_SOFTWARE = ["Sparrow Wallet", "Nunchuk"];
 const generalStatuses = [
   ["IKKJE_VURDERT", "Not assessed"],
   ["OK", "OK"],
   ["PROBLEM", "Problem"],
 ];
+const verificationStatuses = [
+  ["OK", "OK"],
+  ["PROBLEM", "Problem"],
+];
 const booleanOptions = [["", "Not assessed"], ["1", "Yes"], ["0", "No"]];
-const productNames = ["SeedSigner", "Blockstream Jade", "Nunchuk", "Sparrow Wallet"];
-const securityStatuses = ["TRYGG", "PATCHA", "SÅRBAR", "KOMPROMITTERT"];
+const securityStatuses = ["SECURE", "PATCHED", "VULNERABLE", "COMPROMISED"];
 let keyProfiles = [];
+
+function emptyState(text) {
+  const message = document.createElement("p");
+  message.className = "empty-state";
+  message.textContent = text;
+  return message;
+}
 
 function makeField(labelText, name, control) {
   const label = document.createElement("label");
@@ -28,14 +46,14 @@ function makeField(labelText, name, control) {
   return label;
 }
 
-function makeSelect(options, name, includeBlank = false) {
+function makeSelect(options, name, placeholder = "") {
   const select = document.createElement("select");
   select.name = name;
-  if (includeBlank) {
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = "Select a status";
-    select.append(placeholder);
+  if (placeholder) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = placeholder;
+    select.append(option);
   }
   for (const [value, label] of options) {
     const option = document.createElement("option");
@@ -76,60 +94,148 @@ function makeCard(title, subtitle) {
   return card;
 }
 
-function productPrefix(kind, product) {
-  return `${kind}_${product.toLowerCase().replaceAll(" ", "_")}_`;
+function productSlug(product) {
+  return product.toLowerCase().replaceAll(" ", "_");
 }
 
-function renderKeyChecks(keys) {
-  keyChecks.replaceChildren();
-  for (const key of keys) {
-    const card = makeCard(`Key ${key.key_number}: ${key.name}`, key.type === "cloud" ? "Cloud key — report the result of your manual check." : "Hardware key — record the result of your manual check.");
-    const prefix = `key_${key.id}_`;
-    card.append(makeField("Availability", `${prefix}available`, makeSelect(booleanOptions)));
+function selectedKey() {
+  const keyId = Number(keySelect.value);
+  return keyProfiles.find((key) => key.id === keyId) || null;
+}
 
-    if (key.type === "hardware") {
-      card.append(makeField("Hardware works", `${prefix}hardware_works`, makeSelect(booleanOptions)));
-      card.append(makeField("Firmware version", `${prefix}firmware_version`, makeTextInput(`${prefix}firmware_version`, 100)));
-      card.append(makeField("Seed backup status", `${prefix}seed_backup_status`, makeSelect(generalStatuses)));
-      card.append(makeField("Backup verified as intact and matching the device", `${prefix}seed_backup_verified`, makeSelect(booleanOptions)));
-    } else {
-      card.append(makeField("Cloud health check", `${prefix}cloud_health_status`, makeSelect(generalStatuses)));
-      card.append(makeField("Provider operational", `${prefix}cloud_provider_operational`, makeSelect(booleanOptions)));
+function expectedProducts() {
+  const key = selectedKey();
+  const software = walletSoftwareSelect.value;
+  if (!key || !WALLET_SOFTWARE.includes(software)) {
+    return [];
+  }
+  return [...new Set([KEY_PRODUCTS[key.key_number], software])];
+}
+
+function expectedProviders() {
+  const key = selectedKey();
+  if (!key) {
+    return [];
+  }
+  if (key.key_number === CLOUD_KEY_NUMBER) {
+    return ["Nunchuk"];
+  }
+  return [KEY_PRODUCTS[key.key_number], "Sparrow Wallet", "Nunchuk"];
+}
+
+function renderKeySelect() {
+  for (const key of keyProfiles) {
+    const option = document.createElement("option");
+    option.value = String(key.id);
+    option.textContent = `Key ${key.key_number}: ${key.name}`;
+    keySelect.append(option);
+  }
+}
+
+function renderKeyCheck() {
+  const key = selectedKey();
+  keyCheck.replaceChildren();
+  if (!key) {
+    keyCheck.append(emptyState("Select a key to record its checks."));
+    return;
+  }
+
+  const card = makeCard(
+    `Key ${key.key_number}: ${key.name}`,
+    key.type === "cloud"
+      ? "Cloud key — report the result of your manual check."
+      : "Hardware key — record the result of your manual check.",
+  );
+  const available = makeSelect(booleanOptions, "available");
+  card.append(makeField("Availability", "available", available));
+
+  const details = document.createElement("div");
+  details.className = "form-stack";
+  if (key.type === "hardware") {
+    details.append(makeField("Hardware works", "hardware_works", makeSelect(booleanOptions, "hardware_works")));
+    details.append(makeField("Firmware version", "firmware_version", makeTextInput("firmware_version", 100)));
+    details.append(makeField(
+      "Seed backup intact and matching the device",
+      "seed_backup_verified",
+      makeSelect(verificationStatuses, "seed_backup_verified", "Select a status"),
+    ));
+  } else {
+    details.append(makeField("Cloud health check", "cloud_health_status", makeSelect(generalStatuses, "cloud_health_status")));
+    details.append(makeField("Provider operational", "cloud_provider_operational", makeSelect(booleanOptions, "cloud_provider_operational")));
+  }
+  details.append(makeField(
+    "Address path verified",
+    "address_path_verified",
+    makeSelect(verificationStatuses, "address_path_verified", "Select a status"),
+  ));
+  details.append(makeField("Address path", "address_path", makeTextInput("address_path", 200)));
+  card.append(details);
+  card.append(makeField("Key notes", "key_comments", makeTextarea("key_comments")));
+  keyCheck.append(card);
+
+  available.addEventListener("change", () => {
+    details.hidden = available.value === "0";
+    syncRequiredFields();
+  });
+  syncRequiredFields();
+}
+
+function syncRequiredFields() {
+  const key = selectedKey();
+  const availability = form.querySelector('[name="available"]');
+  const required = Boolean(key) && availability !== null && availability.value === "1";
+  for (const name of ["seed_backup_verified", "address_path_verified"]) {
+    const select = form.querySelector(`[name="${name}"]`);
+    if (select) {
+      select.required = required;
     }
+  }
+}
 
-    card.append(makeField("Address verified", `${prefix}address_verified`, makeSelect(booleanOptions)));
-    card.append(makeField("Derivation height", `${prefix}derivation_height`, makeTextInput(`${prefix}derivation_height`, 100)));
-    card.append(makeField("Address path verified", `${prefix}address_path_verified`, makeSelect(booleanOptions)));
-    card.append(makeField("Address path", `${prefix}address_path`, makeTextInput(`${prefix}address_path`, 200)));
-    card.append(makeField("Key notes", `${prefix}comments`, makeTextarea(`${prefix}comments`)));
-    keyChecks.append(card);
+function lockWalletSoftware() {
+  const key = selectedKey();
+  const isCloud = Boolean(key) && key.key_number === CLOUD_KEY_NUMBER;
+  const sparrow = walletSoftwareSelect.querySelector('option[value="Sparrow Wallet"]');
+  sparrow.disabled = isCloud;
+  if (isCloud) {
+    walletSoftwareSelect.value = "Nunchuk";
+    softwareHelp.textContent = "Nunchuk is the only wallet software available for the cloud key.";
+  } else {
+    softwareHelp.textContent = "Record the version of the software you selected for this key.";
   }
 }
 
 function renderToolChecks() {
   toolChecks.replaceChildren();
-  for (const product of productNames) {
-    const card = makeCard(product, "Record support status and the product version checked.");
-    const prefix = productPrefix("tool", product);
-    card.append(makeField("BIP327 status", `${prefix}bip327_status`, makeSelect(generalStatuses)));
-    card.append(makeField("SLIP39 status", `${prefix}slip39_status`, makeSelect(generalStatuses)));
-    card.append(makeField("Version checked", `${prefix}version`, makeTextInput(`${prefix}version`, 100)));
-    const checkedAt = document.createElement("input");
-    checkedAt.type = "date";
-    card.append(makeField("Date checked", `${prefix}checked_at`, checkedAt));
-    card.append(makeField("Notes or source", `${prefix}notes`, makeTextarea(`${prefix}notes`)));
+  const products = expectedProducts();
+  if (!products.length) {
+    toolChecks.append(emptyState("Select a key and software to see the products to check."));
+    return;
+  }
+  for (const product of products) {
+    const slug = productSlug(product);
+    const card = makeCard(product, "Record the support status for this submission.");
+    card.append(makeField("BIP327 status", `tool_${slug}_bip327_status`, makeSelect(generalStatuses, `tool_${slug}_bip327_status`)));
+    card.append(makeField("SLIP39 status", `tool_${slug}_slip39_status`, makeSelect(generalStatuses, `tool_${slug}_slip39_status`)));
     toolChecks.append(card);
   }
 }
 
 function renderSecurityChecks() {
   securityChecks.replaceChildren();
-  for (const product of productNames) {
-    const card = makeCard(product, "Enter the result of external research; do not include credentials or secrets.");
-    const prefix = productPrefix("security", product);
-    const options = securityStatuses.map((status) => [status, status]);
-    card.append(makeField("Security status", `${prefix}status`, makeSelect(options, "", true)));
-    card.append(makeField("Comment", `${prefix}comments`, makeTextarea("", 1000)));
+  const providers = expectedProviders();
+  if (!providers.length) {
+    securityChecks.append(emptyState("Select a key to see the providers to check."));
+    return;
+  }
+  const options = securityStatuses.map((status) => [status, status]);
+  for (const provider of providers) {
+    const slug = productSlug(provider);
+    const card = makeCard(provider, "Enter the result of external research; do not include credentials or secrets.");
+    const status = makeSelect(options, `security_${slug}_status`, "Select a status");
+    status.required = true;
+    card.append(makeField("Security status", `security_${slug}_status`, status));
+    card.append(makeField("Comment", `security_${slug}_comments`, makeTextarea(`security_${slug}_comments`, 1000)));
     securityChecks.append(card);
   }
 }
@@ -141,53 +247,38 @@ function formatLocalDate(date) {
   return `${year}-${month}-${day}`;
 }
 
-function setSuggestedDates() {
-  const checkedAt = document.querySelector("#checked-at");
-  const dueDate = document.querySelector("#next-check-due");
-  checkedAt.value = formatLocalDate(new Date());
-  dueDate.dataset.suggested = "true";
-  suggestDueDate();
-  checkedAt.addEventListener("change", suggestDueDate);
-  dueDate.addEventListener("input", () => {
-    dueDate.dataset.suggested = "false";
-  });
-
-  function suggestDueDate() {
-    if (dueDate.dataset.suggested !== "false" && checkedAt.value) {
-      const [year, month, day] = checkedAt.value.split("-").map(Number);
-      const date = new Date(year, month - 1, day);
-      date.setFullYear(date.getFullYear() + 1);
-      dueDate.value = formatLocalDate(date);
-    }
+function nextCheckDate(value) {
+  if (!value) {
+    return "";
   }
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setFullYear(date.getFullYear() + 1);
+  if (date.getMonth() !== month - 1) {
+    // 29 February has no equivalent in a non-leap year, so clamp to 28 February.
+    date.setDate(0);
+  }
+  return formatLocalDate(date);
 }
 
-function buildReview() {
-  const data = new FormData(form);
-  const missing = [];
-  const problems = [];
-  for (const select of form.querySelectorAll("select")) {
-    const fieldLabel = select.closest(".field")?.querySelector("span");
-    const label = fieldLabel?.textContent || select.name;
-    const value = data.get(select.name);
-    if (value === "" || value === "IKKJE_VURDERT") {
-      missing.push(label);
-    } else if (value === "PROBLEM" || value === "0" || value === "SÅRBAR" || value === "KOMPROMITTERT") {
-      problems.push(`${label}: ${value}`);
-    }
-  }
+function updateDuePreview() {
+  const due = nextCheckDate(document.querySelector("#checked-at").value);
+  nextCheckPreview.textContent = due
+    ? `Next check due: ${due} (one calendar year after the check date).`
+    : "Next check due is calculated automatically as one calendar year after the check date.";
+}
 
-  const fragment = document.createDocumentFragment();
-  appendSummaryList(fragment, "Needs assessment", missing.length ? missing : ["None"]);
-  appendSummaryList(fragment, "Results requiring follow-up", problems.length ? problems : ["None"]);
-  const dates = document.createElement("p");
-  dates.textContent = `Check date: ${data.get("checked_at")} · Next check due: ${data.get("next_check_due")}`;
-  fragment.append(dates);
-  reviewSummary.replaceChildren(fragment);
-  reviewPanel.hidden = false;
+function setCheckDate() {
+  const checkedAt = document.querySelector("#checked-at");
+  checkedAt.value = formatLocalDate(new Date());
+  updateDuePreview();
+  checkedAt.addEventListener("change", updateDuePreview);
+}
+
+function resetReview() {
+  reviewPanel.hidden = true;
   saveStatus.textContent = "";
-  saveButton.disabled = false;
-  reviewPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  saveButton.disabled = true;
 }
 
 function appendSummaryList(parent, title, items) {
@@ -200,6 +291,40 @@ function appendSummaryList(parent, title, items) {
     list.append(entry);
   }
   parent.append(heading, list);
+}
+
+function buildReview() {
+  const data = new FormData(form);
+  const missing = [];
+  const problems = [];
+  for (const select of form.querySelectorAll("select")) {
+    if (select.closest("[hidden]")) {
+      continue;
+    }
+    const fieldLabel = select.closest(".field")?.querySelector("span");
+    const label = fieldLabel?.textContent || select.name;
+    const value = data.get(select.name);
+    if (value === "" || value === "IKKJE_VURDERT") {
+      missing.push(label);
+    } else if (value === "PROBLEM" || value === "0" || value === "VULNERABLE" || value === "COMPROMISED") {
+      problems.push(`${label}: ${value}`);
+    }
+  }
+
+  const fragment = document.createDocumentFragment();
+  appendSummaryList(fragment, "Needs assessment", missing.length ? missing : ["None"]);
+  appendSummaryList(fragment, "Results requiring follow-up", problems.length ? problems : ["None"]);
+  const key = selectedKey();
+  const checkedAt = data.get("checked_at");
+  const dates = document.createElement("p");
+  const keyLabel = key ? `Key ${key.key_number}: ${key.name}` : "No key selected";
+  dates.textContent = `${keyLabel} · Check date: ${checkedAt} · Next check due: ${nextCheckDate(checkedAt)}`;
+  fragment.append(dates);
+  reviewSummary.replaceChildren(fragment);
+  reviewPanel.hidden = false;
+  saveStatus.textContent = "";
+  saveButton.disabled = false;
+  reviewPanel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function flagValue(data, name) {
@@ -217,52 +342,62 @@ function statusValue(data, name) {
   return typeof value === "string" && value !== "" ? value : null;
 }
 
+function collectKeyCheck(data, key) {
+  const available = flagValue(data, "available");
+  const entry = {
+    key_id: key.id,
+    available: available,
+    hardware_works: null,
+    firmware_version: "",
+    seed_backup_verified: null,
+    cloud_health_status: null,
+    cloud_provider_operational: null,
+    address_path_verified: null,
+    address_path: "",
+    comments: textValue(data, "key_comments"),
+  };
+  if (available === 0) {
+    return entry;
+  }
+  if (key.type === "hardware") {
+    entry.hardware_works = flagValue(data, "hardware_works");
+    entry.firmware_version = textValue(data, "firmware_version");
+    entry.seed_backup_verified = statusValue(data, "seed_backup_verified");
+  } else {
+    entry.cloud_health_status = statusValue(data, "cloud_health_status");
+    entry.cloud_provider_operational = flagValue(data, "cloud_provider_operational");
+  }
+  entry.address_path_verified = statusValue(data, "address_path_verified");
+  entry.address_path = textValue(data, "address_path");
+  return entry;
+}
+
 function collectPayload() {
   const data = new FormData(form);
+  const key = selectedKey();
   return {
     checked_at: textValue(data, "checked_at"),
-    next_check_due: textValue(data, "next_check_due"),
+    wallet_software: data.get("wallet_software"),
+    software_version: textValue(data, "software_version"),
     software_compatibility_status: data.get("software_compatibility_status"),
-    sparrow_version: textValue(data, "sparrow_version"),
-    nunchuk_version: textValue(data, "nunchuk_version"),
     software_comments: textValue(data, "software_comments"),
     contact_info_verified: flagValue(data, "contact_info_verified"),
     comments: textValue(data, "comments"),
-    key_checks: keyProfiles.map((key) => {
-      const prefix = `key_${key.id}_`;
-      return {
-        key_id: key.id,
-        available: flagValue(data, `${prefix}available`),
-        hardware_works: flagValue(data, `${prefix}hardware_works`),
-        firmware_version: textValue(data, `${prefix}firmware_version`),
-        seed_backup_status: statusValue(data, `${prefix}seed_backup_status`),
-        seed_backup_verified: flagValue(data, `${prefix}seed_backup_verified`),
-        cloud_health_status: statusValue(data, `${prefix}cloud_health_status`),
-        cloud_provider_operational: flagValue(data, `${prefix}cloud_provider_operational`),
-        address_verified: flagValue(data, `${prefix}address_verified`),
-        derivation_height: textValue(data, `${prefix}derivation_height`),
-        address_path_verified: flagValue(data, `${prefix}address_path_verified`),
-        address_path: textValue(data, `${prefix}address_path`),
-        comments: textValue(data, `${prefix}comments`),
-      };
-    }),
-    tool_checks: productNames.map((product) => {
-      const prefix = productPrefix("tool", product);
+    key_check: collectKeyCheck(data, key),
+    tool_checks: expectedProducts().map((product) => {
+      const slug = productSlug(product);
       return {
         product,
-        bip327_status: data.get(`${prefix}bip327_status`),
-        slip39_status: data.get(`${prefix}slip39_status`),
-        version: textValue(data, `${prefix}version`),
-        checked_at: textValue(data, `${prefix}checked_at`),
-        notes: textValue(data, `${prefix}notes`),
+        bip327_status: data.get(`tool_${slug}_bip327_status`),
+        slip39_status: data.get(`tool_${slug}_slip39_status`),
       };
     }),
-    ai_security_checks: productNames.map((product) => {
-      const prefix = productPrefix("security", product);
+    ai_security_checks: expectedProviders().map((provider) => {
+      const slug = productSlug(provider);
       return {
-        provider: product,
-        status: statusValue(data, `${prefix}status`),
-        comments: textValue(data, `${prefix}comments`),
+        provider,
+        status: statusValue(data, `security_${slug}_status`),
+        comments: textValue(data, `security_${slug}_comments`),
       };
     }),
   };
@@ -297,25 +432,28 @@ async function loadKeys() {
       throw new Error("Key profiles are unavailable.");
     }
     keyProfiles = await response.json();
-    renderKeyChecks(keyProfiles);
+    renderKeySelect();
   } catch {
-    keyChecks.replaceChildren();
-    const message = document.createElement("p");
-    message.className = "empty-state";
-    message.textContent = "Key profiles could not be loaded. Return to the dashboard or contact the service administrator.";
-    keyChecks.append(message);
+    keySelect.disabled = true;
+    keyCheck.replaceChildren(emptyState(
+      "Key profiles could not be loaded. Return to the dashboard or contact the service administrator.",
+    ));
   }
 }
 
+setCheckDate();
+renderKeyCheck();
 renderToolChecks();
 renderSecurityChecks();
-setSuggestedDates();
 saveButton.addEventListener("click", saveHealthCheck);
-form.addEventListener("input", () => {
-  reviewPanel.hidden = true;
-  saveStatus.textContent = "";
-  saveButton.disabled = true;
+keySelect.addEventListener("change", () => {
+  lockWalletSoftware();
+  renderKeyCheck();
+  renderToolChecks();
+  renderSecurityChecks();
 });
+walletSoftwareSelect.addEventListener("change", renderToolChecks);
+form.addEventListener("input", resetReview);
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!form.reportValidity()) {
