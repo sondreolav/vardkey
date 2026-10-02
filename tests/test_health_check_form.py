@@ -16,24 +16,35 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("Review check", html)
         self.assertIn("No data from this form has been stored", html)
 
+    def test_form_selects_one_key_and_one_wallet_software(self):
+        html = (ROOT / "static" / "health-check.html").read_text(encoding="utf-8")
+        self.assertIn('id="key-select"', html)
+        self.assertIn('name="wallet_software"', html)
+        self.assertIn('id="next-check-preview"', html)
+        self.assertNotIn("next_check_due", html)
+        self.assertIn('name="contact_info_verified"', html)
+
     def test_form_script_covers_all_four_products_and_checklist_fields(self):
         script = (ROOT / "static" / "health-check.js").read_text(encoding="utf-8")
-        html = (ROOT / "static" / "health-check.html").read_text(encoding="utf-8")
         for product in ("SeedSigner", "Blockstream Jade", "Nunchuk", "Sparrow Wallet"):
             self.assertIn(product, script)
         for field in (
-            "address_verified",
             "address_path_verified",
-            "derivation_height",
             "seed_backup_verified",
             "bip327_status",
             "slip39_status",
         ):
             self.assertIn(field, script)
-        self.assertIn('name="contact_info_verified"', html)
+        for status in ("SECURE", "PATCHED", "VULNERABLE", "COMPROMISED"):
+            self.assertIn(status, script)
         self.assertIn("formatLocalDate", script)
         self.assertIn("Needs assessment", script)
         self.assertIn("Results requiring follow-up", script)
+
+    def test_form_script_no_longer_uses_the_removed_fields(self):
+        script = (ROOT / "static" / "health-check.js").read_text(encoding="utf-8")
+        for removed in ("seed_backup_status", "address_verified", "derivation_height"):
+            self.assertNotIn(removed, script)
 
 
 if __name__ == "__main__":
