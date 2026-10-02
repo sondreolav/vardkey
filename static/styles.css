@@ -96,7 +96,7 @@ h2 { margin-bottom: 0; font-size: 20px; letter-spacing: -.02em; }
 .field-help { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .form-actions { display: flex; align-items: center; gap: 12px; margin-top: 24px; }
 .review-panel[hidden] { display: none; }
-.form-stack[hidden], .field-grid[hidden], .field[hidden] { display: none; }
+.form-stack[hidden], .field-grid[hidden], .field[hidden], .form-section[hidden] { display: none; }
 .review-panel h3 { margin: 18px 0 8px; font-size: 15px; }
 .review-panel ul { margin: 0; padding-left: 22px; color: #4b5850; font-size: 13px; line-height: 1.7; }
 
