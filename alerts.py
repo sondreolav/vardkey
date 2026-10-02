@@ -66,6 +66,15 @@ def _key_alerts(key_check):
             source,
             "The seed backup is missing or damaged. Activate PROTOCOL 3: key loss.",
         ))
+    if (key_check.get("cloud_health_status") == "PROBLEM"
+            or key_check.get("cloud_provider_operational") == 0):
+        alerts.append(_alert(
+            "cloud_provider_problem",
+            CRITICAL,
+            source,
+            "The cloud provider is not operating normally. "
+            "Check the provider status before continuing.",
+        ))
     if key_check.get("address_path_verified") == "PROBLEM":
         alerts.append(_alert(
             "address_verification_failed",
