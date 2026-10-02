@@ -56,7 +56,7 @@ def sample_payload(key, wallet_software=None):
         "comments": "Annual review",
         "key_check": entry,
         "tool_checks": [
-            {"product": product, "bip327_status": "IKKJE_VURDERT", "slip39_status": "IKKJE_VURDERT"}
+            {"product": product, "bip327_status": "NOT_ASSESSED", "slip39_status": "NOT_ASSESSED"}
             for product in products
         ],
         "ai_security_checks": [
@@ -143,6 +143,85 @@ LEGACY_SCHEMA = """
     PRAGMA user_version = 4;
 """
 
+# The layout introduced by section 19, before the status values became English.
+SCHEMA_VERSION_5 = """
+    CREATE TABLE keys (
+        id INTEGER PRIMARY KEY,
+        key_number INTEGER NOT NULL UNIQUE CHECK (key_number BETWEEN 1 AND 3),
+        name TEXT NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('hardware', 'cloud')),
+        device TEXT NOT NULL CHECK (device IN ('SeedSigner', 'Blockstream Jade', 'Nunchuk')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE health_checks (
+        id INTEGER PRIMARY KEY,
+        checked_at TEXT NOT NULL,
+        next_check_due TEXT NOT NULL,
+        wallet_software TEXT CHECK (wallet_software IN ('Sparrow Wallet', 'Nunchuk')),
+        software_version TEXT,
+        software_compatibility_status TEXT NOT NULL DEFAULT 'IKKJE_VURDERT'
+            CHECK (software_compatibility_status IN ('OK', 'PROBLEM', 'IKKJE_VURDERT')),
+        sparrow_version TEXT,
+        nunchuk_version TEXT,
+        software_comments TEXT,
+        contact_info_verified INTEGER CHECK (contact_info_verified IN (0, 1)),
+        comments TEXT
+    );
+    CREATE TABLE key_checks (
+        id INTEGER PRIMARY KEY,
+        health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
+        key_id INTEGER NOT NULL REFERENCES keys(id) ON DELETE RESTRICT,
+        available INTEGER CHECK (available IN (0, 1)),
+        hardware_works INTEGER CHECK (hardware_works IN (0, 1)),
+        firmware_version TEXT,
+        seed_backup_verified TEXT CHECK (seed_backup_verified IN ('OK', 'PROBLEM')),
+        cloud_health_status TEXT CHECK (cloud_health_status IN ('OK', 'PROBLEM', 'IKKJE_VURDERT')),
+        cloud_provider_operational INTEGER CHECK (cloud_provider_operational IN (0, 1)),
+        address_path_verified TEXT CHECK (address_path_verified IN ('OK', 'PROBLEM')),
+        address_path TEXT,
+        comments TEXT,
+        UNIQUE (health_check_id, key_id)
+    );
+    CREATE TABLE tool_checks (
+        id INTEGER PRIMARY KEY,
+        health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
+        product TEXT NOT NULL CHECK (product IN ('SeedSigner', 'Blockstream Jade', 'Nunchuk', 'Sparrow Wallet')),
+        bip327_status TEXT NOT NULL DEFAULT 'IKKJE_VURDERT'
+            CHECK (bip327_status IN ('OK', 'PROBLEM', 'IKKJE_VURDERT')),
+        slip39_status TEXT NOT NULL DEFAULT 'IKKJE_VURDERT'
+            CHECK (slip39_status IN ('OK', 'PROBLEM', 'IKKJE_VURDERT')),
+        version TEXT,
+        checked_at TEXT,
+        notes TEXT,
+        UNIQUE (health_check_id, product)
+    );
+    CREATE TABLE ai_security_checks (
+        id INTEGER PRIMARY KEY,
+        health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL CHECK (provider IN ('SeedSigner', 'Blockstream Jade', 'Nunchuk', 'Sparrow Wallet')),
+        status TEXT NOT NULL CHECK (status IN ('SECURE', 'PATCHED', 'VULNERABLE', 'COMPROMISED')),
+        comments TEXT,
+        UNIQUE (health_check_id, provider)
+    );
+    INSERT INTO keys (id, key_number, name, type, device) VALUES
+        (1, 1, 'SeedSigner', 'hardware', 'SeedSigner'),
+        (2, 2, 'Blockstream Jade', 'hardware', 'Blockstream Jade'),
+        (3, 3, 'Nunchuk', 'cloud', 'Nunchuk');
+    INSERT INTO health_checks (
+        id, checked_at, next_check_due, wallet_software, software_version,
+        software_compatibility_status, contact_info_verified, comments
+    ) VALUES (1, '2026-01-01', '2027-01-01', 'Sparrow Wallet', '1.8.0', 'IKKJE_VURDERT', 1, 'Annual review');
+    INSERT INTO key_checks (
+        health_check_id, key_id, available, cloud_health_status, cloud_provider_operational
+    ) VALUES (1, 3, 1, 'IKKJE_VURDERT', 1);
+    INSERT INTO tool_checks (health_check_id, product, bip327_status, slip39_status) VALUES
+        (1, 'SeedSigner', 'OK', 'PROBLEM'),
+        (1, 'Sparrow Wallet', 'IKKJE_VURDERT', 'OK');
+    INSERT INTO ai_security_checks (health_check_id, provider, status) VALUES
+        (1, 'Nunchuk', 'SECURE');
+    PRAGMA user_version = 5;
+"""
+
 
 class DatabaseInitializationTests(unittest.TestCase):
     def setUp(self):
@@ -161,6 +240,12 @@ class DatabaseInitializationTests(unittest.TestCase):
                 yield connection
         finally:
             connection.close()
+
+    def write_schema(self, script):
+        """Create a database from an explicit older schema script."""
+        self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(self.database_path) as connection:
+            connection.executescript(script)
 
     def test_initialization_creates_versioned_schema_and_is_idempotent(self):
         initialize_database(self.database_path)
@@ -182,24 +267,22 @@ class DatabaseInitializationTests(unittest.TestCase):
         )
 
     def test_partial_schema_is_repaired_idempotently(self):
-        self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.database_path) as connection:
-            connection.executescript(
-                """
-                CREATE TABLE key_checks (
-                    id INTEGER PRIMARY KEY,
-                    address_verified INTEGER,
-                    derivation_height TEXT,
-                    seed_backup_verified INTEGER
-                );
-                CREATE TABLE health_checks (
-                    id INTEGER PRIMARY KEY,
-                    software_comments TEXT
-                );
-                INSERT INTO key_checks (address_verified, derivation_height) VALUES (1, '0');
-                PRAGMA user_version = 0;
-                """
-            )
+        self.write_schema(
+            """
+            CREATE TABLE key_checks (
+                id INTEGER PRIMARY KEY,
+                address_verified INTEGER,
+                derivation_height TEXT,
+                seed_backup_verified INTEGER
+            );
+            CREATE TABLE health_checks (
+                id INTEGER PRIMARY KEY,
+                software_comments TEXT
+            );
+            INSERT INTO key_checks (address_verified, derivation_height) VALUES (1, '0');
+            PRAGMA user_version = 0;
+            """
+        )
 
         initialize_database(self.database_path)
         initialize_database(self.database_path)
@@ -213,9 +296,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertFalse({"address_verified", "derivation_height"} & columns)
 
     def test_legacy_database_migrates_to_per_key_checks(self):
-        self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.database_path) as connection:
-            connection.executescript(LEGACY_SCHEMA)
+        self.write_schema(LEGACY_SCHEMA)
 
         initialize_database(self.database_path)
 
@@ -238,6 +319,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         record = get_health_check(1, self.database_path)
         self.assertEqual(record["checked_at"], "2026-01-01")
         self.assertEqual(record["sparrow_version"], "1.7.0")
+        self.assertEqual(record["software_compatibility_status"], "NOT_ASSESSED")
         self.assertEqual(record["key_checks"][0]["seed_backup_verified"], "OK")
         self.assertEqual(record["key_checks"][0]["address_path"], "m/48'/0'/0'/2'/0/0")
         self.assertEqual(record["key_checks"][1]["seed_backup_verified"], "PROBLEM")
@@ -251,6 +333,73 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(new_record["key_checks"][0]["key_number"], 3)
         self.assertEqual([entry["product"] for entry in new_record["tool_checks"]], ["Nunchuk"])
         self.assertEqual([entry["provider"] for entry in new_record["ai_security_checks"]], ["Nunchuk"])
+
+    def test_status_values_migrate_to_english(self):
+        self.write_schema(SCHEMA_VERSION_5)
+
+        initialize_database(self.database_path)
+
+        with self.connect() as connection:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            compatibility = connection.execute(
+                "SELECT software_compatibility_status FROM health_checks"
+            ).fetchone()[0]
+            cloud = connection.execute("SELECT cloud_health_status FROM key_checks").fetchone()[0]
+            standards = connection.execute(
+                "SELECT product, bip327_status, slip39_status FROM tool_checks ORDER BY id"
+            ).fetchall()
+
+        self.assertEqual(version, SCHEMA_VERSION)
+        self.assertEqual(compatibility, "NOT_ASSESSED")
+        self.assertEqual(cloud, "NOT_ASSESSED")
+        self.assertEqual(
+            standards,
+            [("SeedSigner", "YES", "NO"), ("Sparrow Wallet", "NOT_ASSESSED", "YES")],
+        )
+
+        record = get_health_check(1, self.database_path)
+        self.assertEqual(record["software_compatibility_status"], "NOT_ASSESSED")
+        self.assertEqual(record["comments"], "Annual review")
+        self.assertEqual(record["tool_checks"][0]["bip327_status"], "YES")
+        self.assertEqual(record["tool_checks"][0]["slip39_status"], "NO")
+        self.assertEqual(record["ai_security_checks"][0]["status"], "SECURE")
+
+    def test_the_migrated_schema_rejects_the_old_status_values(self):
+        self.write_schema(SCHEMA_VERSION_5)
+        initialize_database(self.database_path)
+
+        with self.connect() as connection:
+            for statement, parameters in (
+                (
+                    "INSERT INTO health_checks (checked_at, next_check_due, software_compatibility_status) "
+                    "VALUES ('2026-01-01', '2027-01-01', ?)",
+                    ("IKKJE_VURDERT",),
+                ),
+                (
+                    "INSERT INTO tool_checks (health_check_id, product, bip327_status, slip39_status) "
+                    "VALUES (1, 'Nunchuk', ?, 'YES')",
+                    ("OK",),
+                ),
+            ):
+                with self.assertRaises(sqlite3.IntegrityError):
+                    connection.execute(statement, parameters)
+
+    def test_the_rebuilt_parent_table_keeps_its_foreign_keys(self):
+        self.write_schema(SCHEMA_VERSION_5)
+        initialize_database(self.database_path)
+
+        with self.connect() as connection:
+            violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+            with self.assertRaises(sqlite3.IntegrityError):
+                connection.execute(
+                    "INSERT INTO key_checks (health_check_id, key_id) VALUES (999, 1)"
+                )
+            children = connection.execute(
+                "SELECT COUNT(*) FROM key_checks WHERE health_check_id = 1"
+            ).fetchone()[0]
+
+        self.assertEqual(violations, [])
+        self.assertEqual(children, 1)
 
     def test_seed_fixed_keys_is_idempotent_and_preserves_custom_names(self):
         initialize_database(self.database_path)
@@ -462,11 +611,11 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(first["contact_info_verified"], 1)
         self.assertEqual(
             first["bip327_status"],
-            "SeedSigner: IKKJE_VURDERT; Sparrow Wallet: IKKJE_VURDERT",
+            "SeedSigner: NOT_ASSESSED; Sparrow Wallet: NOT_ASSESSED",
         )
         self.assertEqual(
             first["slip39_status"],
-            "SeedSigner: IKKJE_VURDERT; Sparrow Wallet: IKKJE_VURDERT",
+            "SeedSigner: NOT_ASSESSED; Sparrow Wallet: NOT_ASSESSED",
         )
         self.assertEqual(
             first["security_status"],
@@ -477,7 +626,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(cloud["key_number"], 3)
         self.assertEqual(cloud["key_name"], "Nunchuk")
         self.assertEqual(cloud["wallet_software"], "Nunchuk")
-        self.assertEqual(cloud["bip327_status"], "Nunchuk: IKKJE_VURDERT")
+        self.assertEqual(cloud["bip327_status"], "Nunchuk: NOT_ASSESSED")
         self.assertEqual(cloud["security_status"], "Nunchuk: SECURE")
 
     def test_invalid_status_and_duplicate_key_numbers_are_rejected(self):
