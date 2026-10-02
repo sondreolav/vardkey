@@ -23,6 +23,13 @@ function displayFlag(value) {
   return "—";
 }
 
+function emptyNote(text) {
+  const note = document.createElement("p");
+  note.className = "empty-state";
+  note.textContent = text;
+  return note;
+}
+
 function definitionList(entries) {
   const list = document.createElement("dl");
   list.className = "detail-list";
@@ -119,6 +126,10 @@ function keyEntries(keyCheck) {
 }
 
 function toolCheckTable(toolChecks) {
+  if (!toolChecks.length) {
+    // A key that was not available records no standards at all (section 22).
+    return emptyNote("No BIP327 or SLIP39 results were recorded for this check.");
+  }
   const headers = ["Product", "BIP327", "SLIP39"];
   // Older records stored a version, a date, and notes for each product.
   const hasLegacyColumns = toolChecks.some(
@@ -137,6 +148,16 @@ function toolCheckTable(toolChecks) {
   return dataTable(headers, rows);
 }
 
+function securityTable(securityChecks) {
+  if (!securityChecks.length) {
+    return emptyNote("No security statuses were recorded for this check.");
+  }
+  return dataTable(
+    ["Provider", "Status", "Comment"],
+    securityChecks.map((entry) => [entry.provider, entry.status, entry.comments]),
+  );
+}
+
 function renderDetail(record) {
   detailTitle.textContent = `Check from ${record.checked_at}`;
   const fragment = document.createDocumentFragment();
@@ -152,10 +173,7 @@ function renderDetail(record) {
 
   fragment.append(card("BIP327 and SLIP39", toolCheckTable(record.tool_checks || [])));
 
-  fragment.append(card("Security status", dataTable(
-    ["Provider", "Status", "Comment"],
-    (record.ai_security_checks || []).map((entry) => [entry.provider, entry.status, entry.comments]),
-  )));
+  fragment.append(card("Security status", securityTable(record.ai_security_checks || [])));
 
   detailBody.replaceChildren(fragment);
   detailSection.hidden = false;
