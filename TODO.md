@@ -90,7 +90,7 @@ Appen skal starte med eitt fast multisig-oppsett:
 
 Bruk SQLite med så få tabellar som mogleg.
 
-**Merk:** §19 gjorde om datamodellen, og §20 gjer om kva som blir spurt om i skjemaet. Felta under er oppdaterte i tråd med begge.
+**Merk:** §19 gjorde om datamodellen, §20 endra kva som blir spurt om i skjemaet, og §21 byter statusverdiar. Felta under er oppdaterte i tråd med alle tre.
 
 ## 4.1 `keys`
 
@@ -108,7 +108,7 @@ Ein rad/record for kvar innsending, som gjeld éin vald nøkkel (§19).
 - [x] `id`
 - [x] `checked_at`
 - [x] `next_check_due`
-- [x] `software_compatibility_status` — for nøkkel 3 utleidd frå `Availability` (§20)
+- [x] `software_compatibility_status` — for nøkkel 3 utleidd frå `Availability` (§20); `IKKJE_VURDERT` blir `NOT_ASSESSED` i §21
 - [x] `wallet_software` — vald programvare: `Sparrow Wallet` eller `Nunchuk` (§19)
 - [x] `software_version` — versjonen til den valde programvara (§19)
 - [x] `ai_security_status` — blir lagra per leverandør i `ai_security_checks`, jf. §6 steg 7 og §19
@@ -128,7 +128,7 @@ Eitt record for den valde nøkkelen i kvar innsending.
 - [x] `hardware_works`
 - [x] `firmware_version`
 - [x] `seed_backup_verified` — status `OK` eller `Problem`; gjeld nøkkel 1 og 2 (§19)
-- [x] `cloud_health_status` — blir ikkje spurt om i skjemaet; utleidd frå `Availability` for nøkkel 3 (§20)
+- [x] `cloud_health_status` — blir ikkje spurt om i skjemaet; utleidd frå `Availability` for nøkkel 3 (§20); `IKKJE_VURDERT` blir `NOT_ASSESSED` i §21
 - [x] `cloud_provider_operational` — blir ikkje spurt om i skjemaet; utleidd frå `Availability` for nøkkel 3 (§20)
 - [x] `address_path_verified` — status `OK` eller `Problem`; var Ja/Nei (§19)
 - [x] `address_path`
@@ -143,7 +143,7 @@ Reglar:
 - [x] `address_path` skal kunne lagre den verifiserte adressestien.
 - [x] `seed_backup_verified` og `address_path_verified` skal berre ha verdiane `OK` eller `Problem`, og vere obligatoriske når `available` er Ja.
 - [x] Når `available` er Nei, skal dei andre nøkkelfelta ikkje krevjast, og nøkkelnotatet skal framleis kunne fyllast ut (§19).
-- [ ] Når `available` er Nei for nøkkel 3, skal dei to cloud-felta likevel lagrast, utleidde som `PROBLEM` og `No` (§20).
+- [x] Når `available` er Nei for nøkkel 3, skal dei to cloud-felta likevel lagrast, utleidde som `PROBLEM` og `No` (§20).
 
 **Endra i §19:** `seed_backup_status`, `address_verified` og `derivation_height` er tekne ut. Sjekkpunktet «Verifiser derivasjonshøgd» blir dekt av `address_path`.
 
@@ -163,8 +163,8 @@ Felt:
 - [x] `id`
 - [x] `health_check_id`
 - [x] `product` — nøkkelproduktet pluss vald programvare, maks to rader per innsending (§19)
-- [x] `bip327_status`
-- [x] `slip39_status`
+- [x] `bip327_status` — verdiane blir `YES` / `NO` / `NOT_ASSESSED` i §21
+- [x] `slip39_status` — verdiane blir `YES` / `NO` / `NOT_ASSESSED` i §21
 
 **Endra i §19:** `version`, `checked_at` og `notes` er tekne ut av kravet. Kolonnane blir behaldne for gamle rader.
 
@@ -183,6 +183,8 @@ Bruk enkle statusar som:
 - [x] Bruk same statuslogikk i database og UI.
 - [x] Ikkje bland saman «ikkje vurdert» og eit faktisk negativt resultat.
 
+**Endra i §21, ikkje implementert:** `IKKJE_VURDERT` blir bytt til `NOT_ASSESSED` på alle fire kolonnane som brukar han. Då er det ikkje norske ord att i koden; produktnamnet og databasefilnamnet blir dokumenterte som bevisste unntak.
+
 ## 5.2 KI-sikkerheitsstatus
 
 Bruk nøyaktig desse fire verdiane:
@@ -200,7 +202,7 @@ Ingen andre sikkerheitsstatusar skal brukast.
 
 # 6. Årleg health check — steg for steg
 
-**Merk:** §19 gjer at éi innsending gjeld éin vald nøkkel, og §20 gjer at nokre felt er skjulte og utleidde.
+**Merk:** §19 gjer at éi innsending gjeld éin vald nøkkel, §20 gjer at nokre felt er skjulte og utleidde, og §21 endrar adressestifeltet og BIP327/SLIP39-statusane.
 
 ## Steg 1 — Start kontroll
 
@@ -219,6 +221,8 @@ Ingen andre sikkerheitsstatusar skal brukast.
 - [x] Verifiser adresse, derivasjonshøgd og adresse-sti → `address_path_verified` (`OK` / `Problem`) og `address_path` (tekst).
 - [x] Kommentar ved behov.
 
+**Endra i §21, ikkje implementert:** `Address path` blir berre vist når `Address path verified` er `OK`.
+
 ## Steg 3 — Kontroller nøkkel 2: Blockstream Jade
 
 - [x] Tilgjengeleg / ikkje tilgjengeleg.
@@ -229,16 +233,18 @@ Ingen andre sikkerheitsstatusar skal brukast.
 - [x] Verifiser adresse, derivasjonshøgd og adresse-sti → `address_path_verified` (`OK` / `Problem`) og `address_path` (tekst).
 - [x] Kommentar ved behov.
 
+**Endra i §21, ikkje implementert:** `Address path` blir berre vist når `Address path verified` er `OK`.
+
 ## Steg 4 — Kontroller nøkkel 3: Nunchuk sky-nøkkel
 
 - [x] Tilgjengeleg / ikkje tilgjengeleg.
-- [ ] Gjennomfør cloud health check. (Endra i §20: feltet blir fjerna frå skjemaet.)
-- [ ] Verifiser at Nunchuk framleis er i drift. (Endra i §20: feltet blir fjerna frå skjemaet.)
-- [ ] Registrer resultatet av leverandør-kontrollen. (Endra i §20: blir utleidd frå `Availability`.)
+- [x] Gjennomfør cloud health check. (Endra i §20: feltet er fjerna frå skjemaet.)
+- [x] Verifiser at Nunchuk framleis er i drift. (Endra i §20: feltet er fjerna frå skjemaet.)
+- [x] Registrer resultatet av leverandør-kontrollen. (Endra i §20: blir utleidd frå `Availability`.)
 - [x] Verifiser relevant adresse/oppsett → `address_path_verified` (`OK` / `Problem`) og `address_path` (tekst).
 - [x] Kommentar ved behov.
 
-**Endra i §20, ikkje implementert:** for nøkkel 3 dekkjer `Availability` både cloud-helsa og «leverandøren er i drift». Dei to felta blir fjerna frå skjemaet og utleidde: `Availability` = Yes → `cloud_health_status` = `OK` og `cloud_provider_operational` = Yes; `Availability` = No → `PROBLEM` og `No`.
+**Endra i §20:** for nøkkel 3 dekkjer `Availability` både cloud-helsa og «leverandøren er i drift». Dei to felta er fjerna frå skjemaet og utleidde: `Availability` = Yes → `cloud_health_status` = `OK` og `cloud_provider_operational` = Yes; `Availability` = No → `PROBLEM` og `No`.
 
 ## Steg 5 — Programvare-kompatibilitet
 
@@ -250,7 +256,7 @@ Ingen andre sikkerheitsstatusar skal brukast.
 
 **Endra i §19:** dei separate Sparrow- og Nunchuk-versjonsfelta er tekne ut.
 
-**Endra i §20, ikkje implementert:** for nøkkel 3 blir kompatibilitetsfeltet skjult og utleidd: `Availability` = Yes → `OK`, `Availability` = No → `IKKJE_VURDERT`.
+**Endra i §20:** for nøkkel 3 blir kompatibilitetsfeltet skjult og utleidd: `Availability` = Yes → `OK`, `Availability` = No → `IKKJE_VURDERT`.
 
 ## Steg 6 — BIP327 / SLIP39
 
@@ -267,6 +273,8 @@ For kvart produkt:
 Alle fire produkta skal framleis kunne registrerast, men i ulike innsendingar.
 
 **Endra i §19:** «Version checked», «Date checked» og «Notes or source» er tekne ut.
+
+**Endra i §21, ikkje implementert:** statusane blir `YES`, `NO` eller `NOT_ASSESSED`. `No` utløyser ikkje varsel i dag, sidan støtta for BIP327 og SLIP39 er liten.
 
 ## Steg 7 — KI-sikkerheitsstatus
 
@@ -285,7 +293,7 @@ For kvar leverandør:
 
 Appen skal ikkje kontakte KI sjølv i MVP.
 
-**Endra i §20, ikkje implementert:** for nøkkel 1 og 2 blir berre nøkkelproduktet og den valde programvara vist. Den tredje leverandøren blir skjult og får siste lagra status — men kjem tilbake av seg sjølv om han var `VULNERABLE` eller `COMPROMISED`.
+**Endra i §20:** for nøkkel 1 og 2 blir berre nøkkelproduktet og den valde programvara vist. Den tredje leverandøren blir skjult og får siste lagra status — men kjem tilbake av seg sjølv om han var `VULNERABLE` eller `COMPROMISED`.
 
 ## Steg 8 — Kontaktinfo
 
@@ -307,7 +315,7 @@ Før lagring skal appen vise:
 - [x] Alle manglande kontrollar.
 - [x] Neste sjekkdato.
 - [x] Eventuelle handlingar som bør følgjast opp.
-- [ ] Utleidde og vidareførte verdiar, merkte som nettopp det (§20).
+- [x] Utleidde og vidareførte verdiar, merkte som nettopp det (§20).
 
 - [x] Brukaren må trykkje `Lagre health check` for å lagre kontrollen.
 
@@ -329,7 +337,7 @@ Appen skal gi tydelege varsel når resultatet krev handling.
 - [x] KI-status `COMPROMISED` → vis at nøkkeltapsprosedyre må følgjast.
 - [x] Kontaktinfo er ikkje stadfesta → vis at kontaktinformasjon må oppdaterast i den eksterne dokumentasjonen.
 
-**Endra i §20, ikkje implementert:** når nøkkel 3 er utilgjengeleg, skal det kome **eitt** samanslått kritisk varsel som nemner både at nøkkelen mangla og at leverandøren er registrert som nede. `cloud_provider_problem` held fram for rader der nøkkelen var tilgjengeleg (gamle rader).
+**Endra i §20:** når nøkkel 3 er utilgjengeleg, kjem det **eitt** samanslått kritisk varsel som nemner både at nøkkelen mangla og at leverandøren er registrert som nede. `cloud_provider_problem` held fram for rader der nøkkelen var tilgjengeleg (gamle rader).
 
 Appen skal ikkje automatisk utføre nokon av desse tiltaka.
 
@@ -350,6 +358,8 @@ Dashboardet skal vere enkelt.
 - [x] Knapp/lenke: `Download CSV` (§10).
 
 **Endra i §19, no implementert:** dei to oversiktskorta («Last completed» og «Next check») gjekk ut frå éin felles dato. Dei er no «Next check» (tidlegaste forfall blant nøklane, med kva nøkkel det gjeld) og «Attention» (kor mange nøklar som har passert fristen). Datoane per nøkkel står på nøkkelkorta, frå `GET /api/key-status`.
+
+**Endra i §21, ikkje implementert:** framsida skal vise alle varsel frå alle lagra registreringar, ikkje berre den siste.
 
 ---
 
@@ -391,6 +401,8 @@ Eksporten skal vere **rein CSV**. Ingen XLSX-eksport.
 
 **Endra:** kravet om Excel er teke ut. Filen er rein CSV (UTF-8, komma, CRLF, header). Han kan opnast i eit rekneark, men appen lovar ikkje Excel-kompatibilitet. Resultat som har meir enn éin verdi per innsending (BIP327, SLIP39 og KI-status) ligg i éi celle som `SeedSigner: OK; Sparrow Wallet: PROBLEM`.
 
+**Endra i §21, ikkje implementert:** eksporten skal skrive dei nye statusverdiane (`YES` / `NO` / `NOT_ASSESSED`).
+
 ---
 
 # 11. Backend
@@ -415,9 +427,9 @@ Minimum:
 - [x] `POST /api/health-checks` — kontrakten blir endra i §19.
 - [x] `GET /api/export`
 
-**Merk:** `GET /api/alerts` og `GET /api/key-status` er ekstra endepunkt utanom minimumslista, fordi dashboardet treng varsla og statusen per nøkkel. Dei står ikkje i spesifikasjonen enno.
+**Merk:** `GET /api/alerts`, `GET /api/key-status` og `GET /api/previous-values` er ekstra endepunkt utanom minimumslista, fordi dashboardet og skjemaet treng dei. Dei står ikkje i spesifikasjonen enno.
 
-**Endra i §20, ikkje implementert:** `GET /api/key-status` skal utvidast med dei siste lagra verdiane per nøkkel, slik at skjemaet kan vise placeholder og vidareføre skjulte verdiar.
+**Endra i §21, ikkje implementert:** `GET /api/alerts` skal summere alle lagra kontrollar, gje kvart varsel `check_id` og `checked_at`, og slå saman like varsel så berre den nyaste viser.
 
 ---
 
@@ -430,6 +442,8 @@ Minimum:
 - [x] Vis problem tydeleg.
 - [x] Vis kva som står att før ein health check kan lagrast.
 - [ ] Sørg for at appen fungerer godt i vanleg StartOS-browser.
+
+**Endra i §21, ikkje implementert:** `Address path` blir berre vist når `Address path verified` er `OK`, og framsida viser alle varsel.
 
 ---
 
@@ -574,7 +588,7 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 - [ ] 11. Test restart og restore.
 - [ ] 12. Bygg endeleg `.s9pk` og gjer første release.
 
-**Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken. Dei vart sette tilbake til uticka og gjort på nytt i tråd med §19. Steg 7 og 8 er gjorde etter §19. No er steg 4 og 6 sette tilbake til uticka igjen, fordi §20 endrar delar av dei. 76 grøne testar.
+**Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken. Dei vart sette tilbake til uticka og gjort på nytt i tråd med §19. Steg 7 og 8 er gjorde etter §19. Steg 4 og 6 er framleis uticka fordi §20 og §21 endrar delar av dei. 87 grøne testar.
 
 **Hovudregel:** Bygg den minste løysinga som oppfyller lista over. Ikkje legg til nye funksjonar, tenester eller arkitektur utan at dei er nødvendige for punkta i denne TODO-lista.
 
@@ -614,7 +628,7 @@ Denne delen er den nyaste avgjerda og overstyrer motstridande krav ovanfor om at
 - [x] Ha berre éin Nunchuk-status per innsending. Ved nøkkel 3 gjeld den statusen Nunchuk-programvara og Nunchuk-nøkkelen; ikkje lag to dupliserte statusfelt.
 - [x] Vis og krev berre security status-felt som er relevante for vald nøkkel og programvare. Ikkje krev status for alle tre nøklane i éi innsending.
 
-**Endra i §20, ikkje implementert:** for nøkkel 1 og 2 blir leverandøren som ikkje er vald skjult og vidareført, i staden for å bli vist kvar gong. Sjå §20.
+**Endra i §20:** for nøkkel 1 og 2 blir leverandøren som ikkje er vald skjult og vidareført, i staden for å bli vist kvar gong. Sjå §20.
 
 ## Lagring, historikk og verifikasjon
 
@@ -628,36 +642,73 @@ Denne delen er den nyaste avgjerda og overstyrer motstridande krav ovanfor om at
 
 # 20. Ny avgjerd: skjulte felt som blir utleidde eller vidareførte
 
-Vedteken etter at steg 8 var ferdig. Endrar delar av §4.2, §4.3, §6 steg 4, 5, 7 og 10, §7, §11 og §19. **Ingenting av dette er implementert enno.**
+Vedteken etter at steg 8 var ferdig. Endra delar av §4.2, §4.3, §6 (steg 4, 5, 7 og 10), §7, §11 og §19.
+
+**Status:** implementert og verifisert (87 grøne testar).
 
 ## Nøkkel 3: `Availability` dekkjer cloud-kontrollen
 
-- [ ] Berre `Availability` skal visast av nøkkelfelta for nøkkel 3.
-- [ ] `Cloud health check` og `Provider operational` skal fjernast frå skjemaet og utleiast: `Availability` = Yes → `cloud_health_status` = `OK` og `cloud_provider_operational` = 1; `Availability` = No → `PROBLEM` og 0.
-- [ ] `Availability` ubesvart → begge felta tomme, som i dag.
-- [ ] `Software compatibility` skal skjulast for nøkkel 3 og utleiast: `Availability` = Yes → `OK`, `Availability` = No → `IKKJE_VURDERT`.
-- [ ] Kolonnane `cloud_health_status`, `cloud_provider_operational` og `software_compatibility_status` skal behaldast for gamle rader.
-- [ ] Servervalidering skal behalde dei utleidde cloud-verdiane for nøkkel 3 når `available` er 0 (i dag blir dei tømde).
+- [x] Berre `Availability` skal visast av nøkkelfelta for nøkkel 3.
+- [x] `Cloud health check` og `Provider operational` skal fjernast frå skjemaet og utleiast: `Availability` = Yes → `cloud_health_status` = `OK` og `cloud_provider_operational` = 1; `Availability` = No → `PROBLEM` og 0.
+- [x] `Availability` ubesvart → begge felta tomme, som i dag.
+- [x] `Software compatibility` skal skjulast for nøkkel 3 og utleiast: `Availability` = Yes → `OK`, `Availability` = No → `IKKJE_VURDERT`.
+- [x] Kolonnane `cloud_health_status`, `cloud_provider_operational` og `software_compatibility_status` skal behaldast for gamle rader.
+- [x] Servervalidering skal behalde dei utleidde cloud-verdiane for nøkkel 3 når `available` er 0 (i dag blir dei tømde).
 
 ## Security status følgjer programvarevalet
 
-- [ ] For nøkkel 1 og 2 skal `Security status` berre vise nøkkelproduktet og den valde programvara.
-- [ ] Den tredje leverandøren skal skjulast og få siste lagra status for den leverandøren.
-- [ ] Er den siste statusen `VULNERABLE` eller `COMPROMISED`, skal feltet visast likevel.
-- [ ] Har leverandøren ingen tidlegare status, skal han starte som `SECURE`.
-- [ ] Dei skjulte verdiane skal framleis sendast inn, slik at POST-kontrakten, historikken og eksporten er uendra.
+- [x] For nøkkel 1 og 2 skal `Security status` berre vise nøkkelproduktet og den valde programvara.
+- [x] Den tredje leverandøren skal skjulast og få siste lagra status for den leverandøren.
+- [x] Er den siste statusen `VULNERABLE` eller `COMPROMISED`, skal feltet visast likevel.
+- [x] Har leverandøren ingen tidlegare status, skal han starte som `SECURE`.
+- [x] Dei skjulte verdiane skal framleis sendast inn, slik at POST-kontrakten, historikken og eksporten er uendra.
 
 ## Placeholder og innsyn
 
-- [ ] `Firmware version` og `Address path` skal vise førre lagra verdi som placeholder.
-- [ ] `Software version` skal vise førre verdi berre når same programvare er vald no.
-- [ ] Alle utleidde og vidareførte verdiar skal listast i Review-oppsummeringa, merkte som utleidde eller vidareførte.
+- [x] `Firmware version` og `Address path` skal vise førre lagra verdi som placeholder.
+- [x] `Software version` skal vise førre verdi berre når same programvare er vald no.
+- [x] Alle utleidde og vidareførte verdiar skal listast i Review-oppsummeringa, merkte som utleidde eller vidareførte.
 
 ## Varsel
 
-- [ ] Når nøkkel 3 er utilgjengeleg, skal det kome **eitt** samanslått kritisk varsel: «This key was not available and the cloud provider is recorded as not operating. Check the provider status and replace the key before continuing; the remaining checks for this key cannot be recorded.»
-- [ ] `cloud_provider_problem` skal framleis gjelde rader der nøkkelen var tilgjengeleg (gamle rader).
+- [x] Når nøkkel 3 er utilgjengeleg, skal det kome **eitt** samanslått kritisk varsel: «This key was not available and the cloud provider is recorded as not operating. Check the provider status and replace the key before continuing; the remaining checks for this key cannot be recorded.»
+- [x] `cloud_provider_problem` skal framleis gjelde rader der nøkkelen var tilgjengeleg (gamle rader).
 
 ## Følgje å vite om
 
-- [ ] Nøkkel 3 kan ikkje lenger gi varselet `software_incompatible`, sidan kompatibilitetsstatusen blir utleidd til `OK` eller `IKKJE_VURDERT`.
+- [x] Nøkkel 3 kan ikkje lenger gi varselet `software_incompatible`, sidan kompatibilitetsstatusen blir utleidd til `OK` eller `IKKJE_VURDERT`.
+
+---
+
+# 21. Ny avgjerd: engelske statusverdiar, adressesti og alle varsel
+
+Vedteken etter at §20 var ferdig. Endrar delar av §4.2, §4.3, §4.4, §5.1, §6 (steg 2, 3 og 6), §7, §8, §10, §11 og §12.
+
+**Ingenting av dette er implementert enno.**
+
+## Engelske statusverdiar
+
+- [ ] `IKKJE_VURDERT` skal bytast til `NOT_ASSESSED` på alle fire kolonnane som brukar han: `health_checks.software_compatibility_status`, `key_checks.cloud_health_status`, `tool_checks.bip327_status` og `tool_checks.slip39_status`.
+- [ ] BIP327- og SLIP39-statusane skal ha verdiane `YES`, `NO` eller `NOT_ASSESSED` i staden for `OK`, `PROBLEM` og `IKKJE_VURDERT`.
+- [ ] Migreringa skal mappe gamle rader: `OK` → `YES`, `PROBLEM` → `NO`, `IKKJE_VURDERT` → `NOT_ASSESSED`.
+- [ ] Skjemaval, validering, varsel, CSV-eksport og testar skal bruke dei nye verdiane.
+- [ ] Produktnamnet «Helsesjekk» og databasefilnamnet `data/helsesjekk.sqlite3` skal behaldast, og dokumenterast som bevisste unntak frå engelskregelen.
+
+## Adressesti blir vist etter behov
+
+- [ ] `Address path` skal berre visast når `Address path verified` er `OK`, og skjulast når han er `Problem` eller ikkje svara.
+
+## Alle varsel på framsida
+
+- [ ] `GET /api/alerts` skal summere varsla frå alle lagra kontrollar, ikkje berre den siste.
+- [ ] Kvart varsel skal ha med `check_id` og `checked_at`, slik at ein ser kva registrering det kjem frå.
+- [ ] Like varsel (same `code` og `source`) skal slåast saman, og berre den nyaste skal visast, med datoen sin.
+- [ ] Varsla skal listast med dei kritiske først, og deretter nyaste først.
+- [ ] Framsida skal vise alle varsla som kjem frå endepunktet.
+
+## Framtidig arbeid, ikkje no
+
+- [ ] Varsel om at oppsettet kan oppgraderast når alle nøklar og all programvare svarar `YES` på anten BIP327 eller SLIP39. Krev at appen ser på tvers av alle registreringar.
+- [ ] Ein måte å lukke eller kvittere ut varsel på.
+
+**Teknisk merknad:** endringane i statusverdiane rører `CHECK`-reglane på `health_checks`, `key_checks` og `tool_checks`, og `health_checks` er ein foreldretabell med framandnøklar frå dei tre andre tabellane. Migreringa må difor slå `PRAGMA foreign_keys` av før transaksjonen, slå han på att etterpå og køyre `PRAGMA foreign_key_check`. Skjemaet går til versjon 6.
