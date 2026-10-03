@@ -125,6 +125,23 @@ function createAlertItem(alert) {
   return item;
 }
 
+async function redirectWhenSetupIsMissing() {
+  try {
+    const response = await fetch("/api/setup", { headers: { Accept: "application/json" } });
+    if (!response.ok) {
+      return;
+    }
+    const setup = await response.json();
+    if (!setup.configured) {
+      // A new database has no key setup yet, so the dashboard has nothing to
+      // show and the first-run setup step comes first (section 23.2).
+      window.location.assign("/setup");
+    }
+  } catch {
+    // A failed request is reported by the sections below, each in its own way.
+  }
+}
+
 async function loadKeyStatus() {
   try {
     const response = await fetch("/api/key-status", { headers: { Accept: "application/json" } });
@@ -177,5 +194,6 @@ async function loadAlerts() {
   }
 }
 
+redirectWhenSetupIsMissing();
 loadKeyStatus();
 loadAlerts();
