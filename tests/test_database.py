@@ -64,10 +64,6 @@ def sample_payload(key, wallet_software=None):
         "contact_info_verified": "Confirmed current",
         "comments": "Annual review",
         "key_check": entry,
-        "tool_checks": [
-            {"product": label, "bip327_status": "NOT_ASSESSED", "slip39_status": "NOT_ASSESSED"}
-            for label in labels
-        ],
         "ai_security_checks": [
             {"provider": label, "status": "SECURE", "comments": ""} for label in labels
         ],
@@ -146,6 +142,8 @@ LEGACY_SCHEMA = """
         health_check_id, key_id, available, seed_backup_status,
         seed_backup_verified, address_verified, address_path_verified
     ) VALUES (1, 2, 1, 'PROBLEM', 0, 0, 0);
+    INSERT INTO tool_checks (health_check_id, product, bip327_status, slip39_status)
+        VALUES (1, 'SeedSigner', 'OK', 'PROBLEM');
     INSERT INTO ai_security_checks (health_check_id, provider, status) VALUES
         (1, 'SeedSigner', 'TRYGG'),
         (1, 'Nunchuk', 'SÅRBAR');
@@ -154,7 +152,8 @@ LEGACY_SCHEMA = """
 
 # The layout introduced by section 19, before the status values became English,
 # before the contact flag became a stored status, and before the fixed device,
-# product, provider, and wallet-software lists were dropped.
+# product, provider, and wallet-software lists were dropped. It still holds the
+# tool_checks table, which the migration drops (sections 24.2 and 24.4).
 SCHEMA_VERSION_5 = """
     CREATE TABLE keys (
         id INTEGER PRIMARY KEY,
@@ -273,6 +272,16 @@ class DatabaseInitializationTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def table_names(self):
+        """Return the table names of the migrated database."""
+        with self.connect() as connection:
+            return {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            }
+
     def test_initialization_creates_versioned_schema_and_is_idempotent(self):
         initialize_database(self.database_path)
         initialize_database(self.database_path)
@@ -288,9 +297,11 @@ class DatabaseInitializationTests(unittest.TestCase):
 
         self.assertEqual(version, SCHEMA_VERSION)
         self.assertTrue(
-            {"keys", "health_checks", "key_checks", "tool_checks", "ai_security_checks"}
-            <= tables
+            {"keys", "health_checks", "key_checks", "ai_security_checks"} <= tables
         )
+        # The BIP327/SLIP39 table is not part of the schema any more
+        # (sections 24.2 and 24.4).
+        self.assertNotIn("tool_checks", tables)
 
     def test_a_new_database_has_no_key_setup(self):
         initialize_database(self.database_path)
@@ -374,6 +385,9 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertFalse("device" in key_columns)
         self.assertEqual(rows, [(1, "OK", "OK"), (2, "PROBLEM", "PROBLEM")])
         self.assertEqual(statuses, [("Nunchuk", "VULNERABLE"), ("SeedSigner", "SECURE")])
+        # The BIP327/SLIP39 rows are dropped with their table, and the rest of
+        # the history is kept (sections 24.2 and 24.4).
+        self.assertNotIn("tool_checks", self.table_names())
 
         record = get_health_check(1, self.database_path)
         self.assertEqual(record["checked_at"], "2026-01-01")
@@ -393,7 +407,6 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(new_record["wallet_software"], "Nunchuk")
         self.assertEqual(len(new_record["key_checks"]), 1)
         self.assertEqual(new_record["key_checks"][0]["key_number"], 3)
-        self.assertEqual([entry["product"] for entry in new_record["tool_checks"]], ["Nunchuk"])
         self.assertEqual([entry["provider"] for entry in new_record["ai_security_checks"]], ["Nunchuk"])
 
     def test_status_values_migrate_to_english(self):
@@ -407,23 +420,15 @@ class DatabaseInitializationTests(unittest.TestCase):
                 "SELECT software_compatibility_status FROM health_checks"
             ).fetchone()[0]
             cloud = connection.execute("SELECT cloud_health_status FROM key_checks").fetchone()[0]
-            standards = connection.execute(
-                "SELECT product, bip327_status, slip39_status FROM tool_checks ORDER BY id"
-            ).fetchall()
 
         self.assertEqual(version, SCHEMA_VERSION)
         self.assertEqual(compatibility, "NOT_ASSESSED")
         self.assertEqual(cloud, "NOT_ASSESSED")
-        self.assertEqual(
-            standards,
-            [("SeedSigner", "YES", "NO"), ("Sparrow Wallet", "NOT_ASSESSED", "YES")],
-        )
+        self.assertNotIn("tool_checks", self.table_names())
 
         record = get_health_check(1, self.database_path)
         self.assertEqual(record["software_compatibility_status"], "NOT_ASSESSED")
         self.assertEqual(record["comments"], "Annual review")
-        self.assertEqual(record["tool_checks"][0]["bip327_status"], "YES")
-        self.assertEqual(record["tool_checks"][0]["slip39_status"], "NO")
         self.assertEqual(record["ai_security_checks"][0]["status"], "SECURE")
 
     def test_the_device_column_is_dropped(self):
@@ -481,16 +486,11 @@ class DatabaseInitializationTests(unittest.TestCase):
                     "VALUES ('2026-01-01', '2027-01-01', ?)",
                     (1,),
                 ),
-                (
-                    "INSERT INTO tool_checks (health_check_id, product, bip327_status, slip39_status) "
-                    "VALUES (1, 'Nunchuk', ?, 'YES')",
-                    ("OK",),
-                ),
             ):
                 with self.assertRaises(sqlite3.IntegrityError):
                     connection.execute(statement, parameters)
 
-    def test_the_migrated_schema_accepts_free_product_and_provider_names(self):
+    def test_the_migrated_schema_accepts_a_free_provider_name(self):
         self.write_schema(SCHEMA_VERSION_5)
         initialize_database(self.database_path)
 
@@ -501,11 +501,6 @@ class DatabaseInitializationTests(unittest.TestCase):
             )
             health_check_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
             connection.execute(
-                "INSERT INTO tool_checks (health_check_id, product, bip327_status, slip39_status) "
-                "VALUES (?, 'ColdCard', 'YES', 'NO')",
-                (health_check_id,),
-            )
-            connection.execute(
                 "INSERT INTO ai_security_checks (health_check_id, provider, status) "
                 "VALUES (?, 'ColdCard', 'SECURE')",
                 (health_check_id,),
@@ -515,7 +510,8 @@ class DatabaseInitializationTests(unittest.TestCase):
             ).fetchone()[0]
 
         # The configured name and the selected software are free text, so the
-        # old product lists no longer reject them (section 23.3).
+        # old provider and wallet-software lists no longer reject them
+        # (section 23.3).
         self.assertEqual(stored, "Coinbase")
 
     def test_the_rebuilt_parent_table_keeps_its_foreign_keys(self):
@@ -556,13 +552,13 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(record["key_checks"][0]["key_number"], 1)
         self.assertEqual(record["key_checks"][0]["seed_backup_verified"], "OK")
         self.assertEqual(
-            [entry["product"] for entry in record["tool_checks"]],
+            [entry["provider"] for entry in record["ai_security_checks"]],
             ["SeedSigner", "Sparrow Wallet"],
         )
         self.assertEqual(record["ai_security_checks"][0]["status"], "SECURE")
         self.assertIsNone(get_health_check(9999, self.database_path))
 
-    def test_the_stored_name_is_recorded_as_the_product(self):
+    def test_the_stored_name_is_recorded_as_the_provider_label(self):
         keys = self.prepare(RENAMED_SETUP)
         cloud_key = keys[0]
 
@@ -572,7 +568,6 @@ class DatabaseInitializationTests(unittest.TestCase):
         record = get_health_check(saved_id, self.database_path)
 
         self.assertEqual(record["wallet_software"], "Coinbase")
-        self.assertEqual([entry["product"] for entry in record["tool_checks"]], ["Coinbase"])
         self.assertEqual(
             [entry["provider"] for entry in record["ai_security_checks"]], ["Coinbase"]
         )
@@ -673,7 +668,7 @@ class DatabaseInitializationTests(unittest.TestCase):
 
         self.assertEqual(list_export_rows(self.database_path), [])
 
-    def test_export_rows_join_products_and_security_statuses(self):
+    def test_export_rows_join_the_security_statuses(self):
         keys = self.prepare()
 
         saved_id = save_health_check(
@@ -699,14 +694,6 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(first["wallet_software"], "Sparrow Wallet")
         self.assertEqual(first["contact_info_verified"], "Confirmed current")
         self.assertEqual(
-            first["bip327_status"],
-            "SeedSigner: NOT_ASSESSED; Sparrow Wallet: NOT_ASSESSED",
-        )
-        self.assertEqual(
-            first["slip39_status"],
-            "SeedSigner: NOT_ASSESSED; Sparrow Wallet: NOT_ASSESSED",
-        )
-        self.assertEqual(
             first["security_status"],
             "SeedSigner: SECURE; Sparrow Wallet: SECURE",
         )
@@ -715,7 +702,6 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(cloud["key_number"], 3)
         self.assertEqual(cloud["key_name"], "Nunchuk")
         self.assertEqual(cloud["wallet_software"], "Nunchuk")
-        self.assertEqual(cloud["bip327_status"], "Nunchuk: NOT_ASSESSED")
         self.assertEqual(cloud["security_status"], "Nunchuk: SECURE")
 
     def test_invalid_status_and_duplicate_key_numbers_are_rejected(self):
