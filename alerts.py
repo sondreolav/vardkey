@@ -27,6 +27,9 @@ _CLOUD_KEY_UNAVAILABLE_MESSAGE = (
     "Check the provider status and replace the key before continuing; "
     "the remaining checks for this key cannot be recorded."
 )
+# The stored contact status that asks for an update of the user's own records
+# (section 23.1).
+_CONTACT_NEEDS_UPDATE = "Needs external update"
 
 
 def build_alerts(record):
@@ -194,12 +197,17 @@ def _security_alerts(security_check):
 
 
 def _contact_alerts(record):
-    """Return the alert for contact information that is not confirmed."""
-    if record.get("contact_info_verified") == 0:
+    """Return the alert for contact details that need an external update.
+
+    Only the stored status is read; the app never stores contact details
+    (section 23.1).
+    """
+    if record.get("contact_info_verified") == _CONTACT_NEEDS_UPDATE:
         return [_alert(
             "contact_info_unconfirmed",
             INFO,
             "Contact information",
-            "Contact information is not confirmed. Update it in your external documentation.",
+            "The contact details for this key need an external update. "
+            "Update them in your external documentation.",
         )]
     return []
