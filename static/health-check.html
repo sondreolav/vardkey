@@ -90,7 +90,9 @@
             <p class="eyebrow">06 / Contact confirmation</p>
             <h2 id="contact-title">Contact information</h2>
           </div>
-          <label class="field"><span>Have you confirmed that this key holder's contact details are current?</span><select id="contact-info-verified" name="contact_info_verified"><option value="">Not assessed</option><option value="Confirmed current">Confirmed current</option><option value="Needs external update">Needs external update</option></select></label>
+          <!-- The confirmation is required, also when the key was not available,
+               because the question is still asked (section 24.1). -->
+          <label class="field"><span>Have you confirmed that this key holder's contact details are current?</span><select id="contact-info-verified" name="contact_info_verified" required><option value="">Select status</option><option value="Confirmed current">Confirmed current</option><option value="Needs external update">Needs external update</option></select></label>
           <p class="field-help">Only the confirmation for the selected key is recorded in the saved check. Do not enter names, email addresses, or phone numbers.</p>
           <p class="field-help" id="contact-reminder" hidden>Contact details must be updated in your external documentation.</p>
         </section>
