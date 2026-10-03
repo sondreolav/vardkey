@@ -1,7 +1,8 @@
 """HTTP tests for the dashboard server.
 
 Every test gets its own database and server, so the tests stay independent of
-each other and of the order they run in.
+each other and of the order they run in. ``AppHandlerTests`` starts from a
+stored key setup; ``KeySetupApiTests`` starts from a new, empty database.
 """
 
 from http.server import ThreadingHTTPServer
@@ -16,20 +17,29 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from app import AppHandler
-from database import initialize_database, seed_fixed_keys
+from database import initialize_database, save_key_setup
 from export import HEADERS
 
 
-KEY_PRODUCTS = {1: "SeedSigner", 2: "Blockstream Jade", 3: "Nunchuk"}
+# The key setup most tests start from (section 23.2).
+DEFAULT_SETUP = [
+    {"key_number": 1, "name": "SeedSigner", "type": "hardware"},
+    {"key_number": 2, "name": "Blockstream Jade", "type": "hardware"},
+    {"key_number": 3, "name": "Nunchuk", "type": "cloud"},
+]
+# A setup with the cloud key in the first slot and a renamed hardware key.
+RENAMED_SETUP = [
+    {"key_number": 1, "name": "Coinbase", "type": "cloud"},
+    {"key_number": 2, "name": "ColdCard", "type": "hardware"},
+    {"key_number": 3, "name": "Jade", "type": "hardware"},
+]
 
 
 def sample_payload(key, wallet_software=None):
     """Return a valid single-key payload for the given key profile."""
-    number = key["key_number"]
     if wallet_software is None:
-        wallet_software = "Nunchuk" if number == 3 else "Sparrow Wallet"
-    products = list(dict.fromkeys((KEY_PRODUCTS[number], wallet_software)))
-    providers = ["Nunchuk"] if number == 3 else [KEY_PRODUCTS[number], "Sparrow Wallet", "Nunchuk"]
+        wallet_software = key["name"] if key["type"] == "cloud" else "Sparrow Wallet"
+    labels = list(dict.fromkeys((key["name"], wallet_software)))
     entry = {
         "key_id": key["id"],
         "available": 1,
@@ -55,11 +65,11 @@ def sample_payload(key, wallet_software=None):
         "comments": "Annual review",
         "key_check": entry,
         "tool_checks": [
-            {"product": product, "bip327_status": "NOT_ASSESSED", "slip39_status": "NOT_ASSESSED"}
-            for product in products
+            {"product": label, "bip327_status": "NOT_ASSESSED", "slip39_status": "NOT_ASSESSED"}
+            for label in labels
         ],
         "ai_security_checks": [
-            {"provider": provider, "status": "SECURE", "comments": ""} for provider in providers
+            {"provider": label, "status": "SECURE", "comments": ""} for label in labels
         ],
     }
 
@@ -86,12 +96,13 @@ def unavailable_payload(key):
     }
 
 
-class AppHandlerTests(unittest.TestCase):
+class ServerTestCase(unittest.TestCase):
+    """Start a server on a temporary database."""
+
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.database_path = os.path.join(self.temp_dir.name, "test.sqlite3")
         initialize_database(self.database_path)
-        seed_fixed_keys(self.database_path)
         self.previous_database_path = os.environ.get("DATABASE_PATH")
         os.environ["DATABASE_PATH"] = self.database_path
 
@@ -110,8 +121,17 @@ class AppHandlerTests(unittest.TestCase):
             os.environ["DATABASE_PATH"] = self.previous_database_path
         self.temp_dir.cleanup()
 
+    def store_setup(self, setup=DEFAULT_SETUP):
+        """Store the key setup directly, without going through the API."""
+        save_key_setup(setup, self.database_path)
+
     def key_profiles(self):
         with urlopen(f"{self.base_url}/api/keys") as response:
+            return json.load(response)
+
+    def get_setup(self):
+        with urlopen(f"{self.base_url}/api/setup") as response:
+            self.assertEqual(response.status, 200)
             return json.load(response)
 
     def post_json(self, path, payload):
@@ -129,6 +149,9 @@ class AppHandlerTests(unittest.TestCase):
             self.assertEqual(response.status, 201)
             return json.load(response)["id"]
 
+    def post_setup(self, payload):
+        return self.post_json("/api/setup", payload)
+
     def get_record(self, health_check_id):
         with urlopen(f"{self.base_url}/api/health-checks/{health_check_id}") as response:
             self.assertEqual(response.status, 200)
@@ -139,16 +162,35 @@ class AppHandlerTests(unittest.TestCase):
             self.assertEqual(response.status, 200)
             return json.load(response)
 
-    def assert_rejected(self, payload):
+    def assert_rejected(self, payload, status=400):
         try:
             with self.post_json("/api/health-checks", payload) as response:
-                self.fail(f"Expected 400, received {response.status}")
+                self.fail(f"Expected {status}, received {response.status}")
         except HTTPError as error:
             try:
-                self.assertEqual(error.code, 400)
+                self.assertEqual(error.code, status)
                 error.read()
             finally:
                 error.close()
+
+    def assert_setup_rejected(self, payload, status=400):
+        try:
+            with self.post_setup(payload) as response:
+                self.fail(f"Expected {status}, received {response.status}")
+        except HTTPError as error:
+            try:
+                self.assertEqual(error.code, status)
+                error.read()
+            finally:
+                error.close()
+
+
+class AppHandlerTests(ServerTestCase):
+    """The endpoints once the key setup is stored."""
+
+    def setUp(self):
+        super().setUp()
+        self.store_setup()
 
     def test_health_endpoint_returns_json(self):
         with urlopen(f"{self.base_url}/health") as response:
@@ -156,13 +198,30 @@ class AppHandlerTests(unittest.TestCase):
             self.assertEqual(json.load(response), {"status": "ok"})
             self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
 
-    def test_key_api_returns_the_three_fixed_profiles(self):
-        with urlopen(f"{self.base_url}/api/keys") as response:
-            keys = json.load(response)
+    def test_key_api_returns_the_configured_profiles(self):
+        keys = self.key_profiles()
 
-        self.assertEqual(response.status, 200)
-        self.assertEqual([key["device"] for key in keys], ["SeedSigner", "Blockstream Jade", "Nunchuk"])
         self.assertEqual([key["key_number"] for key in keys], [1, 2, 3])
+        self.assertEqual(
+            [key["name"] for key in keys],
+            ["SeedSigner", "Blockstream Jade", "Nunchuk"],
+        )
+        self.assertEqual([key["type"] for key in keys], ["hardware", "hardware", "cloud"])
+        # The configured name is the product label, so there is no device field.
+        self.assertNotIn("device", keys[0])
+
+    def test_setup_api_reports_the_stored_setup(self):
+        setup = self.get_setup()
+
+        self.assertTrue(setup["configured"])
+        self.assertEqual([key["name"] for key in setup["keys"]],
+                         ["SeedSigner", "Blockstream Jade", "Nunchuk"])
+
+    def test_a_stored_setup_cannot_be_replaced(self):
+        self.assert_setup_rejected({"keys": RENAMED_SETUP}, status=409)
+
+        self.assertEqual([key["name"] for key in self.key_profiles()],
+                         ["SeedSigner", "Blockstream Jade", "Nunchuk"])
 
     def test_key_status_api_is_empty_before_anything_is_saved(self):
         with urlopen(f"{self.base_url}/api/key-status") as response:
@@ -196,7 +255,6 @@ class AppHandlerTests(unittest.TestCase):
 
         self.assertEqual(response.status, 200)
         self.assertEqual([entry["key_id"] for entry in values["keys"]], [1, 2, 3])
-        self.assertEqual(values["security"], {})
         self.assertIsNone(values["keys"][0]["firmware_version"])
         self.assertIsNone(values["keys"][0]["software_version"])
 
@@ -217,9 +275,6 @@ class AppHandlerTests(unittest.TestCase):
         self.assertEqual(by_key[key["id"]]["address_path"], "m/48'/0'/0'/2'/0/0")
         self.assertEqual(by_key[key["id"]]["wallet_software"], "Sparrow Wallet")
         self.assertEqual(by_key[key["id"]]["software_version"], "1.8.5")
-        self.assertEqual(values["security"]["SeedSigner"], "SECURE")
-        self.assertEqual(values["security"]["Sparrow Wallet"], "SECURE")
-        self.assertEqual(values["security"]["Nunchuk"], "SECURE")
 
     def test_export_api_returns_a_csv_download(self):
         payload = sample_payload(self.key_profiles()[0])
@@ -251,7 +306,7 @@ class AppHandlerTests(unittest.TestCase):
         # The contact confirmation is a status, not a yes/no flag (section 23.1).
         self.assertEqual(values["Contact details confirmed"], "Confirmed current")
         self.assertIn("SeedSigner: NOT_ASSESSED", values["BIP327"])
-        self.assertIn("Nunchuk: SECURE", values["Security status"])
+        self.assertIn("Sparrow Wallet: SECURE", values["Security status"])
 
     def test_export_api_leaves_the_skipped_columns_empty(self):
         saved_id = self.post_health_check(unavailable_payload(self.key_profiles()[1]))
@@ -281,6 +336,16 @@ class AppHandlerTests(unittest.TestCase):
         self.assertIn('id="key-select"', body)
         self.assertIn("Never enter seed phrases", body)
         self.assertIn("Save health check", body)
+
+    def test_setup_page_is_served_in_english(self):
+        with urlopen(f"{self.base_url}/setup") as response:
+            body = response.read().decode("utf-8")
+
+        self.assertEqual(response.status, 200)
+        self.assertIn('<html lang="en">', body)
+        self.assertIn('id="setup-form"', body)
+        self.assertIn("Never enter seed phrases", body)
+        self.assertIn("Save key setup", body)
 
     def test_history_page_is_served_in_english(self):
         with urlopen(f"{self.base_url}/history") as response:
@@ -389,7 +454,10 @@ class AppHandlerTests(unittest.TestCase):
             ["SeedSigner", "Sparrow Wallet"],
         )
         self.assertEqual(record["tool_checks"][0]["bip327_status"], "NOT_ASSESSED")
-        self.assertEqual(len(record["ai_security_checks"]), 3)
+        self.assertEqual(
+            [entry["provider"] for entry in record["ai_security_checks"]],
+            ["SeedSigner", "Sparrow Wallet"],
+        )
 
     def test_each_key_can_be_posted_and_read_back(self):
         for key in self.key_profiles():
@@ -534,11 +602,31 @@ class AppHandlerTests(unittest.TestCase):
 
         self.assert_rejected(payload)
 
-    def test_sparrow_wallet_is_rejected_for_the_cloud_key(self):
-        payload = sample_payload(self.key_profiles()[2])
-        payload["wallet_software"] = "Sparrow Wallet"
+    def test_a_hardware_key_name_is_not_a_wallet_software_choice(self):
+        # "Jade" is a hardware key in this setup, so it is never software.
+        payload = sample_payload(self.key_profiles()[1])
+        payload["wallet_software"] = "Jade"
 
         self.assert_rejected(payload)
+
+    def test_a_hardware_key_may_use_the_cloud_key_name_as_its_software(self):
+        payload = sample_payload(self.key_profiles()[0], wallet_software="Nunchuk")
+        payload["tool_checks"] = [
+            {"product": label, "bip327_status": "YES", "slip39_status": "NO"}
+            for label in ("SeedSigner", "Nunchuk")
+        ]
+        payload["ai_security_checks"] = [
+            {"provider": label, "status": "SECURE", "comments": ""}
+            for label in ("SeedSigner", "Nunchuk")
+        ]
+
+        saved_id = self.post_health_check(payload)
+
+        self.assertEqual(self.get_record(saved_id)["wallet_software"], "Nunchuk")
+
+    def test_a_renamed_key_records_its_own_name(self):
+        with urlopen(f"{self.base_url}/api/setup") as response:
+            self.assertEqual(response.status, 200)
 
     def test_unknown_health_check_returns_not_found(self):
         try:
@@ -561,6 +649,143 @@ class AppHandlerTests(unittest.TestCase):
                 error.read()
             finally:
                 error.close()
+
+
+class RenamedSetupTests(ServerTestCase):
+    """The endpoints with a renamed setup and the cloud key in the first slot."""
+
+    def setUp(self):
+        super().setUp()
+        self.store_setup(RENAMED_SETUP)
+
+    def test_the_cloud_key_records_its_own_name(self):
+        key = self.key_profiles()[0]
+        self.assertEqual(key["name"], "Coinbase")
+        self.assertEqual(key["type"], "cloud")
+
+        saved_id = self.post_health_check(sample_payload(key))
+
+        record = self.get_record(saved_id)
+        self.assertEqual(record["wallet_software"], "Coinbase")
+        self.assertEqual([entry["product"] for entry in record["tool_checks"]], ["Coinbase"])
+        self.assertEqual(
+            [entry["provider"] for entry in record["ai_security_checks"]], ["Coinbase"]
+        )
+
+    def test_a_hardware_key_records_its_configured_name(self):
+        key = self.key_profiles()[1]
+        self.assertEqual(key["name"], "ColdCard")
+
+        saved_id = self.post_health_check(sample_payload(key))
+
+        record = self.get_record(saved_id)
+        self.assertEqual(
+            [entry["product"] for entry in record["tool_checks"]],
+            ["ColdCard", "Sparrow Wallet"],
+        )
+        self.assertEqual(
+            [entry["provider"] for entry in record["ai_security_checks"]],
+            ["ColdCard", "Sparrow Wallet"],
+        )
+
+    def test_the_dashboard_reports_the_configured_names(self):
+        with urlopen(f"{self.base_url}/api/key-status") as response:
+            status = json.load(response)
+
+        self.assertEqual([entry["name"] for entry in status], ["Coinbase", "ColdCard", "Jade"])
+        self.assertEqual([entry["type"] for entry in status], ["cloud", "hardware", "hardware"])
+
+    def test_the_export_uses_the_configured_name(self):
+        key = self.key_profiles()[1]
+        self.post_health_check(sample_payload(key))
+
+        with urlopen(f"{self.base_url}/api/export") as response:
+            body = response.read().decode("utf-8")
+
+        rows = list(csv.reader(io.StringIO(body)))
+        values = dict(zip(HEADERS, rows[1]))
+
+        self.assertEqual(values["Key name"], "ColdCard")
+        self.assertEqual(values["Key type"], "hardware")
+        self.assertEqual(values["BIP327"], "ColdCard: NOT_ASSESSED; Sparrow Wallet: NOT_ASSESSED")
+
+
+class KeySetupApiTests(ServerTestCase):
+    """The endpoints on a new database, before the key setup is stored."""
+
+    def test_setup_api_reports_an_unconfigured_database(self):
+        setup = self.get_setup()
+
+        self.assertFalse(setup["configured"])
+        self.assertEqual(setup["keys"], [])
+
+    def test_the_key_api_is_empty_before_the_setup(self):
+        self.assertEqual(self.key_profiles(), [])
+
+    def test_the_key_setup_can_be_stored_once(self):
+        with self.post_setup({"keys": DEFAULT_SETUP}) as response:
+            self.assertEqual(response.status, 201)
+            body = json.load(response)
+
+        self.assertTrue(body["configured"])
+        self.assertEqual([key["name"] for key in body["keys"]],
+                         ["SeedSigner", "Blockstream Jade", "Nunchuk"])
+        self.assertTrue(self.get_setup()["configured"])
+        self.assertEqual(len(self.key_profiles()), 3)
+
+    def test_a_setup_with_all_three_keys_as_cloud_keys_is_accepted(self):
+        payload = {"keys": [
+            {"key_number": 1, "name": "Provider one", "type": "cloud"},
+            {"key_number": 2, "name": "Provider two", "type": "cloud"},
+            {"key_number": 3, "name": "Provider three", "type": "cloud"},
+        ]}
+
+        with self.post_setup(payload) as response:
+            self.assertEqual(response.status, 201)
+
+        self.assertEqual([key["type"] for key in self.key_profiles()], ["cloud"] * 3)
+
+    def test_a_duplicate_name_is_rejected(self):
+        payload = {"keys": [
+            {"key_number": 1, "name": "Jade", "type": "hardware"},
+            {"key_number": 2, "name": "jade", "type": "hardware"},
+            {"key_number": 3, "name": "Nunchuk", "type": "cloud"},
+        ]}
+
+        self.assert_setup_rejected(payload)
+        self.assertFalse(self.get_setup()["configured"])
+
+    def test_an_empty_name_is_rejected(self):
+        payload = {"keys": [
+            {"key_number": 1, "name": "   ", "type": "hardware"},
+            {"key_number": 2, "name": "Jade", "type": "hardware"},
+            {"key_number": 3, "name": "Nunchuk", "type": "cloud"},
+        ]}
+
+        self.assert_setup_rejected(payload)
+
+    def test_the_wrong_number_of_keys_is_rejected(self):
+        self.assert_setup_rejected({"keys": DEFAULT_SETUP[:2]})
+        self.assert_setup_rejected({"keys": DEFAULT_SETUP + [DEFAULT_SETUP[0]]})
+        self.assert_setup_rejected({})
+
+    def test_an_unknown_type_is_rejected(self):
+        payload = {"keys": [
+            {"key_number": 1, "name": "ColdCard", "type": "usb"},
+            {"key_number": 2, "name": "Jade", "type": "hardware"},
+            {"key_number": 3, "name": "Nunchuk", "type": "cloud"},
+        ]}
+
+        self.assert_setup_rejected(payload)
+
+    def test_a_health_check_cannot_be_posted_before_the_setup(self):
+        key = {"id": 1, "key_number": 1, "name": "SeedSigner", "type": "hardware"}
+
+        self.assert_rejected(sample_payload(key))
+
+    def test_the_key_status_is_empty_before_the_setup(self):
+        with urlopen(f"{self.base_url}/api/key-status") as response:
+            self.assertEqual(json.load(response), [])
 
 
 if __name__ == "__main__":
