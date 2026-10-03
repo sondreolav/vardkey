@@ -14,7 +14,7 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 
 Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 
-**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. Fire avgjerder vart tekne undervegs, alle implementerte og verifiserte, og er innarbeidde i §1–§18. Dei står att som eit kort vedlegg i §19–§22, mest for å forklare kvar referansane i §1–§18 peikar. Den fulle grunngjevinga for kvar avgjerd ligg i git-historikken.
+**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. Fire avgjerder vart tekne undervegs, alle implementerte og verifiserte, og er innarbeidde i §1–§18. Dei står att som eit kort vedlegg i §19–§22, mest for å forklare kvar referansane i §1–§18 peikar. Den fulle grunngjevinga for kvar avgjerd ligg i git-historikken. §23 er avtalt arbeid som **ikkje er implementert**, og som skal gjerast før steg 9–12 i §18.
 
 ## Språkkrav
 
@@ -55,7 +55,7 @@ Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 - [ ] Ingen avansert analyse eller grafar.
 - [ ] Ingen støtte for fleire multisig-oppsett i MVP.
 
-**Merk:** denne lista er eit varig forbod, ikkje ei oppgåveliste. Punkta blir difor ikkje kryssa av, men skal stadfestast på nytt før release.
+**Merk:** denne lista er eit varig forbod, ikke ei oppgåveliste. Punkta blir difor ikkje kryssa av, men skal stadfestast på nytt før release.
 
 ---
 
@@ -83,7 +83,9 @@ Appen skal starte med eitt fast multisig-oppsett:
 - [x] Vis 2-av-3 som oppsettet i dashboardet.
 - [x] Ha tre nøkkelprofilar, éin for kvar nøkkel.
 - [x] Ikkje bygg generell støtte for mange oppsett enno.
-- [ ] La brukaren gi nøklane lesbare namn dersom ønskjeleg. (Avgjort: ikkje no — faste namn er nok for MVP.)
+- [ ] La brukaren gi nøklane lesbare namn dersom ønskjeleg. (Avgjort: ikkje no — faste namn er nok for MVP. §23.2 endrar dette: brukaren gir namn og type ved første oppstart.)
+
+**Merk:** §23.2 erstattar det faste oppsettet i denne seksjonen når det er implementert. Fram til då gjeld tabellen over som han står.
 
 ---
 
@@ -116,6 +118,8 @@ Reglar:
 - [x] `seed_backup_status`, `address_verified` og `derivation_height` er fjerna (§19).
 - [x] Når `available` er Nei, blir `wallet_software`, `tool_checks` og `ai_security_checks` ikkje registrerte i det heile (§22).
 
+**Merk:** §23.4 legg til lagring av nøkkeloppsettet (namn og type) og endrar verdiane for kontaktstadfesting når det er implementert. Fram til då gjeld datamodellen over som han står.
+
 ---
 
 # 5. Statusverdiar
@@ -126,6 +130,7 @@ Reglar:
 - [x] KI-sikkerheitsstatus brukar nøyaktig `SECURE`, `PATCHED`, `VULNERABLE` og `COMPROMISED`. Ingen andre.
 - [x] Same statuslogikk i database, validering, varsel, CSV-eksport og UI.
 - [x] Ikkje bland saman «ikkje vurdert» og eit faktisk negativt resultat.
+- [ ] Kontaktstadfesting brukar `Confirmed current` eller `Needs external update` i staden for Ja/Nei (§23.1).
 
 ---
 
@@ -311,7 +316,7 @@ Unngå:
 - [ ] Ingen ekstern cloud-service for appdata.
 - [ ] Ingen ekstra container utan konkret behov.
 
-**Merk:** denne lista er eit varig forbod, ikkje ei oppgåveliste. Punkta blir difor ikkje kryssa av, men skal stadfestast på nytt før release.
+**Merk:** denne lista er eit varig forbod, ikke ei oppgåveliste. Punkta blir difor ikkje kryssa av, men skal stadfestast på nytt før release.
 
 ---
 
@@ -416,6 +421,8 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 
 **Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken, og gjorde på nytt etterpå. Steg 4 og 6 vart kryssa av då §22 var verifisert.
 
+**Merk:** §23 er avtalt arbeid som kjem **før** steg 9–12. Steg 9–12 blir ikkje starta før punkta i §23 er implementerte og verifiserte.
+
 **Testar:** 123 grøne testar. Køyr `python3 -m unittest discover -s tests`.
 
 **Hovudregel:** Bygg den minste løysinga som oppfyller lista over. Ikkje legg til nye funksjonar, tenester eller arkitektur utan at dei er nødvendige for punkta i denne TODO-lista.
@@ -438,3 +445,57 @@ Desse fire vart tekne undervegs og er no innarbeidde i §1–§18. Kvar referans
 
 - [ ] Varsel om at oppsettet kan oppgraderast når alle nøklar og all programvare svarar `YES` på anten BIP327 eller SLIP39. Krev at appen ser på tvers av alle registreringar.
 - [ ] Ein måte å lukke eller kvittere ut varsel på.
+
+---
+
+# 23. Avtalt vidare arbeid før StartOS-pakken (IKKJE IMPLEMENTERT)
+
+Dette vart avtalt 02.10.2026. Ingenting i §23 er implementert, og alle punkta står opne til testane er grøne. Arbeidet skal gjerast **før** steg 9–12 i §18. Der §23 seier noko anna enn §3–§6, gjeld §23.
+
+## 23.1 Skjemafiksar
+
+- [ ] Førehandsutfylling: `Firmware version`, `Address path` og `Software version` blir fylte med sist lagra verdi for den valde nøkkelen og den valde programvara. Verdien skal vere ein vanleg input-verdi, **ikkje** ein HTML-placeholder, slik at han blir lagra uendra dersom brukaren ikkje rører feltet. Feltet er tomt når det ikkje finst nokon relevant tidlegare verdi.
+- [ ] `Software compatibility` krev eit aktivt val mellom `OK` og `PROBLEM`. Nedtrekkslista startar på `Select status`. `NOT_ASSESSED` skal ikkje kunne sendast inn for nye registreringar, og serveren skal avvise manglande verdi med `400`. Gamle rader med `NOT_ASSESSED` blir framleis viste i historikk og eksport.
+- [ ] Kontaktspørsmålet blir endra til å gjelde berre nøkkelhaldaren til den valde nøkkelen, til dømes «Have you confirmed that the key holder contact details are current?».
+- [ ] Kontaktstadfesting får verdiane `Confirmed current` og `Needs external update`. `Needs external update` viser ei påminning om at kontaktinformasjonen må oppdaterast eksternt. Det blir framleis berre lagra status, aldri namn, adresse, telefonnummer, e-post eller påloggingsinformasjon.
+
+## 23.2 Konfigurerbart nøkkeloppsett
+
+- [ ] Appen støttar framleis nøyaktig tre nøklar, men kvar nøkkel kan vere `hardware` eller `cloud`, fritt fordelt mellom dei tre plassane.
+- [ ] Ved første oppstart på ein ny database viser appen eit oppsettsteg der brukaren gir kvar nøkkel eit namn og vel type.
+- [ ] Namna må vere unike og ikkje-tomme. Duplikat blir avviste.
+- [ ] Namnet brukaren skriv, til dømes `SeedSigner`, blir brukt som produktnamn i kontrollar, varsel, historikk og CSV-eksport.
+- [ ] Namn og type blir lagra i SQLite saman med historikken, og er **låste** etter at oppsettet er lagra.
+- [ ] Nøkkelnummeret blir vist saman med namnet der det trengst, til dømes `Key 1: ColdCard`, og namnet åleine der nøkkelen er tydeleg frå konteksten.
+- [ ] Eksisterande installasjonar: oppsettet blir lese ut frå nøkkelradene som alt ligg i databasen, og all historikk blir bevart. Ei database som ikkje kan lesast gir ein tydeleg feil og blir **ikkje** behandla som ein ny installasjon.
+- [ ] Nye, tomme databasar får førstegongsoppsettet.
+
+## 23.3 Typebaserte kontrollar og val
+
+- [ ] Kontrollar, validering, varsel, historikk og CSV-eksport blir styrte av nøkkeltype og konfigurert namn, ikkje av faste nøkkelnummer eller faste produktnamn.
+- [ ] Hardware-nøklar følgjer dagens kontrollar for nøkkel 1 og 2. Cloud-nøklar følgjer Nunchuk-modellen, men viser det konfigurerte namnet.
+- [ ] `Wallet software`-vala er `Sparrow` pluss namnet på kvar konfigurert **cloud**-nøkkel. Namn på hardware-nøklar blir aldri lagde til i denne lista. `Nunchuk` kjem difor berre fram som software-val når ein cloud-nøkkel faktisk heiter Nunchuk.
+- [ ] KI-sikkerheitsstatus blir registrert for den valde nøkkelen (ved namn) og den valde programvara. Vidareføringa av status for ein tredje leverandør (§20) blir fjerna. Dupliserte rader blir unngåtte når namnet på nøkkelen og programvara er like.
+- [ ] BIP327/SLIP39 blir registrert for den valde nøkkelen og den valde programvara, utan duplikat.
+- [ ] For ein cloud-nøkkel med sjølvvalt namn gjeld cloud-kontrollane framleis, men det konfigurerte namnet blir vist.
+
+## 23.4 Datamodell og migrering
+
+- [ ] Lagring av nøkkeloppsettet (namn og type) i SQLite, med ny skjemaversjon.
+- [ ] Migrering av eldre databasar som manglar lagra oppsett, utan tap av historikk.
+- [ ] Migrering av `contact_info_verified` frå Ja/Nei til `Confirmed current` / `Needs external update`.
+- [ ] Migreringa skal framleis køyre med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit (§21).
+
+## 23.5 Testar
+
+- [ ] Testar for førstegongsoppsett, duplikatnamn og låsing av namn og type.
+- [ ] Testar for kvar nøkkeltype, og for alle tre nøklane som cloud-nøklar.
+- [ ] Testar for dynamiske `Wallet software`-val, inkludert at eit hardware-namn ikkje dukkar opp der.
+- [ ] Testar for førehandsutfylling, kravd kompatibilitetsstatus og kontaktpåminning.
+- [ ] Testar for migrering av eldre database med historikk, og for uleseleg database.
+- [ ] Alle eksisterande 123 testar skal framleis vere grøne.
+
+## 23.6 Framtidig arbeid, ikkje no
+
+- [ ] Fleire enn tre nøklar, og andre tersklar enn 2-av-3.
+- [ ] Ei brukardefinert liste over wallet-programvare, slik at brukaren kan leggje inn si eiga liste.
