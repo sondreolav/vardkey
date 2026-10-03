@@ -6,8 +6,7 @@ the client.
 
 The stored status values are English (sections 19 and 21). ``NOT_ASSESSED``
 survives only as the derived ``software_compatibility_status`` of a key that was
-not available; no other field offers or accepts it (section 24.1). The BIP327
-and SLIP39 results use ``YES``, ``NO``, and ``NOT_ASSESSED``. The software
+not available; no other field offers or accepts it (section 24.1). The software
 compatibility result is an explicit ``OK`` or ``PROBLEM`` for a hardware key
 (section 23.1), and the contact confirmation is ``Confirmed current`` or
 ``Needs external update``.
@@ -17,8 +16,11 @@ configured name is the product label of a key, and the key's type decides which
 checks apply, never the key number (section 23.3).
 
 ``available`` is always recorded (section 22). When the key was not available,
-the wallet software, the standards, and the security statuses are not recorded
-either, so they may be left out of the payload.
+the wallet software and the security statuses are not recorded either, so they
+may be left out of the payload.
+
+The BIP327/SLIP39 results are gone, together with the rest of that function
+(section 24.2).
 """
 
 from datetime import date
@@ -33,7 +35,6 @@ CLOUD_HEALTH_STATUSES = ("OK", "PROBLEM")
 # submittable for a new registration (section 23.1).
 COMPATIBILITY_STATUSES = ("OK", "PROBLEM")
 VERIFICATION_STATUSES = ("OK", "PROBLEM")
-STANDARDS_STATUSES = ("YES", "NO", "NOT_ASSESSED")
 SECURITY_STATUSES = ("SECURE", "PATCHED", "VULNERABLE", "COMPROMISED")
 CONTACT_STATUSES = ("Confirmed current", "Needs external update")
 KEY_TYPES = ("hardware", "cloud")
@@ -115,7 +116,7 @@ def validate_health_check(payload, keys):
     checked_at = _date(payload.get("checked_at"), "checked_at")
     available = _availability(entry.get("available"))
     # A key that was not available cannot be checked any further, so the wallet
-    # software, the standards, and the security statuses stay empty (section 22).
+    # software and the security statuses stay empty (section 22).
     unavailable = available == 0
     wallet_software = _wallet_software(
         payload.get("wallet_software"), key, keys, unavailable
@@ -137,9 +138,6 @@ def validate_health_check(payload, keys):
         "contact_info_verified": _contact_status(payload.get("contact_info_verified")),
         "comments": _text(payload.get("comments"), "comments", MAX_COMMENTS_LENGTH),
         "key_check": _key_check(entry, key, available),
-        "tool_checks": _tool_checks(
-            payload.get("tool_checks"), key, wallet_software, unavailable
-        ),
         "ai_security_checks": _ai_security_checks(
             payload.get("ai_security_checks"), key, wallet_software, unavailable
         ),
@@ -261,10 +259,9 @@ def _require_nothing_recorded(entries, field):
 def _expected_labels(key, wallet_software):
     """Return the labels a submission records, without duplicates.
 
-    Both the standards and the security statuses are recorded for the selected
-    key, by its configured name, and for the selected wallet software
-    (section 23.3). A cloud key that is named after its own software therefore
-    contributes one label only.
+    The security statuses are recorded for the selected key, by its configured
+    name, and for the selected wallet software (section 23.3). A cloud key that
+    is named after its own software therefore contributes one label only.
     """
     return tuple(dict.fromkeys((key["name"], wallet_software)))
 
@@ -388,39 +385,6 @@ def _text(value, field, max_length):
     if len(text) > max_length:
         raise ValidationError(f"{field} is too long")
     return text or None
-
-
-def _tool_checks(entries, key, wallet_software, unavailable):
-    """Return the BIP327/SLIP39 rows for the selected key and wallet software."""
-    if unavailable:
-        _require_nothing_recorded(entries, "tool_checks")
-        return []
-    if not isinstance(entries, list):
-        raise ValidationError("tool_checks must be a list")
-    allowed = set(_expected_labels(key, wallet_software))
-    seen = set()
-    normalized = []
-    for entry in entries:
-        if not isinstance(entry, dict):
-            raise ValidationError("each tool check must be an object")
-        product = entry.get("product")
-        if product not in allowed:
-            raise ValidationError("tool check product is not relevant for this submission")
-        if product in seen:
-            raise ValidationError("each product may only be checked once")
-        seen.add(product)
-        normalized.append({
-            "product": product,
-            "bip327_status": _status(
-                entry.get("bip327_status"), "bip327_status", STANDARDS_STATUSES
-            ),
-            "slip39_status": _status(
-                entry.get("slip39_status"), "slip39_status", STANDARDS_STATUSES
-            ),
-        })
-    if seen != allowed:
-        raise ValidationError("every relevant product must be checked")
-    return normalized
 
 
 def _ai_security_checks(entries, key, wallet_software, unavailable):
