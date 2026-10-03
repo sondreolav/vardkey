@@ -51,7 +51,7 @@ def sample_payload(key, wallet_software=None):
         "software_version": "1.8.0",
         "software_compatibility_status": "OK",
         "software_comments": "",
-        "contact_info_verified": 1,
+        "contact_info_verified": "Confirmed current",
         "comments": "Annual review",
         "key_check": entry,
         "tool_checks": [
@@ -78,7 +78,7 @@ def unavailable_payload(key):
         "checked_at": "2026-10-01",
         "wallet_software": None,
         "software_compatibility_status": "NOT_ASSESSED",
-        "contact_info_verified": 1,
+        "contact_info_verified": "Confirmed current",
         "comments": "Annual review",
         "key_check": entry,
         "tool_checks": [],
@@ -248,7 +248,8 @@ class AppHandlerTests(unittest.TestCase):
         self.assertEqual(values["Available"], "Yes")
         self.assertEqual(values["Seed backup verified"], "OK")
         self.assertEqual(values["Wallet software"], "Sparrow Wallet")
-        self.assertEqual(values["Contact details confirmed"], "Yes")
+        # The contact confirmation is a status, not a yes/no flag (section 23.1).
+        self.assertEqual(values["Contact details confirmed"], "Confirmed current")
         self.assertIn("SeedSigner: NOT_ASSESSED", values["BIP327"])
         self.assertIn("Nunchuk: SECURE", values["Security status"])
 
@@ -353,7 +354,7 @@ class AppHandlerTests(unittest.TestCase):
 
         newer = sample_payload(self.key_profiles()[0])
         newer["checked_at"] = "2027-01-01"
-        newer["contact_info_verified"] = 0
+        newer["contact_info_verified"] = "Needs external update"
         self.post_health_check(newer)
 
         alerts = self.get_alerts()
@@ -380,6 +381,7 @@ class AppHandlerTests(unittest.TestCase):
         self.assertEqual(record["checked_at"], "2026-10-01")
         self.assertEqual(record["next_check_due"], "2027-10-01")
         self.assertEqual(record["wallet_software"], "Sparrow Wallet")
+        self.assertEqual(record["contact_info_verified"], "Confirmed current")
         self.assertEqual(len(record["key_checks"]), 1)
         self.assertEqual(record["key_checks"][0]["key_number"], 1)
         self.assertEqual(
@@ -413,6 +415,7 @@ class AppHandlerTests(unittest.TestCase):
         self.assertIsNone(record["wallet_software"])
         self.assertIsNone(record["software_version"])
         self.assertEqual(record["software_compatibility_status"], "NOT_ASSESSED")
+        self.assertIsNone(record["contact_info_verified"])
         self.assertEqual(record["tool_checks"], [])
         self.assertEqual(record["ai_security_checks"], [])
         self.assertEqual(record["key_checks"][0]["available"], 0)
@@ -473,6 +476,49 @@ class AppHandlerTests(unittest.TestCase):
         payload["software_compatibility_status"] = "IKKJE_VURDERT"
 
         self.assert_rejected(payload)
+
+    def test_a_missing_compatibility_status_is_rejected(self):
+        # Compatibility requires an active choice for a key that was available
+        # (section 23.1).
+        for value in ("", None, "NOT_ASSESSED"):
+            payload = sample_payload(self.key_profiles()[0])
+            payload["software_compatibility_status"] = value
+            self.assert_rejected(payload)
+
+        payload = sample_payload(self.key_profiles()[0])
+        del payload["software_compatibility_status"]
+        self.assert_rejected(payload)
+
+    def test_the_cloud_key_derives_its_compatibility_status(self):
+        payload = sample_payload(self.key_profiles()[2])
+        saved_id = self.post_health_check(payload)
+        self.assertEqual(
+            self.get_record(saved_id)["software_compatibility_status"], "OK"
+        )
+
+        rejected = sample_payload(self.key_profiles()[2])
+        rejected["software_compatibility_status"] = "PROBLEM"
+        self.assert_rejected(rejected)
+
+    def test_the_old_contact_flag_is_rejected(self):
+        # Only the two contact statuses are recorded (section 23.1).
+        for value in (1, 0, "yes"):
+            payload = sample_payload(self.key_profiles()[0])
+            payload["contact_info_verified"] = value
+            self.assert_rejected(payload)
+
+    def test_the_contact_status_is_recorded_and_raises_an_informational_alert(self):
+        payload = sample_payload(self.key_profiles()[0])
+        payload["contact_info_verified"] = "Needs external update"
+        saved_id = self.post_health_check(payload)
+
+        record = self.get_record(saved_id)
+        self.assertEqual(record["contact_info_verified"], "Needs external update")
+
+        alerts = self.get_alerts()
+        self.assertEqual([alert["code"] for alert in alerts], ["contact_info_unconfirmed"])
+        self.assertEqual(alerts[0]["severity"], "info")
+        self.assertEqual(alerts[0]["check_id"], saved_id)
 
     def test_the_old_standards_values_are_rejected(self):
         payload = sample_payload(self.key_profiles()[0])
