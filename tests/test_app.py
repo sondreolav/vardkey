@@ -466,9 +466,13 @@ class AppHandlerTests(ServerTestCase):
             self.assertEqual(record["key_checks"][0]["key_number"], key["key_number"])
 
     def test_a_minimal_unavailable_payload_is_accepted(self):
+        # The check date, the key check, and the contact confirmation are the
+        # minimum, because the confirmation is required for every submission
+        # (section 24.1).
         key = self.key_profiles()[1]
         payload = {
             "checked_at": "2026-10-01",
+            "contact_info_verified": "Confirmed current",
             "key_check": {
                 "key_id": key["id"],
                 "available": 0,
@@ -483,7 +487,7 @@ class AppHandlerTests(ServerTestCase):
         self.assertIsNone(record["wallet_software"])
         self.assertIsNone(record["software_version"])
         self.assertEqual(record["software_compatibility_status"], "NOT_ASSESSED")
-        self.assertIsNone(record["contact_info_verified"])
+        self.assertEqual(record["contact_info_verified"], "Confirmed current")
         self.assertEqual(record["tool_checks"], [])
         self.assertEqual(record["ai_security_checks"], [])
         self.assertEqual(record["key_checks"][0]["available"], 0)
@@ -503,6 +507,7 @@ class AppHandlerTests(ServerTestCase):
         for field, value in recorded:
             payload = {
                 "checked_at": "2026-10-01",
+                "contact_info_verified": "Confirmed current",
                 "key_check": {"key_id": key["id"], "available": 0},
                 field: value,
             }
@@ -512,6 +517,17 @@ class AppHandlerTests(ServerTestCase):
         payload = sample_payload(self.key_profiles()[0])
         del payload["key_check"]["available"]
 
+        self.assert_rejected(payload)
+
+    def test_a_hardware_key_without_hardware_works_is_rejected(self):
+        # Hardware works requires an active Yes or No (section 24.1).
+        for value in ("", None):
+            payload = sample_payload(self.key_profiles()[0])
+            payload["key_check"]["hardware_works"] = value
+            self.assert_rejected(payload)
+
+        payload = sample_payload(self.key_profiles()[0])
+        del payload["key_check"]["hardware_works"]
         self.assert_rejected(payload)
 
     def test_an_unavailable_cloud_key_keeps_its_derived_cloud_results(self):
@@ -573,6 +589,19 @@ class AppHandlerTests(ServerTestCase):
         for value in (1, 0, "yes"):
             payload = sample_payload(self.key_profiles()[0])
             payload["contact_info_verified"] = value
+            self.assert_rejected(payload)
+
+    def test_a_submission_without_a_contact_confirmation_is_rejected(self):
+        # The confirmation is required, also for a key that was not available
+        # (section 24.1).
+        for payload in (
+            sample_payload(self.key_profiles()[0]),
+            unavailable_payload(self.key_profiles()[1]),
+        ):
+            for value in ("", None):
+                payload["contact_info_verified"] = value
+                self.assert_rejected(payload)
+            del payload["contact_info_verified"]
             self.assert_rejected(payload)
 
     def test_the_contact_status_is_recorded_and_raises_an_informational_alert(self):
