@@ -11,14 +11,12 @@ const softwareVersionInput = document.querySelector("#software-version");
 const softwareHelp = document.querySelector("#software-help");
 const contactSelect = document.querySelector("#contact-info-verified");
 const contactReminder = document.querySelector("#contact-reminder");
-const toolChecks = document.querySelector("#tool-checks");
 const securityChecks = document.querySelector("#security-checks");
 const nextCheckPreview = document.querySelector("#next-check-preview");
 const reviewPanel = document.querySelector("#review-panel");
 const reviewSummary = document.querySelector("#review-summary");
 const saveButton = document.querySelector("#save-check");
 const saveStatus = document.querySelector("#save-status");
-const toolChecksSection = toolChecks.closest(".form-section");
 const securityChecksSection = securityChecks.closest(".form-section");
 
 // Sparrow is always a wallet software choice; a cloud key contributes its own
@@ -28,12 +26,6 @@ const SECURITY_STATUSES = ["SECURE", "PATCHED", "VULNERABLE", "COMPROMISED"];
 const UNAVAILABLE_MESSAGE = "The remaining checks for this key cannot be recorded.";
 // The contact result that reminds the user to update their own records (section 23.1).
 const CONTACT_NEEDS_UPDATE = "Needs external update";
-// BIP327 and SLIP39 answer yes or no, and "not assessed" is not a no (section 21).
-const standardsStatuses = [
-  ["NOT_ASSESSED", "Not assessed"],
-  ["YES", "Yes"],
-  ["NO", "No"],
-];
 const verificationStatuses = [
   ["OK", "OK"],
   ["PROBLEM", "Problem"],
@@ -170,8 +162,8 @@ function expectedLabels(key) {
   if (!key || !software) {
     return [];
   }
-  // The standards and the security statuses are recorded for the selected key,
-  // by its configured name, and for the selected wallet software (section 23.3).
+  // The security statuses are recorded for the selected key, by its configured
+  // name, and for the selected wallet software (section 23.3).
   return [...new Set([key.name, software])];
 }
 
@@ -281,7 +273,6 @@ function syncUnavailableState() {
   // form are hidden and never required (section 22).
   const unavailable = keyIsUnavailable();
   softwareSection.hidden = unavailable;
-  toolChecksSection.hidden = unavailable;
   securityChecksSection.hidden = unavailable;
   walletSoftwareSelect.required = !unavailable;
   // A hidden required control blocks the submission, so the compatibility
@@ -335,28 +326,6 @@ function syncContactReminder() {
   contactReminder.hidden = contactSelect.value !== CONTACT_NEEDS_UPDATE;
 }
 
-function renderToolChecks() {
-  toolChecks.replaceChildren();
-  if (keyIsUnavailable()) {
-    toolChecks.append(emptyState(UNAVAILABLE_MESSAGE));
-    return;
-  }
-  const labels = expectedLabels(selectedKey());
-  if (!labels.length) {
-    toolChecks.append(emptyState("Select a key and software to see the products to check."));
-    return;
-  }
-  for (const label of labels) {
-    const slug = productSlug(label);
-    const bip327Name = `tool_${slug}_bip327_status`;
-    const slip39Name = `tool_${slug}_slip39_status`;
-    const card = makeCard(label, "Record the support status for this submission.");
-    card.append(makeField("BIP327 status", bip327Name, makeSelect(standardsStatuses, bip327Name)));
-    card.append(makeField("SLIP39 status", slip39Name, makeSelect(standardsStatuses, slip39Name)));
-    toolChecks.append(card);
-  }
-}
-
 function renderSecurityChecks() {
   const key = selectedKey();
   securityChecks.replaceChildren();
@@ -386,7 +355,6 @@ function renderSecurityChecks() {
 function refreshKeySections() {
   renderWalletSoftwareOptions();
   lockSoftwareFields();
-  renderToolChecks();
   renderSecurityChecks();
   syncUnavailableState();
 }
@@ -597,16 +565,6 @@ function collectPayload() {
     contact_info_verified: statusValue(data, "contact_info_verified"),
     comments: textValue(data, "comments"),
     key_check: collectKeyCheck(data, key, derived),
-    tool_checks: unavailable ? [] : expectedLabels(key).map((label) => {
-      const slug = productSlug(label);
-      const bip327Name = `tool_${slug}_bip327_status`;
-      const slip39Name = `tool_${slug}_slip39_status`;
-      return {
-        product: label,
-        bip327_status: data.get(bip327Name),
-        slip39_status: data.get(slip39Name),
-      };
-    }),
     ai_security_checks: unavailable ? [] : expectedLabels(key).map((provider) => {
       const slug = productSlug(provider);
       const statusName = `security_${slug}_status`;
@@ -682,7 +640,6 @@ keySelect.addEventListener("change", () => {
 });
 walletSoftwareSelect.addEventListener("change", () => {
   updateSoftwareVersionValue();
-  renderToolChecks();
   renderSecurityChecks();
 });
 contactSelect.addEventListener("change", syncContactReminder);
