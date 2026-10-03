@@ -48,6 +48,12 @@ class ExportTests(unittest.TestCase):
         self.assertEqual(values["Hardware works"], "No")
         self.assertEqual(values["Cloud provider operational"], "Yes")
 
+    def test_the_bip327_and_slip39_columns_are_gone(self):
+        # The whole BIP327/SLIP39 function is removed (section 24.2), so the two
+        # columns are gone from the export as well.
+        self.assertNotIn("BIP327", HEADERS)
+        self.assertNotIn("SLIP39", HEADERS)
+
     def test_contact_status_is_written_as_stored_text(self):
         # The contact confirmation is a status, not a yes/no flag (section 23.1).
         self.assertNotIn("contact_info_verified", FLAG_KEYS)
@@ -64,11 +70,11 @@ class ExportTests(unittest.TestCase):
         self.assertEqual(values["Key comments"], comment)
 
     def test_joined_multi_value_cells_survive_the_round_trip(self):
-        joined = "SeedSigner: YES; Sparrow Wallet: NO"
-        rows = parse(build_csv([{"bip327_status": joined}]))
+        joined = "SeedSigner: SECURE; Sparrow Wallet: VULNERABLE"
+        rows = parse(build_csv([{"security_status": joined}]))
         values = dict(zip(HEADERS, rows[1]))
 
-        self.assertEqual(values["BIP327"], joined)
+        self.assertEqual(values["Security status"], joined)
 
     def test_status_values_are_written_as_stored(self):
         rows = parse(build_csv([{
@@ -76,7 +82,6 @@ class ExportTests(unittest.TestCase):
             "address_path_verified": "OK",
             "cloud_health_status": "NOT_ASSESSED",
             "software_compatibility_status": "NOT_ASSESSED",
-            "slip39_status": "SeedSigner: NOT_ASSESSED",
         }]))
         values = dict(zip(HEADERS, rows[1]))
 
@@ -84,7 +89,6 @@ class ExportTests(unittest.TestCase):
         self.assertEqual(values["Address path verified"], "OK")
         self.assertEqual(values["Cloud health status"], "NOT_ASSESSED")
         self.assertEqual(values["Software compatibility"], "NOT_ASSESSED")
-        self.assertEqual(values["SLIP39"], "SeedSigner: NOT_ASSESSED")
 
 
 if __name__ == "__main__":
