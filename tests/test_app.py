@@ -64,10 +64,6 @@ def sample_payload(key, wallet_software=None):
         "contact_info_verified": "Confirmed current",
         "comments": "Annual review",
         "key_check": entry,
-        "tool_checks": [
-            {"product": label, "bip327_status": "NOT_ASSESSED", "slip39_status": "NOT_ASSESSED"}
-            for label in labels
-        ],
         "ai_security_checks": [
             {"provider": label, "status": "SECURE", "comments": ""} for label in labels
         ],
@@ -91,7 +87,6 @@ def unavailable_payload(key):
         "contact_info_verified": "Confirmed current",
         "comments": "Annual review",
         "key_check": entry,
-        "tool_checks": [],
         "ai_security_checks": [],
     }
 
@@ -301,12 +296,12 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual(values["Key number"], "1")
         self.assertEqual(values["Key name"], "SeedSigner")
         self.assertEqual(values["Available"], "Yes")
+        self.assertEqual(values["Hardware works"], "Yes")
         self.assertEqual(values["Seed backup verified"], "OK")
         self.assertEqual(values["Wallet software"], "Sparrow Wallet")
         # The contact confirmation is a status, not a yes/no flag (section 23.1).
         self.assertEqual(values["Contact details confirmed"], "Confirmed current")
-        self.assertIn("SeedSigner: NOT_ASSESSED", values["BIP327"])
-        self.assertIn("Sparrow Wallet: SECURE", values["Security status"])
+        self.assertIn("SeedSigner: SECURE", values["Security status"])
 
     def test_export_api_leaves_the_skipped_columns_empty(self):
         saved_id = self.post_health_check(unavailable_payload(self.key_profiles()[1]))
@@ -322,8 +317,6 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual(values["Key comments"], "Key is with the third holder")
         self.assertEqual(values["Wallet software"], "")
         self.assertEqual(values["Software compatibility"], "NOT_ASSESSED")
-        self.assertEqual(values["BIP327"], "")
-        self.assertEqual(values["SLIP39"], "")
         self.assertEqual(values["Security status"], "")
 
     def test_health_check_form_is_served_in_english(self):
@@ -450,11 +443,6 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual(len(record["key_checks"]), 1)
         self.assertEqual(record["key_checks"][0]["key_number"], 1)
         self.assertEqual(
-            [entry["product"] for entry in record["tool_checks"]],
-            ["SeedSigner", "Sparrow Wallet"],
-        )
-        self.assertEqual(record["tool_checks"][0]["bip327_status"], "NOT_ASSESSED")
-        self.assertEqual(
             [entry["provider"] for entry in record["ai_security_checks"]],
             ["SeedSigner", "Sparrow Wallet"],
         )
@@ -488,7 +476,6 @@ class AppHandlerTests(ServerTestCase):
         self.assertIsNone(record["software_version"])
         self.assertEqual(record["software_compatibility_status"], "NOT_ASSESSED")
         self.assertEqual(record["contact_info_verified"], "Confirmed current")
-        self.assertEqual(record["tool_checks"], [])
         self.assertEqual(record["ai_security_checks"], [])
         self.assertEqual(record["key_checks"][0]["available"], 0)
         self.assertEqual(record["key_checks"][0]["comments"], "Key is with the third holder")
@@ -501,7 +488,6 @@ class AppHandlerTests(ServerTestCase):
         key = self.key_profiles()[0]
         recorded = (
             ("wallet_software", "Sparrow Wallet"),
-            ("tool_checks", [{"product": "SeedSigner", "bip327_status": "YES", "slip39_status": "YES"}]),
             ("ai_security_checks", [{"provider": "SeedSigner", "status": "SECURE", "comments": ""}]),
         )
         for field, value in recorded:
@@ -538,7 +524,6 @@ class AppHandlerTests(ServerTestCase):
 
         self.assertIsNone(record["wallet_software"])
         self.assertEqual(record["software_compatibility_status"], "NOT_ASSESSED")
-        self.assertEqual(record["tool_checks"], [])
         self.assertEqual(record["ai_security_checks"], [])
         self.assertEqual(record["key_checks"][0]["cloud_health_status"], "PROBLEM")
         self.assertEqual(record["key_checks"][0]["cloud_provider_operational"], 0)
@@ -617,20 +602,6 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual(alerts[0]["severity"], "info")
         self.assertEqual(alerts[0]["check_id"], saved_id)
 
-    def test_the_old_standards_values_are_rejected(self):
-        payload = sample_payload(self.key_profiles()[0])
-        payload["tool_checks"][0]["bip327_status"] = "OK"
-
-        self.assert_rejected(payload)
-
-    def test_irrelevant_product_is_rejected(self):
-        payload = sample_payload(self.key_profiles()[0])
-        payload["tool_checks"].append(
-            {"product": "Blockstream Jade", "bip327_status": "YES", "slip39_status": "YES"}
-        )
-
-        self.assert_rejected(payload)
-
     def test_a_hardware_key_name_is_not_a_wallet_software_choice(self):
         # "Jade" is a hardware key in this setup, so it is never software.
         payload = sample_payload(self.key_profiles()[1])
@@ -640,10 +611,6 @@ class AppHandlerTests(ServerTestCase):
 
     def test_a_hardware_key_may_use_the_cloud_key_name_as_its_software(self):
         payload = sample_payload(self.key_profiles()[0], wallet_software="Nunchuk")
-        payload["tool_checks"] = [
-            {"product": label, "bip327_status": "YES", "slip39_status": "NO"}
-            for label in ("SeedSigner", "Nunchuk")
-        ]
         payload["ai_security_checks"] = [
             {"provider": label, "status": "SECURE", "comments": ""}
             for label in ("SeedSigner", "Nunchuk")
@@ -696,7 +663,6 @@ class RenamedSetupTests(ServerTestCase):
 
         record = self.get_record(saved_id)
         self.assertEqual(record["wallet_software"], "Coinbase")
-        self.assertEqual([entry["product"] for entry in record["tool_checks"]], ["Coinbase"])
         self.assertEqual(
             [entry["provider"] for entry in record["ai_security_checks"]], ["Coinbase"]
         )
@@ -708,10 +674,6 @@ class RenamedSetupTests(ServerTestCase):
         saved_id = self.post_health_check(sample_payload(key))
 
         record = self.get_record(saved_id)
-        self.assertEqual(
-            [entry["product"] for entry in record["tool_checks"]],
-            ["ColdCard", "Sparrow Wallet"],
-        )
         self.assertEqual(
             [entry["provider"] for entry in record["ai_security_checks"]],
             ["ColdCard", "Sparrow Wallet"],
@@ -736,7 +698,7 @@ class RenamedSetupTests(ServerTestCase):
 
         self.assertEqual(values["Key name"], "ColdCard")
         self.assertEqual(values["Key type"], "hardware")
-        self.assertEqual(values["BIP327"], "ColdCard: NOT_ASSESSED; Sparrow Wallet: NOT_ASSESSED")
+        self.assertEqual(values["Security status"], "ColdCard: SECURE; Sparrow Wallet: SECURE")
 
 
 class KeySetupApiTests(ServerTestCase):
