@@ -4,7 +4,9 @@ from pathlib import Path
 import sqlite3
 
 
-SCHEMA_VERSION = 8
+# Version 9 drops the tool_checks table, together with the BIP327/SLIP39
+# function it belonged to (sections 24.2 and 24.4).
+SCHEMA_VERSION = 9
 # The app always supports exactly three key slots (section 23.2).
 KEY_COUNT = 3
 # Table definitions use a {table} placeholder, so a migration can create the same
@@ -52,23 +54,8 @@ KEY_CHECKS_TABLE = """
         UNIQUE (health_check_id, key_id)
     )
     """
-# The product and the provider are the key's configured name and the selected
-# wallet software, so both columns hold free text (section 23.3).
-TOOL_CHECKS_TABLE = """
-    CREATE TABLE IF NOT EXISTS {table} (
-        id INTEGER PRIMARY KEY,
-        health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
-        product TEXT NOT NULL,
-        bip327_status TEXT NOT NULL DEFAULT 'NOT_ASSESSED'
-            CHECK (bip327_status IN ('YES', 'NO', 'NOT_ASSESSED')),
-        slip39_status TEXT NOT NULL DEFAULT 'NOT_ASSESSED'
-            CHECK (slip39_status IN ('YES', 'NO', 'NOT_ASSESSED')),
-        version TEXT,
-        checked_at TEXT,
-        notes TEXT,
-        UNIQUE (health_check_id, product)
-    )
-    """
+# The provider is the key's configured name and the selected wallet software, so
+# the column holds free text (section 23.3).
 AI_SECURITY_CHECKS_TABLE = """
     CREATE TABLE IF NOT EXISTS {table} (
         id INTEGER PRIMARY KEY,
@@ -83,7 +70,6 @@ TABLES = (
     ("keys", KEYS_TABLE),
     ("health_checks", HEALTH_CHECKS_TABLE),
     ("key_checks", KEY_CHECKS_TABLE),
-    ("tool_checks", TOOL_CHECKS_TABLE),
     ("ai_security_checks", AI_SECURITY_CHECKS_TABLE),
 )
 OPTIONAL_COLUMNS = (
@@ -107,24 +93,18 @@ SECURITY_STATUS_MIGRATION = (
     ("SÅRBAR", "VULNERABLE"),
     ("KOMPROMITTERT", "COMPROMISED"),
 )
-# Value mappings used when the general and standards status values became
-# English (section 21). "IKKJE_VURDERT" is the marker of a pre-section-21 table.
+# Value mapping used when the general status values became English (section 21).
+# "IKKJE_VURDERT" is the marker of a pre-section-21 table.
 NOT_ASSESSED_MIGRATION = (("IKKJE_VURDERT", "NOT_ASSESSED"),)
-STANDARDS_STATUS_MIGRATION = (
-    ("OK", "YES"),
-    ("PROBLEM", "NO"),
-    ("IKKJE_VURDERT", "NOT_ASSESSED"),
-)
 LEGACY_STATUS_VALUE = "IKKJE_VURDERT"
 # The contact confirmation was stored as 0/1 before section 23.1 replaced the
 # flag with the two contact statuses. This substring marks a pre-section-23.1
 # health_checks table.
 LEGACY_CONTACT_CHECK = "contact_info_verified IN (0, 1)"
-# The product, the provider, and the wallet software used to be limited to the
-# four fixed product names. A key's configured name is its label, so those lists
-# are gone (section 23.3). These substrings mark a table that still has the old
-# CHECK constraint.
-LEGACY_PRODUCT_CHECK = "CHECK (product IN ("
+# The provider and the wallet software used to be limited to the four fixed
+# product names. A key's configured name is its label, so those lists are gone
+# (section 23.3). These substrings mark a table that still has the old CHECK
+# constraint.
 LEGACY_PROVIDER_CHECK = "CHECK (provider IN ("
 LEGACY_WALLET_SOFTWARE_CHECK = "CHECK (wallet_software IN ("
 # The newest saved check per key, used by the dashboard and the form. Duplicated
@@ -166,6 +146,7 @@ def initialize_database(database_path="data/helsesjekk.sqlite3"):
             _migrate_key_checks(connection)
             _migrate_ai_security_checks(connection)
             _migrate_status_values(connection)
+            _drop_tool_checks(connection)
             for table, column, statement in INDEX_STATEMENTS:
                 _ensure_index(connection, table, column, statement)
             _verify_foreign_keys(connection)
@@ -406,7 +387,7 @@ def _migrate_status_values(connection):
 
     Section 21 made the status values English, section 23.1 replaced the 0/1
     contact flag with the two contact statuses, and section 23.3 dropped the
-    fixed product and wallet-software lists. SQLite cannot change a CHECK
+    fixed provider and wallet-software lists. SQLite cannot change a CHECK
     constraint, so each affected table is rebuilt: the replacement is created
     under a temporary name, the rows are copied with the mapped values, and the
     replacement takes the old table's place.
@@ -415,8 +396,18 @@ def _migrate_status_values(connection):
         _rebuild_health_checks(connection)
     if _uses_legacy_status_values(connection, "key_checks"):
         _rebuild_key_checks(connection)
-    if _tool_checks_need_rebuild(connection):
-        _rebuild_tool_checks(connection)
+
+
+def _drop_tool_checks(connection):
+    """Drop the tool_checks table and the rows it held.
+
+    The BIP327/SLIP39 function is gone (section 24.2), so the table that held its
+    results is removed with its data (section 24.4). The app is not released and
+    the database is a test database, so no user history is lost. It is a child
+    table, so the drop needs no rebuild of a parent table, and the rest of the
+    history is kept. A database that never had the table is left untouched.
+    """
+    connection.execute("DROP TABLE IF EXISTS tool_checks")
 
 
 def _uses_legacy_status_values(connection, table):
@@ -439,18 +430,6 @@ def _health_checks_need_rebuild(connection):
         or LEGACY_CONTACT_CHECK in sql
         or LEGACY_WALLET_SOFTWARE_CHECK in sql
     )
-
-
-def _tool_checks_need_rebuild(connection):
-    """Return True while tool_checks still uses an older definition.
-
-    That is either the pre-section-21 status values or the fixed product list of
-    section 23.3.
-    """
-    sql = _table_sql(connection, "tool_checks")
-    if sql is None:
-        return False
-    return LEGACY_STATUS_VALUE in sql or LEGACY_PRODUCT_CHECK in sql
 
 
 def _rebuild_health_checks(connection):
@@ -498,23 +477,6 @@ def _rebuild_key_checks(connection):
         FROM key_checks
     """)
     _replace_table(connection, "key_checks", temporary)
-
-
-def _rebuild_tool_checks(connection):
-    """Rebuild tool_checks with the current status values and a free product name."""
-    temporary = _create_replacement(connection, "tool_checks", TOOL_CHECKS_TABLE)
-    bip327 = _mapped_status_sql("bip327_status", STANDARDS_STATUS_MIGRATION)
-    slip39 = _mapped_status_sql("slip39_status", STANDARDS_STATUS_MIGRATION)
-    connection.execute(f"""
-        INSERT INTO {temporary} (
-            id, health_check_id, product, bip327_status, slip39_status,
-            version, checked_at, notes
-        )
-        SELECT id, health_check_id, product, {bip327}, {slip39},
-               version, checked_at, notes
-        FROM tool_checks
-    """)
-    _replace_table(connection, "tool_checks", temporary)
 
 
 def list_keys(database_path="data/helsesjekk.sqlite3"):
@@ -622,22 +584,6 @@ def save_health_check(data, database_path="data/helsesjekk.sqlite3"):
             )
             connection.executemany(
                 """
-                INSERT INTO tool_checks (
-                    health_check_id, product, bip327_status, slip39_status
-                ) VALUES (?, ?, ?, ?)
-                """,
-                [
-                    (
-                        health_check_id,
-                        entry["product"],
-                        entry["bip327_status"],
-                        entry["slip39_status"],
-                    )
-                    for entry in data["tool_checks"]
-                ],
-            )
-            connection.executemany(
-                """
                 INSERT INTO ai_security_checks (health_check_id, provider, status, comments)
                 VALUES (?, ?, ?, ?)
                 """,
@@ -720,7 +666,7 @@ def list_previous_values(database_path="data/helsesjekk.sqlite3"):
     ``keys`` carries the last recorded firmware version, address path, wallet
     software, and software version for each key. ``security`` carries the last
     recorded security status for each provider, whatever key recorded it. Both
-    are used to pre-fill the form and to carry hidden fields forward.
+    are used to pre-fill the form.
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
@@ -759,8 +705,8 @@ def list_export_rows(database_path="data/helsesjekk.sqlite3"):
 
     Every row is one key check. ``check_id`` identifies the submission it belongs
     to, so rows saved before section 19 (up to three keys in one submission) stay
-    grouped. The per-product and per-provider results are joined into a single
-    text cell, because they have more than one value per submission.
+    grouped. The per-provider security results are joined into a single text
+    cell, because they have more than one value per submission.
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
@@ -783,12 +729,8 @@ def list_export_rows(database_path="data/helsesjekk.sqlite3"):
             """
         ).fetchall()
         result = [dict(row) for row in rows]
-        bip327 = _grouped_values(connection, "tool_checks", "product", "bip327_status")
-        slip39 = _grouped_values(connection, "tool_checks", "product", "slip39_status")
         security = _grouped_values(connection, "ai_security_checks", "provider", "status")
         for row in result:
-            row["bip327_status"] = bip327.get(row["check_id"], "")
-            row["slip39_status"] = slip39.get(row["check_id"], "")
             row["security_status"] = security.get(row["check_id"], "")
         return result
     finally:
@@ -838,17 +780,6 @@ def get_health_check(health_check_id, database_path="data/helsesjekk.sqlite3"):
                 JOIN keys AS k ON k.id = kc.key_id
                 WHERE kc.health_check_id = ?
                 ORDER BY k.key_number
-                """,
-                (health_check_id,),
-            )
-        ]
-        result["tool_checks"] = [
-            dict(row)
-            for row in connection.execute(
-                """
-                SELECT id, product, bip327_status, slip39_status, version, checked_at, notes
-                FROM tool_checks WHERE health_check_id = ?
-                ORDER BY id
                 """,
                 (health_check_id,),
             )
