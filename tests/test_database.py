@@ -16,21 +16,30 @@ from database import (
     list_keys,
     list_previous_values,
     save_health_check,
-    seed_fixed_keys,
+    save_key_setup,
 )
 from validation import validate_health_check
 
 
-KEY_PRODUCTS = {1: "SeedSigner", 2: "Blockstream Jade", 3: "Nunchuk"}
+# The key setup every test starts from, unless it tests the setup itself.
+DEFAULT_SETUP = (
+    {"key_number": 1, "name": "SeedSigner", "type": "hardware"},
+    {"key_number": 2, "name": "Blockstream Jade", "type": "hardware"},
+    {"key_number": 3, "name": "Nunchuk", "type": "cloud"},
+)
+# A setup with the cloud key in the first slot and renamed hardware keys.
+RENAMED_SETUP = (
+    {"key_number": 1, "name": "Coinbase", "type": "cloud"},
+    {"key_number": 2, "name": "ColdCard", "type": "hardware"},
+    {"key_number": 3, "name": "Jade", "type": "hardware"},
+)
 
 
 def sample_payload(key, wallet_software=None):
     """Return a valid single-key payload for the given key profile."""
-    number = key["key_number"]
     if wallet_software is None:
-        wallet_software = "Nunchuk" if number == 3 else "Sparrow Wallet"
-    products = list(dict.fromkeys((KEY_PRODUCTS[number], wallet_software)))
-    providers = ["Nunchuk"] if number == 3 else [KEY_PRODUCTS[number], "Sparrow Wallet", "Nunchuk"]
+        wallet_software = key["name"] if key["type"] == "cloud" else "Sparrow Wallet"
+    labels = list(dict.fromkeys((key["name"], wallet_software)))
     entry = {
         "key_id": key["id"],
         "available": 1,
@@ -56,11 +65,11 @@ def sample_payload(key, wallet_software=None):
         "comments": "Annual review",
         "key_check": entry,
         "tool_checks": [
-            {"product": product, "bip327_status": "NOT_ASSESSED", "slip39_status": "NOT_ASSESSED"}
-            for product in products
+            {"product": label, "bip327_status": "NOT_ASSESSED", "slip39_status": "NOT_ASSESSED"}
+            for label in labels
         ],
         "ai_security_checks": [
-            {"provider": provider, "status": "SECURE", "comments": ""} for provider in providers
+            {"provider": label, "status": "SECURE", "comments": ""} for label in labels
         ],
     }
 
@@ -143,8 +152,9 @@ LEGACY_SCHEMA = """
     PRAGMA user_version = 4;
 """
 
-# The layout introduced by section 19, before the status values became English
-# and before the contact flag became a stored status.
+# The layout introduced by section 19, before the status values became English,
+# before the contact flag became a stored status, and before the fixed device,
+# product, provider, and wallet-software lists were dropped.
 SCHEMA_VERSION_5 = """
     CREATE TABLE keys (
         id INTEGER PRIMARY KEY,
@@ -242,6 +252,12 @@ class DatabaseInitializationTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def prepare(self, setup=DEFAULT_SETUP):
+        """Create the schema and store a key setup."""
+        initialize_database(self.database_path)
+        save_key_setup(setup, self.database_path)
+        return list_keys(self.database_path)
+
     def write_schema(self, script):
         """Create a database from an explicit older schema script.
 
@@ -275,6 +291,37 @@ class DatabaseInitializationTests(unittest.TestCase):
             {"keys", "health_checks", "key_checks", "tool_checks", "ai_security_checks"}
             <= tables
         )
+
+    def test_a_new_database_has_no_key_setup(self):
+        initialize_database(self.database_path)
+
+        self.assertEqual(list_keys(self.database_path), [])
+
+    def test_the_key_setup_is_stored_once_and_locked(self):
+        keys = self.prepare(RENAMED_SETUP)
+
+        self.assertEqual(
+            [(key["key_number"], key["name"], key["type"]) for key in keys],
+            [(1, "Coinbase", "cloud"), (2, "ColdCard", "hardware"), (3, "Jade", "hardware")],
+        )
+
+        with self.assertRaises(RuntimeError):
+            save_key_setup(DEFAULT_SETUP, self.database_path)
+
+        # The refused write left the stored setup untouched.
+        self.assertEqual([key["name"] for key in list_keys(self.database_path)],
+                         ["Coinbase", "ColdCard", "Jade"])
+
+    def test_a_partial_key_setup_is_reported_as_an_error(self):
+        initialize_database(self.database_path)
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT INTO keys (key_number, name, type) VALUES (1, 'ColdCard', 'hardware')"
+            )
+
+        # A database that holds part of a setup is never treated as a new one.
+        with self.assertRaises(RuntimeError):
+            list_keys(self.database_path)
 
     def test_partial_schema_is_repaired_idempotently(self):
         self.write_schema(
@@ -313,6 +360,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         with self.connect() as connection:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
             columns = {row[1] for row in connection.execute("PRAGMA table_info(key_checks)")}
+            key_columns = {row[1] for row in connection.execute("PRAGMA table_info(keys)")}
             rows = connection.execute(
                 "SELECT key_id, seed_backup_verified, address_path_verified "
                 "FROM key_checks ORDER BY key_id"
@@ -323,6 +371,7 @@ class DatabaseInitializationTests(unittest.TestCase):
 
         self.assertEqual(version, SCHEMA_VERSION)
         self.assertFalse({"seed_backup_status", "address_verified", "derivation_height"} & columns)
+        self.assertFalse("device" in key_columns)
         self.assertEqual(rows, [(1, "OK", "OK"), (2, "PROBLEM", "PROBLEM")])
         self.assertEqual(statuses, [("Nunchuk", "VULNERABLE"), ("SeedSigner", "SECURE")])
 
@@ -336,7 +385,9 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(record["key_checks"][1]["seed_backup_verified"], "PROBLEM")
         self.assertEqual([entry["status"] for entry in record["ai_security_checks"]], ["SECURE", "VULNERABLE"])
 
+        # The existing installation keeps its keys, and can record new checks.
         keys = list_keys(self.database_path)
+        self.assertEqual([key["name"] for key in keys], ["SeedSigner", "Blockstream Jade", "Nunchuk"])
         new_id = save_health_check(validate_health_check(sample_payload(keys[2]), keys), self.database_path)
         new_record = get_health_check(new_id, self.database_path)
         self.assertEqual(new_record["wallet_software"], "Nunchuk")
@@ -374,6 +425,23 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(record["tool_checks"][0]["bip327_status"], "YES")
         self.assertEqual(record["tool_checks"][0]["slip39_status"], "NO")
         self.assertEqual(record["ai_security_checks"][0]["status"], "SECURE")
+
+    def test_the_device_column_is_dropped(self):
+        self.write_schema(SCHEMA_VERSION_5)
+
+        initialize_database(self.database_path)
+
+        with self.connect() as connection:
+            key_columns = {row[1] for row in connection.execute("PRAGMA table_info(keys)")}
+            keys = connection.execute("SELECT key_number, name, type FROM keys ORDER BY key_number").fetchall()
+
+        # The configured name is the product label, so the fixed device value is
+        # gone and the stored keys are kept (section 23.2).
+        self.assertNotIn("device", key_columns)
+        self.assertEqual(
+            keys,
+            [(1, "SeedSigner", "hardware"), (2, "Blockstream Jade", "hardware"), (3, "Nunchuk", "cloud")],
+        )
 
     def test_the_contact_flag_migrates_to_the_stored_statuses(self):
         self.write_schema(SCHEMA_VERSION_5)
@@ -422,6 +490,34 @@ class DatabaseInitializationTests(unittest.TestCase):
                 with self.assertRaises(sqlite3.IntegrityError):
                     connection.execute(statement, parameters)
 
+    def test_the_migrated_schema_accepts_free_product_and_provider_names(self):
+        self.write_schema(SCHEMA_VERSION_5)
+        initialize_database(self.database_path)
+
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT INTO health_checks (checked_at, next_check_due, wallet_software) "
+                "VALUES ('2026-01-01', '2027-01-01', 'Coinbase')"
+            )
+            health_check_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
+            connection.execute(
+                "INSERT INTO tool_checks (health_check_id, product, bip327_status, slip39_status) "
+                "VALUES (?, 'ColdCard', 'YES', 'NO')",
+                (health_check_id,),
+            )
+            connection.execute(
+                "INSERT INTO ai_security_checks (health_check_id, provider, status) "
+                "VALUES (?, 'ColdCard', 'SECURE')",
+                (health_check_id,),
+            )
+            stored = connection.execute(
+                "SELECT wallet_software FROM health_checks WHERE id = ?", (health_check_id,)
+            ).fetchone()[0]
+
+        # The configured name and the selected software are free text, so the
+        # old product lists no longer reject them (section 23.3).
+        self.assertEqual(stored, "Coinbase")
+
     def test_the_rebuilt_parent_table_keeps_its_foreign_keys(self):
         self.write_schema(SCHEMA_VERSION_5)
         initialize_database(self.database_path)
@@ -439,31 +535,8 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(violations, [])
         self.assertEqual(children, 1)
 
-    def test_seed_fixed_keys_is_idempotent_and_preserves_custom_names(self):
-        initialize_database(self.database_path)
-        seed_fixed_keys(self.database_path)
-        seed_fixed_keys(self.database_path)
-
-        keys = list_keys(self.database_path)
-        self.assertEqual(len(keys), 3)
-        self.assertEqual(
-            [(key["key_number"], key["name"], key["type"], key["device"]) for key in keys],
-            [
-                (1, "SeedSigner", "hardware", "SeedSigner"),
-                (2, "Blockstream Jade", "hardware", "Blockstream Jade"),
-                (3, "Nunchuk", "cloud", "Nunchuk"),
-            ],
-        )
-
-        with self.connect() as connection:
-            connection.execute("UPDATE keys SET name = ? WHERE key_number = ?", ("My Jade", 2))
-        seed_fixed_keys(self.database_path)
-        self.assertEqual(list_keys(self.database_path)[1]["name"], "My Jade")
-
     def test_saved_health_checks_are_stored_and_never_overwritten(self):
-        initialize_database(self.database_path)
-        seed_fixed_keys(self.database_path)
-        keys = list_keys(self.database_path)
+        keys = self.prepare()
         data = validate_health_check(sample_payload(keys[0]), keys)
 
         first_id = save_health_check(data, self.database_path)
@@ -489,10 +562,25 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(record["ai_security_checks"][0]["status"], "SECURE")
         self.assertIsNone(get_health_check(9999, self.database_path))
 
+    def test_the_stored_name_is_recorded_as_the_product(self):
+        keys = self.prepare(RENAMED_SETUP)
+        cloud_key = keys[0]
+
+        saved_id = save_health_check(
+            validate_health_check(sample_payload(cloud_key), keys), self.database_path
+        )
+        record = get_health_check(saved_id, self.database_path)
+
+        self.assertEqual(record["wallet_software"], "Coinbase")
+        self.assertEqual([entry["product"] for entry in record["tool_checks"]], ["Coinbase"])
+        self.assertEqual(
+            [entry["provider"] for entry in record["ai_security_checks"]], ["Coinbase"]
+        )
+        self.assertEqual(record["key_checks"][0]["name"], "Coinbase")
+        self.assertEqual(record["key_checks"][0]["type"], "cloud")
+
     def test_each_key_can_be_recorded_separately(self):
-        initialize_database(self.database_path)
-        seed_fixed_keys(self.database_path)
-        keys = list_keys(self.database_path)
+        keys = self.prepare()
 
         for key in keys:
             data = validate_health_check(sample_payload(key), keys)
@@ -504,8 +592,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual([entry["key_numbers"] for entry in summaries], [[3], [2], [1]])
 
     def test_key_status_has_no_dates_before_anything_is_saved(self):
-        initialize_database(self.database_path)
-        seed_fixed_keys(self.database_path)
+        self.prepare()
 
         status = list_key_status(self.database_path)
 
@@ -516,9 +603,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual([entry["next_check_due"] for entry in status], [None, None, None])
 
     def test_key_status_reports_the_newest_check_per_key(self):
-        initialize_database(self.database_path)
-        seed_fixed_keys(self.database_path)
-        keys = list_keys(self.database_path)
+        keys = self.prepare()
 
         older = sample_payload(keys[0])
         older["checked_at"] = "2025-10-01"
@@ -542,8 +627,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertIsNone(status[2]["next_check_due"])
 
     def test_previous_values_are_empty_before_anything_is_saved(self):
-        initialize_database(self.database_path)
-        seed_fixed_keys(self.database_path)
+        self.prepare()
 
         values = list_previous_values(self.database_path)
 
@@ -552,12 +636,9 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual([entry["address_path"] for entry in values["keys"]], [None, None, None])
         self.assertEqual([entry["wallet_software"] for entry in values["keys"]], [None, None, None])
         self.assertEqual([entry["software_version"] for entry in values["keys"]], [None, None, None])
-        self.assertEqual(values["security"], {})
 
     def test_previous_values_return_the_newest_saved_values(self):
-        initialize_database(self.database_path)
-        seed_fixed_keys(self.database_path)
-        keys = list_keys(self.database_path)
+        keys = self.prepare()
 
         older = sample_payload(keys[0])
         older["checked_at"] = "2025-10-01"
@@ -586,45 +667,14 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(by_key[3]["wallet_software"], "Nunchuk")
         self.assertEqual(by_key[3]["software_version"], "1.9.0")
         self.assertIsNone(by_key[2]["firmware_version"])
-        self.assertEqual(
-            values["security"],
-            {"SeedSigner": "SECURE", "Sparrow Wallet": "SECURE", "Nunchuk": "SECURE"},
-        )
-
-    def test_previous_security_status_keeps_the_newest_status_per_provider(self):
-        initialize_database(self.database_path)
-        seed_fixed_keys(self.database_path)
-        keys = list_keys(self.database_path)
-
-        older = sample_payload(keys[0])
-        older["checked_at"] = "2025-10-01"
-        older["ai_security_checks"] = [
-            {"provider": "SeedSigner", "status": "VULNERABLE", "comments": ""},
-            {"provider": "Sparrow Wallet", "status": "PATCHED", "comments": ""},
-            {"provider": "Nunchuk", "status": "SECURE", "comments": ""},
-        ]
-        save_health_check(validate_health_check(older, keys), self.database_path)
-
-        newer = sample_payload(keys[0])
-        newer["checked_at"] = "2026-10-01"
-        save_health_check(validate_health_check(newer, keys), self.database_path)
-
-        values = list_previous_values(self.database_path)
-
-        self.assertEqual(values["security"]["SeedSigner"], "SECURE")
-        self.assertEqual(values["security"]["Sparrow Wallet"], "SECURE")
-        self.assertEqual(values["security"]["Nunchuk"], "SECURE")
 
     def test_export_rows_are_empty_before_anything_is_saved(self):
-        initialize_database(self.database_path)
-        seed_fixed_keys(self.database_path)
+        self.prepare()
 
         self.assertEqual(list_export_rows(self.database_path), [])
 
     def test_export_rows_join_products_and_security_statuses(self):
-        initialize_database(self.database_path)
-        seed_fixed_keys(self.database_path)
-        keys = list_keys(self.database_path)
+        keys = self.prepare()
 
         saved_id = save_health_check(
             validate_health_check(sample_payload(keys[0]), keys), self.database_path
@@ -658,7 +708,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         )
         self.assertEqual(
             first["security_status"],
-            "SeedSigner: SECURE; Sparrow Wallet: SECURE; Nunchuk: SECURE",
+            "SeedSigner: SECURE; Sparrow Wallet: SECURE",
         )
 
         cloud = rows[1]
@@ -678,11 +728,11 @@ class DatabaseInitializationTests(unittest.TestCase):
                 )
 
             connection.execute(
-                "INSERT INTO keys (key_number, name, type, device) VALUES (1, 'SeedSigner', 'hardware', 'SeedSigner')"
+                "INSERT INTO keys (key_number, name, type) VALUES (1, 'ColdCard', 'hardware')"
             )
             with self.assertRaises(sqlite3.IntegrityError):
                 connection.execute(
-                    "INSERT INTO keys (key_number, name, type, device) VALUES (1, 'Duplicate', 'hardware', 'SeedSigner')"
+                    "INSERT INTO keys (key_number, name, type) VALUES (1, 'Duplicate', 'hardware')"
                 )
 
     def test_ai_security_status_is_limited_to_the_english_values(self):
