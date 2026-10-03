@@ -52,7 +52,7 @@ def sample_payload(key, wallet_software=None):
         "software_version": "1.8.0",
         "software_compatibility_status": "OK",
         "software_comments": "",
-        "contact_info_verified": 1,
+        "contact_info_verified": "Confirmed current",
         "comments": "Annual review",
         "key_check": entry,
         "tool_checks": [
@@ -143,7 +143,8 @@ LEGACY_SCHEMA = """
     PRAGMA user_version = 4;
 """
 
-# The layout introduced by section 19, before the status values became English.
+# The layout introduced by section 19, before the status values became English
+# and before the contact flag became a stored status.
 SCHEMA_VERSION_5 = """
     CREATE TABLE keys (
         id INTEGER PRIMARY KEY,
@@ -320,6 +321,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(record["checked_at"], "2026-01-01")
         self.assertEqual(record["sparrow_version"], "1.7.0")
         self.assertEqual(record["software_compatibility_status"], "NOT_ASSESSED")
+        self.assertIsNone(record["contact_info_verified"])
         self.assertEqual(record["key_checks"][0]["seed_backup_verified"], "OK")
         self.assertEqual(record["key_checks"][0]["address_path"], "m/48'/0'/0'/2'/0/0")
         self.assertEqual(record["key_checks"][1]["seed_backup_verified"], "PROBLEM")
@@ -364,6 +366,28 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(record["tool_checks"][0]["slip39_status"], "NO")
         self.assertEqual(record["ai_security_checks"][0]["status"], "SECURE")
 
+    def test_the_contact_flag_migrates_to_the_stored_statuses(self):
+        self.write_schema(SCHEMA_VERSION_5)
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT INTO health_checks (id, checked_at, next_check_due, contact_info_verified) "
+                "VALUES (2, '2025-01-01', '2026-01-01', 0), (3, '2024-01-01', '2025-01-01', NULL)"
+            )
+
+        initialize_database(self.database_path)
+
+        with self.connect() as connection:
+            stored = connection.execute(
+                "SELECT id, contact_info_verified FROM health_checks ORDER BY id"
+            ).fetchall()
+
+        # 1 meant "confirmed", 0 meant "not confirmed", and an empty value stays
+        # empty (section 23.1).
+        self.assertEqual(
+            stored,
+            [(1, "Confirmed current"), (2, "Needs external update"), (3, None)],
+        )
+
     def test_the_migrated_schema_rejects_the_old_status_values(self):
         self.write_schema(SCHEMA_VERSION_5)
         initialize_database(self.database_path)
@@ -374,6 +398,11 @@ class DatabaseInitializationTests(unittest.TestCase):
                     "INSERT INTO health_checks (checked_at, next_check_due, software_compatibility_status) "
                     "VALUES ('2026-01-01', '2027-01-01', ?)",
                     ("IKKJE_VURDERT",),
+                ),
+                (
+                    "INSERT INTO health_checks (checked_at, next_check_due, contact_info_verified) "
+                    "VALUES ('2026-01-01', '2027-01-01', ?)",
+                    (1,),
                 ),
                 (
                     "INSERT INTO tool_checks (health_check_id, product, bip327_status, slip39_status) "
@@ -440,6 +469,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(record["checked_at"], "2026-10-01")
         self.assertEqual(record["next_check_due"], "2027-10-01")
         self.assertEqual(record["comments"], "Annual review")
+        self.assertEqual(record["contact_info_verified"], "Confirmed current")
         self.assertEqual(len(record["key_checks"]), 1)
         self.assertEqual(record["key_checks"][0]["key_number"], 1)
         self.assertEqual(record["key_checks"][0]["seed_backup_verified"], "OK")
@@ -608,7 +638,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(first["address_path_verified"], "OK")
         self.assertEqual(first["address_path"], "m/48'/0'/0'/2'/0/0")
         self.assertEqual(first["wallet_software"], "Sparrow Wallet")
-        self.assertEqual(first["contact_info_verified"], 1)
+        self.assertEqual(first["contact_info_verified"], "Confirmed current")
         self.assertEqual(
             first["bip327_status"],
             "SeedSigner: NOT_ASSESSED; Sparrow Wallet: NOT_ASSESSED",
