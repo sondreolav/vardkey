@@ -14,7 +14,7 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 
 Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 
-**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. Fire avgjerder vart tekne undervegs, alle implementerte og verifiserte, og er innarbeidde i §1–§18. Dei står att som eit kort vedlegg i §19–§22, mest for å forklare kvar referansane i §1–§18 peikar. Den fulle grunngjevinga for kvar avgjerd ligg i git-historikken. §23 er avtalt arbeid som skal gjerast før steg 9–12 i §18; §23.1 er implementert og verifisert, medan §23.2–§23.5 står opne.
+**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. Fire avgjerder vart tekne undervegs, alle implementerte og verifiserte, og er innarbeidde i §1–§18. Dei står att som eit kort vedlegg i §19–§22, mest for å forklare kvar referansane i §1–§18 peikar. Den fulle grunngjevinga for kvar avgjerd ligg i git-historikken. §23 er avtalt arbeid som vart gjort før steg 9–12 i §18; heile §23.1–§23.5 er implementert og verifisert.
 
 ## Språkkrav
 
@@ -83,9 +83,9 @@ Appen skal starte med eitt fast multisig-oppsett:
 - [x] Vis 2-av-3 som oppsettet i dashboardet.
 - [x] Ha tre nøkkelprofilar, éin for kvar nøkkel.
 - [x] Ikkje bygg generell støtte for mange oppsett enno.
-- [ ] La brukaren gi nøklane lesbare namn dersom ønskjeleg. (Avgjort: ikkje no — faste namn er nok for MVP. §23.2 endrar dette: brukaren gir namn og type ved første oppstart.)
+- [x] La brukaren gi nøklane lesbare namn dersom ønskjeleg. (Avgjort: ja, via §23.2 — brukaren gir namn og type ved første oppstart, og dei er låste etterpå.)
 
-**Merk:** §23.2 erstattar det faste oppsettet i denne seksjonen når det er implementert. Fram til då gjeld tabellen over som han står.
+**Merk:** §23.2 erstattar det faste oppsettet i denne seksjonen: kvar nøkkel blir konfigurert ved første oppstart, og namnet brukaren skriv, blir produktnamnet. Tabellen over viser standardoppsettet appen vart bygd for.
 
 ---
 
@@ -93,8 +93,8 @@ Appen skal starte med eitt fast multisig-oppsett:
 
 SQLite med så få tabellar som mogleg. Kvar tabell har éi rad per kolonne her; kolonnar merkte `*` er legacy-kolonnar som berre finst for gamle rader og aldri blir skrivne på nytt.
 
-**`keys`** — dei tre faste nøklane.
-`id`, `key_number` (1–3), `name`, `type` (`hardware`/`cloud`), `device` (SeedSigner / Blockstream Jade / Nunchuk), `created_at`.
+**`keys`** — dei tre nøkkelplassane.
+`id`, `key_number` (1–3), `name`, `type` (`hardware`/`cloud`), `created_at`.
 
 **`health_checks`** — éi rad per innsending, som gjeld éin vald nøkkel (§19).
 `id`, `checked_at`, `next_check_due`, `wallet_software`, `software_version`, `software_compatibility_status`, `sparrow_version*`, `nunchuk_version*`, `software_comments`, `contact_info_verified`, `comments`.
@@ -110,15 +110,17 @@ SQLite med så få tabellar som mogleg. Kvar tabell har éi rad per kolonne her;
 
 Reglar:
 
-- [x] `hardware_works`, `firmware_version` og `seed_backup_verified` er berre relevante for nøkkel 1 og 2.
-- [x] `cloud_health_status` og `cloud_provider_operational` er berre relevante for nøkkel 3, og blir ikkje spurt om (§20).
+- [x] `hardware_works`, `firmware_version` og `seed_backup_verified` er berre relevante for hardware-nøklar.
+- [x] `cloud_health_status` og `cloud_provider_operational` er berre relevante for cloud-nøklar, og blir ikkje spurt om (§20).
 - [x] `seed_backup_verified` og `address_path_verified` har berre verdiane `OK` eller `PROBLEM`, og er obligatoriske når `available` er Ja.
 - [x] `address_path` lagrar den verifiserte adressestien.
-- [x] Når `available` er Nei, blir dei andre nøkkelfelta tømde, medan nøkkelnotatet blir behalde. For nøkkel 3 blir dei to cloud-felta likevel lagra, utleidde (§20).
+- [x] Når `available` er Nei, blir dei andre nøkkelfelta tømde, medan nøkkelnotatet blir behalde. For ein cloud-nøkkel blir dei to cloud-felta likevel lagra, utleidde (§20).
 - [x] `seed_backup_status`, `address_verified` og `derivation_height` er fjerna (§19).
 - [x] Når `available` er Nei, blir `wallet_software`, `tool_checks` og `ai_security_checks` ikkje registrerte i det heile (§22).
-
-**Merk:** §23.4 legg til lagring av nøkkeloppsettet (namn og type). Verdiane for kontaktstadfesting vart endra i §23.1. Elles gjeld datamodellen over som han står til §23.4 er implementert.
+- [x] `name` og `type` i `keys` blir lagra éin gong ved første oppstart og er låste etterpå (§23.2).
+- [x] `product` og `provider` lagrar det konfigurerte nøkkelnamnet og den valde programvara, ikkje faste produktnamn (§23.3).
+- [x] `wallet_software` og `contact_info_verified` er fri tekst; dei faste listene er fjerna (§23.1, §23.3).
+- [x] `device`-kolonnen er fjerna; det konfigurerte namnet er den einaste produktetikketten (§23.2).
 
 ---
 
@@ -131,6 +133,7 @@ Reglar:
 - [x] Same statuslogikk i database, validering, varsel, CSV-eksport og UI.
 - [x] Ikkje bland saman «ikkje vurdert» og eit faktisk negativt resultat.
 - [x] Kontaktstadfesting brukar `Confirmed current` eller `Needs external update` i staden for Ja/Nei (§23.1).
+- [x] `Software compatibility` krev eit aktivt val (`OK` / `PROBLEM`) for ein hardware-nøkkel (§23.1).
 
 ---
 
@@ -143,7 +146,7 @@ Reglar:
 - [x] Dagens dato blir føreslått automatisk.
 - [x] Neste sjekkdato blir rekna ut på serveren som eitt kalenderår etter sjekkdatoen, og kan ikkje redigerast i skjemaet.
 
-## Steg 2 — Nøkkel 1: SeedSigner
+## Steg 2 — Hardware-nøkkel
 
 - [x] Tilgjengeleg / ikkje tilgjengeleg.
 - [x] Hardware fungerer / fungerer ikkje.
@@ -153,59 +156,54 @@ Reglar:
 - [x] Kommentar ved behov.
 - [x] Når nøkkelen ikkje er tilgjengeleg, blir resten skjult og ikkje kravd (§22).
 
-## Steg 3 — Nøkkel 2: Blockstream Jade
-
-- [x] Same kontrollar som for nøkkel 1: tilgjengeleg, hardware fungerer, firmware-versjon, seed-backup (`seed_backup_verified`), adresse og sti (`address_path_verified`, `address_path`), kommentar.
-- [x] Når nøkkelen ikkje er tilgjengeleg, blir resten skjult og ikkje kravd (§22).
-
-## Steg 4 — Nøkkel 3: Nunchuk sky-nøkkel
+## Steg 3 — Cloud-nøkkel
 
 - [x] Berre `Availability` blir spurt om. Cloud-helse og «leverandøren er i drift» blir utleidde frå han (§20).
 - [x] Verifiser relevant adresse/oppsett → `address_path_verified` (`OK` / `PROBLEM`) og `address_path`.
 - [x] Kommentar ved behov.
 
-## Steg 5 — Programvare-kompatibilitet
+## Steg 4 — Programvare-kompatibilitet
 
-- [x] Brukaren vel éi wallet-programvare: `Sparrow Wallet` eller `Nunchuk`. Nøkkel 3 er låst til Nunchuk.
+- [x] Brukaren vel éi wallet-programvare: `Sparrow Wallet` eller namnet på ein konfigurert cloud-nøkkel. Ein cloud-nøkkel er låst til sitt eige namn (§23.3).
 - [x] Registrer versjonen til den valde programvara i `software_version`.
 - [x] Registrer `OK` eller `PROBLEM`, med kommentar ved problem.
-- [x] For nøkkel 3 er feltet skjult og utleidd (§20).
+- [x] For ein cloud-nøkkel er feltet skjult og utleidd (§20).
 - [x] Når nøkkelen ikkje er tilgjengeleg, er feltet skjult og valfritt (§22).
 
-## Steg 6 — BIP327 / SLIP39
+## Steg 5 — BIP327 / SLIP39
 
-- [x] Registrer `bip327_status` og `slip39_status` for nøkkelproduktet og den valde programvara: maks to rader, utan duplikat, og éi rad for nøkkel 3.
+- [x] Registrer `bip327_status` og `slip39_status` for den valde nøkkelen (ved namn) og den valde programvara: maks to rader og utan duplikat (§23.3).
 - [x] Verdiane er `YES`, `NO` eller `NOT_ASSESSED` (§21).
 - [x] «Version checked», «Date checked» og «Notes or source» er tekne ut.
 - [x] Når nøkkelen ikkje er tilgjengeleg, blir ingen rader registrerte (§22).
 
-## Steg 7 — KI-sikkerheitsstatus
+## Steg 6 — KI-sikkerheitsstatus
 
-- [x] Leverandørar per innsending: nøkkel 1 → SeedSigner, Sparrow Wallet, Nunchuk. Nøkkel 2 → Blockstream Jade, Sparrow Wallet, Nunchuk. Nøkkel 3 → Nunchuk åleine.
+- [x] Leverandørar per innsending: den valde nøkkelen (ved namn) og den valde programvara (§23.3).
 - [x] Registrer status (`SECURE` / `PATCHED` / `VULNERABLE` / `COMPROMISED`) og ein kort kommentar.
-- [x] For nøkkel 1 og 2 blir berre nøkkelproduktet og den valde programvara vist; den tredje leverandøren blir vidareført (§20).
+- [x] Berre den valde nøkkelen og den valde programvara blir registrerte; vidareføringa av ein tredje leverandør (§20) er fjerna (§23.3).
 - [x] Når nøkkelen ikkje er tilgjengeleg, blir ingen statusar registrerte (§22).
 - [x] Appen kontaktar ikkje KI sjølv i MVP.
 
-## Steg 8 — Kontaktinfo
+## Steg 7 — Kontaktinfo
 
-- [x] Stadfest at kontaktinformasjonen til alle nøkkelhaldarane er gyldig, og lagre berre Ja / Nei.
+- [x] Stadfest at kontaktinformasjonen til nøkkelhaldaren til den valde nøkkelen er gyldig, og lagre berre statusen (§23.1).
 - [x] Ikkje lagre namn, telefonnummer, e-post eller anna kontaktinnhald.
 
-## Steg 9 — Kommentar
+## Steg 8 — Kommentar
 
 - [x] Eitt overordna kommentarfelt for observasjonar, og eigne kommentarar per nøkkel der det trengst.
 
-## Steg 10 — Oppsummering
+## Steg 9 — Oppsummering
 
-- [x] Før lagring viser appen alle kontrollpunkt, alle problem, alle manglande kontrollar, neste sjekkdato, handlingar som bør følgjast opp, og utleidde eller vidareførte verdiar merkte som nettopp det (§20).
+- [x] Før lagring viser appen alle kontrollpunkt, alle problem, alle manglande kontrollar, neste sjekkdato, handlingar som bør følgjast opp, og utleidde verdiar merkte som nettopp det (§20).
 - [x] Brukaren må trykkje `Lagre health check` for å lagre kontrollen.
 
 ---
 
 # 7. Varsel og oppfølging
 
-- [x] Nøkkel ikkje tilgjengeleg → kritisk varsel om at nøkkelen må bytast ut før ein går vidare, og at resten av nøkkelfelta ikkje kan registrerast. For nøkkel 3 eitt samanslått varsel som òg nemner at leverandøren er registrert som nede (§20).
+- [x] Nøkkel ikkje tilgjengeleg → kritisk varsel om at nøkkelen må bytast ut før ein går vidare, og at resten av nøkkelfelta ikkje kan registrerast. For ein cloud-nøkkel eitt samanslått varsel som òg nemner at leverandøren er registrert som nede (§20).
 - [x] Hardware fungerer ikkje → seed-backupen bør testast på annan kompatibel hardware.
 - [x] Seed-backup manglar eller er øydelagd → PROTOKOLL 3: Nøkkeltap skal aktiverast. Skal ikkje utløysast når nøkkelen er utilgjengeleg.
 - [x] Cloud-helse `PROBLEM` eller leverandøren ute av drift → leverandørstatusen bør kontrollerast før ein går vidare. Skal ikkje utløysast når nøkkelen er utilgjengeleg.
@@ -228,6 +226,7 @@ Reglar:
 - [x] Oversiktskort «Next check» (tidlegaste forfall, med kva nøkkel det gjeld) og «Attention» (kor mange nøklar som har passert fristen). Om ein dato er passert blir avgjort i nettlesaren.
 - [x] Vis alle aktive varsel, med kva registrering kvart varsel kjem frå (§21).
 - [x] Knapp `Start årleg health check`, lenke `Historikk` og lenke `Download CSV`.
+- [x] Vis oppsettsteget i staden for dashboardet når nøkkeloppsettet manglar (§23.2).
 
 ---
 
@@ -246,12 +245,13 @@ Reglar:
 - [x] Inneheld dato, neste sjekk, nøkkelstatus, hardware/firmware, seed/cloud-resultat, adresse-sti, programvare og kompatibilitet, BIP327/SLIP39, KI-status, kontaktstadfesting og kommentarar.
 - [x] Resultat med meir enn éin verdi per innsending ligg i éi celle som `SeedSigner: YES; Sparrow Wallet: NO`.
 - [x] Statusverdiane blir skrivne slik dei er lagra (§21).
+- [x] Nøkkelnamnet og nøkkeltypen kjem frå oppsettet (§23.3).
 
 ---
 
 # 11. Backend
 
-- [x] SQLite med initialisering og migrering. Skjemaet er no versjon 7 (§21, §23.1).
+- [x] SQLite med initialisering og migrering. Skjemaet er no versjon 8 (§21, §23.1, §23.4).
 - [x] Lagring av nøklar, health checks, historikk og rapporteksport.
 - [x] Varsellogikken (§7).
 - [x] Health endpoint.
@@ -265,10 +265,11 @@ Minimumsendepunkt:
 - [x] `POST /api/health-checks`
 - [x] `GET /api/export`
 
-**Merk:** `GET /api/key-status`, `GET /api/previous-values` og `GET /api/alerts` er ekstra endepunkt utanom minimumslista, fordi dashboardet og skjemaet treng dei. Dei står ikkje i spesifikasjonen enno.
+**Merk:** `GET /api/setup`, `POST /api/setup`, `GET /api/key-status`, `GET /api/previous-values` og `GET /api/alerts` er ekstra endepunkt utanom minimumslista, fordi oppsettsteget, dashboardet og skjemaet treng dei. Dei står ikkje i spesifikasjonen enno.
 
 - [x] `POST /api/health-checks` krev éin konfigurert nøkkel, `available` og gyldige, relevante resultat, og avviser manglande eller dupliserte registreringar (§22).
 - [x] `POST /api/health-checks` krev ikkje programvare, standardar eller KI-status når nøkkelen er utilgjengeleg (§22).
+- [x] `POST /api/setup` lagrar nøkkeloppsettet éin gong, krev unike og ikkje-tomme namn, og avviser eit nytt oppsett med `409` (§23.2).
 
 ---
 
@@ -280,6 +281,8 @@ Minimumsendepunkt:
 - [x] Vis kva som står att før ein health check kan lagrast.
 - [x] Skjul felt som ikkje gjeld for vald nøkkel eller vald programvare (§20, §21).
 - [x] Skjul programvare, standardar og KI-status når nøkkelen er utilgjengeleg (§22).
+- [x] Eige oppsettsteg for namn og type ved første oppstart (§23.2).
+- [x] Bygg `Wallet software`-vala frå oppsettet i staden for ei fast liste (§23.3).
 - [ ] Sørg for at appen fungerer godt i vanleg StartOS-browser.
 
 ---
@@ -421,9 +424,9 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 
 **Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken, og gjorde på nytt etterpå. Steg 4 og 6 vart kryssa av då §22 var verifisert.
 
-**Merk:** §23 er avtalt arbeid som kjem **før** steg 9–12. §23.1 er ferdig og verifisert. Steg 9–12 blir ikkje starta før òg §23.2–§23.5 er implementerte og verifiserte.
+**Merk:** §23 er avtalt arbeid som kjem **før** steg 9–12. Heile §23 er implementert og verifisert, så steg 9–12 kan startast.
 
-**Testar:** 138 grøne testar. Køyr `python3 -m unittest discover -s tests`.
+**Testar:** 178 grøne testar. Køyr `python3 -m unittest discover -s tests`.
 
 **Hovudregel:** Bygg den minste løysinga som oppfyller lista over. Ikkje legg til nye funksjonar, tenester eller arkitektur utan at dei er nødvendige for punkta i denne TODO-lista.
 
@@ -431,11 +434,11 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 
 # 19–22. Vedtekne avgjerder (implementerte og verifiserte)
 
-Desse fire vart tekne undervegs og er no innarbeidde i §1–§18. Kvar referanse i §1–§18 peikar på avsnittet nedanfor. Den fulle grunngjevinga ligg i git-historikken.
+Desse fire vart tekne undervegs og er no innarbeidde i §1–§18. Kvar referanse i §1–§18 peikar på avsnittet nedanfor. Den fulle grunngjevinga ligg i git-historikken. §23 endra enkelte av detaljane etterpå; det står i så fall i parentes.
 
 **§19 — registrering per nøkkel.** Ei innsending gjeld **éin vald nøkkel**, ikkje alle tre. Brukaren vel éi wallet-programvare (`Sparrow Wallet` eller `Nunchuk`; nøkkel 3 er låst til Nunchuk) med eitt versjonsfelt. `seed_backup_status`, `address_verified` og `derivation_height` er fjerna. Migreringa er bakoverkompatibel, og eldre historikk blir framleis vist.
 
-**§20 — skjulte felt som blir utleidde eller vidareførte.** Nøkkel 3 samlar berre `Availability`; cloud-helse, «leverandøren er i drift» og kompatibilitet blir utleidde. For nøkkel 1 og 2 blir den tredje leverandøren vidareført, men kjem tilbake av seg sjølv om statusen var `VULNERABLE` eller `COMPROMISED`. Førre lagra verdi blir vist som placeholder. Alt utleidd og vidareført blir lista i Review-oppsummeringa, merkt som nettopp det.
+**§20 — skjulte felt som blir utleidde eller vidareførte.** Nøkkel 3 samlar berre `Availability`; cloud-helse, «leverandøren er i drift» og kompatibilitet blir utleidde. For nøkkel 1 og 2 blir den tredje leverandøren vidareført, men kjem tilbake av seg sjølv om statusen var `VULNERABLE` eller `COMPROMISED`. Førre lagra verdi blir fylt inn i feltet. Alt utleidd og vidareført blir lista i Review-oppsummeringa, merkt som nettopp det. (§23.1 gjorde den førre verdien til ein vanleg input-verdi i staden for ein placeholder, og §23.3 fjerna vidareføringa av den tredje leverandøren.)
 
 **§21 — engelske statusverdiar, adressesti og alle varsel.** `IKKJE_VURDERT` → `NOT_ASSESSED`, og BIP327/SLIP39 får `YES`/`NO`/`NOT_ASSESSED`. Skjema versjon 6: kvar råka tabell blir bygd opp att med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit. `Address path` blir berre vist og lagra når verifiseringa er `OK`. `GET /api/alerts` summerer alle lagra kontrollar, med `check_id` og `checked_at`, slår saman like varsel og listar kritiske først. «Helsesjekk» og `data/helsesjekk.sqlite3` er dokumenterte unntak frå engelskregelen.
 
@@ -450,7 +453,7 @@ Desse fire vart tekne undervegs og er no innarbeidde i §1–§18. Kvar referans
 
 # 23. Avtalt vidare arbeid før StartOS-pakken
 
-Dette vart avtalt 02.10.2026. §23.1 er implementert og verifisert (138 grøne testar). §23.2–§23.5 står opne. Arbeidet skal gjerast **før** steg 9–12 i §18. Der §23 seier noko anna enn §3–§6, gjeld §23.
+Dette vart avtalt 02.10.2026. Heile §23.1–§23.5 er implementert og verifisert (178 grøne testar). Arbeidet vart gjort **før** steg 9–12 i §18. Der §23 seier noko anna enn §3–§6, gjeld §23.
 
 ## 23.1 Skjemafiksar
 
@@ -461,39 +464,40 @@ Dette vart avtalt 02.10.2026. §23.1 er implementert og verifisert (138 grøne t
 
 ## 23.2 Konfigurerbart nøkkeloppsett
 
-- [ ] Appen støttar framleis nøyaktig tre nøklar, men kvar nøkkel kan vere `hardware` eller `cloud`, fritt fordelt mellom dei tre plassane.
-- [ ] Ved første oppstart på ein ny database viser appen eit oppsettsteg der brukaren gir kvar nøkkel eit namn og vel type.
-- [ ] Namna må vere unike og ikkje-tomme. Duplikat blir avviste.
-- [ ] Namnet brukaren skriv, til dømes `SeedSigner`, blir brukt som produktnamn i kontrollar, varsel, historikk og CSV-eksport.
-- [ ] Namn og type blir lagra i SQLite saman med historikken, og er **låste** etter at oppsettet er lagra.
-- [ ] Nøkkelnummeret blir vist saman med namnet der det trengst, til dømes `Key 1: ColdCard`, og namnet åleine der nøkkelen er tydeleg frå konteksten.
-- [ ] Eksisterande installasjonar: oppsettet blir lese ut frå nøkkelradene som alt ligg i databasen, og all historikk blir bevart. Ei database som ikkje kan lesast gir ein tydeleg feil og blir **ikkje** behandla som ein ny installasjon.
-- [ ] Nye, tomme databasar får førstegongsoppsettet.
+- [x] Appen støttar framleis nøyaktig tre nøklar, men kvar nøkkel kan vere `hardware` eller `cloud`, fritt fordelt mellom dei tre plassane.
+- [x] Ved første oppstart på ein ny database viser appen eit oppsettsteg der brukaren gir kvar nøkkel eit namn og vel type.
+- [x] Namna må vere unike og ikkje-tomme. Duplikat blir avviste.
+- [x] Namnet brukaren skriv, til dømes `SeedSigner`, blir brukt som produktnamn i kontrollar, varsel, historikk og CSV-eksport.
+- [x] Namn og type blir lagra i SQLite saman med historikken, og er **låste** etter at oppsettet er lagra.
+- [x] Nøkkelnummeret blir vist saman med namnet der det trengst, til dømes `Key 1: ColdCard`, og namnet åleine der nøkkelen er tydeleg frå konteksten.
+- [x] Eksisterande installasjonar: oppsettet blir lese ut frå nøkkelradene som alt ligg i databasen, og all historikk blir bevart. Ei database som ikkje kan lesast gir ein tydeleg feil og blir **ikkje** behandla som ein ny installasjon.
+- [x] Nye, tomme databasar får førstegongsoppsettet.
 
 ## 23.3 Typebaserte kontrollar og val
 
-- [ ] Kontrollar, validering, varsel, historikk og CSV-eksport blir styrte av nøkkeltype og konfigurert namn, ikkje av faste nøkkelnummer eller faste produktnamn.
-- [ ] Hardware-nøklar følgjer dagens kontrollar for nøkkel 1 og 2. Cloud-nøklar følgjer Nunchuk-modellen, men viser det konfigurerte namnet.
-- [ ] `Wallet software`-vala er `Sparrow` pluss namnet på kvar konfigurert **cloud**-nøkkel. Namn på hardware-nøklar blir aldri lagde til i denne lista. `Nunchuk` kjem difor berre fram som software-val når ein cloud-nøkkel faktisk heiter Nunchuk.
-- [ ] KI-sikkerheitsstatus blir registrert for den valde nøkkelen (ved namn) og den valde programvara. Vidareføringa av status for ein tredje leverandør (§20) blir fjerna. Dupliserte rader blir unngåtte når namnet på nøkkelen og programvara er like.
-- [ ] BIP327/SLIP39 blir registrerte for den valde nøkkelen og den valde programvara, utan duplikat.
-- [ ] For ein cloud-nøkkel med sjølvvalt namn gjeld cloud-kontrollane framleis, men det konfigurerte namnet blir vist.
+- [x] Kontrollar, validering, varsel, historikk og CSV-eksport blir styrte av nøkkeltype og konfigurert namn, ikkje av faste nøkkelnummer eller faste produktnamn.
+- [x] Hardware-nøklar følgjer dei vanlege hardware-kontrollane. Cloud-nøklar følgjer Nunchuk-modellen, men viser det konfigurerte namnet.
+- [x] `Wallet software`-vala er `Sparrow` pluss namnet på kvar konfigurert **cloud**-nøkkel. Namn på hardware-nøklar blir aldri lagde til i denne lista. `Nunchuk` kjem difor berre fram som software-val når ein cloud-nøkkel faktisk heiter Nunchuk.
+- [x] KI-sikkerheitsstatus blir registrert for den valde nøkkelen (ved namn) og den valde programvara. Vidareføringa av status for ein tredje leverandør (§20) blir fjerna. Dupliserte rader blir unngåtte når namnet på nøkkelen og programvara er like.
+- [x] BIP327/SLIP39 blir registrerte for den valde nøkkelen og den valde programvara, utan duplikat.
+- [x] For ein cloud-nøkkel med sjølvvalt namn gjeld cloud-kontrollane framleis, men det konfigurerte namnet blir vist.
 
 ## 23.4 Datamodell og migrering
 
-- [ ] Lagring av nøkkeloppsettet (namn og type) i SQLite, med ny skjemaversjon.
-- [ ] Migrering av eldre databasar som manglar lagra oppsett, utan tap av historikk.
-- [ ] Migrering av `contact_info_verified` frå Ja/Nei til `Confirmed current` / `Needs external update`.
-- [ ] Migreringa skal framleis køyre med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit (§21).
+- [x] Lagring av nøkkeloppsettet (namn og type) i SQLite, med ny skjemaversjon.
+- [x] Migrering av eldre databasar som manglar lagra oppsett, utan tap av historikk.
+- [x] Migrering av `contact_info_verified` frå Ja/Nei til `Confirmed current` / `Needs external update`.
+- [x] Migreringa skal framleis køyre med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit (§21).
+- [x] Fjerning av `device`-kolonnen og av dei faste listene for produkt, leverandør og wallet-programvare, med same migreringsmønster.
 
 ## 23.5 Testar
 
-- [ ] Testar for førstegongsoppsett, duplikatnamn og låsing av namn og type.
-- [ ] Testar for kvar nøkkeltype, og for alle tre nøklane som cloud-nøklar.
-- [ ] Testar for dynamiske `Wallet software`-val, inkludert at eit hardware-namn ikkje dukkar opp der.
-- [ ] Testar for førehandsutfylling, kravd kompatibilitetsstatus og kontaktpåminning.
-- [ ] Testar for migrering av eldre database med historikk, og for uleseleg database.
-- [ ] Alle eksisterande 123 testar skal framleis vere grøne.
+- [x] Testar for førstegongsoppsett, duplikatnamn og låsing av namn og type.
+- [x] Testar for kvar nøkkeltype, og for alle tre nøklane som cloud-nøklar.
+- [x] Testar for dynamiske `Wallet software`-val, inkludert at eit hardware-namn ikkje dukkar opp der.
+- [x] Testar for førehandsutfylling, kravd kompatibilitetsstatus og kontaktpåminning.
+- [x] Testar for migrering av eldre database med historikk, og for uleseleg database.
+- [x] Alle eksisterande testar er framleis grøne (178 totalt).
 
 ## 23.6 Framtidig arbeid, ikkje no
 
