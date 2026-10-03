@@ -41,14 +41,20 @@ class ExportTests(unittest.TestCase):
             "available": 1,
             "hardware_works": 0,
             "cloud_provider_operational": 1,
-            "contact_info_verified": 0,
         }]))
         values = dict(zip(HEADERS, rows[1]))
 
         self.assertEqual(values["Available"], "Yes")
         self.assertEqual(values["Hardware works"], "No")
         self.assertEqual(values["Cloud provider operational"], "Yes")
-        self.assertEqual(values["Contact details confirmed"], "No")
+
+    def test_contact_status_is_written_as_stored_text(self):
+        # The contact confirmation is a status, not a yes/no flag (section 23.1).
+        self.assertNotIn("contact_info_verified", FLAG_KEYS)
+        for value in ("Confirmed current", "Needs external update"):
+            rows = parse(build_csv([{"contact_info_verified": value}]))
+            values = dict(zip(HEADERS, rows[1]))
+            self.assertEqual(values["Contact details confirmed"], value)
 
     def test_text_with_separators_is_quoted_and_read_back(self):
         comment = 'note, with "quotes"; and more'
