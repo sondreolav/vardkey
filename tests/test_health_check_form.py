@@ -32,10 +32,9 @@ class HealthCheckFormTests(unittest.TestCase):
     def test_form_script_covers_the_checklist_fields_and_status_values(self):
         script = read_static("health-check.js")
         for field in (
+            "hardware_works",
             "address_path_verified",
             "seed_backup_verified",
-            "bip327_status",
-            "slip39_status",
         ):
             self.assertIn(field, script)
         for status in ("SECURE", "PATCHED", "VULNERABLE", "COMPROMISED"):
@@ -43,6 +42,21 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("formatLocalDate", script)
         self.assertIn("Needs assessment", script)
         self.assertIn("Results requiring follow-up", script)
+
+    def test_the_bip327_and_slip39_function_is_gone(self):
+        html = read_static("health-check.html")
+        script = read_static("health-check.js")
+        history = read_static("history.js")
+        # The whole function is removed (section 24.2), so neither the form, the
+        # script, nor the history view mentions it any more.
+        self.assertNotIn("BIP327", html)
+        self.assertNotIn("SLIP39", html)
+        self.assertNotIn("tool-checks", html)
+        self.assertNotIn("toolChecks", script)
+        self.assertNotIn("standardsStatuses", script)
+        self.assertNotIn("tool_checks", script)
+        self.assertNotIn("BIP327", history)
+        self.assertNotIn("tool_checks", history)
 
     def test_form_script_no_longer_uses_the_removed_fields(self):
         script = read_static("health-check.js")
@@ -151,12 +165,6 @@ class HealthCheckFormTests(unittest.TestCase):
         script = read_static("health-check.js")
         self.assertIn("NOT_ASSESSED", script)
         self.assertNotIn("IKKJE_VURDERT", script)
-        # BIP327 and SLIP39 answer yes or no, so they have their own option list,
-        # and the tool-check fields must use it instead of the general one.
-        self.assertIn("standardsStatuses", script)
-        self.assertIn('["YES", "Yes"]', script)
-        self.assertIn('["NO", "No"]', script)
-        self.assertIn("makeSelect(standardsStatuses", script)
         # The two verification results keep OK and PROBLEM.
         self.assertIn('["OK", "OK"]', script)
         self.assertIn('["PROBLEM", "Problem"]', script)
@@ -173,11 +181,10 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("keyIsUnavailable", script)
         self.assertIn("syncUnavailableState", script)
         self.assertIn("softwareSection.hidden", script)
-        self.assertIn("toolChecksSection.hidden", script)
         self.assertIn("securityChecksSection.hidden", script)
         self.assertIn("walletSoftwareSelect.required", script)
         self.assertIn("UNAVAILABLE_MESSAGE", script)
-        # The three parts render an empty state instead of required fields, so a
+        # The hidden parts render an empty state instead of required fields, so a
         # hidden required control can never block the submission.
         self.assertIn("emptyState(UNAVAILABLE_MESSAGE)", script)
 
@@ -233,10 +240,9 @@ class HealthCheckFormTests(unittest.TestCase):
         # The names and the types are locked once the setup is saved.
         self.assertIn("lockForm", script)
 
-    def test_history_shows_a_note_when_nothing_was_recorded(self):
+    def test_history_shows_a_note_when_no_security_status_was_recorded(self):
         script = read_static("history.js")
         self.assertIn("securityTable", script)
-        self.assertIn("No BIP327 or SLIP39 results were recorded", script)
         self.assertIn("No security statuses were recorded", script)
 
     def test_history_shows_the_contact_status_as_text(self):
