@@ -14,7 +14,7 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 
 Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 
-**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. Fire avgjerder vart tekne undervegs, alle implementerte og verifiserte, og er innarbeidde i §1–§18. Dei står att som eit kort vedlegg i §19–§22, mest for å forklare kvar referansane i §1–§18 peikar. Den fulle grunngjevinga for kvar avgjerd ligg i git-historikken. §23 er avtalt arbeid som **ikkje er implementert**, og som skal gjerast før steg 9–12 i §18.
+**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. Fire avgjerder vart tekne undervegs, alle implementerte og verifiserte, og er innarbeidde i §1–§18. Dei står att som eit kort vedlegg i §19–§22, mest for å forklare kvar referansane i §1–§18 peikar. Den fulle grunngjevinga for kvar avgjerd ligg i git-historikken. §23 er avtalt arbeid som skal gjerast før steg 9–12 i §18; §23.1 er implementert og verifisert, medan §23.2–§23.5 står opne.
 
 ## Språkkrav
 
@@ -118,7 +118,7 @@ Reglar:
 - [x] `seed_backup_status`, `address_verified` og `derivation_height` er fjerna (§19).
 - [x] Når `available` er Nei, blir `wallet_software`, `tool_checks` og `ai_security_checks` ikkje registrerte i det heile (§22).
 
-**Merk:** §23.4 legg til lagring av nøkkeloppsettet (namn og type) og endrar verdiane for kontaktstadfesting når det er implementert. Fram til då gjeld datamodellen over som han står.
+**Merk:** §23.4 legg til lagring av nøkkeloppsettet (namn og type). Verdiane for kontaktstadfesting vart endra i §23.1. Elles gjeld datamodellen over som han står til §23.4 er implementert.
 
 ---
 
@@ -130,7 +130,7 @@ Reglar:
 - [x] KI-sikkerheitsstatus brukar nøyaktig `SECURE`, `PATCHED`, `VULNERABLE` og `COMPROMISED`. Ingen andre.
 - [x] Same statuslogikk i database, validering, varsel, CSV-eksport og UI.
 - [x] Ikkje bland saman «ikkje vurdert» og eit faktisk negativt resultat.
-- [ ] Kontaktstadfesting brukar `Confirmed current` eller `Needs external update` i staden for Ja/Nei (§23.1).
+- [x] Kontaktstadfesting brukar `Confirmed current` eller `Needs external update` i staden for Ja/Nei (§23.1).
 
 ---
 
@@ -251,7 +251,7 @@ Reglar:
 
 # 11. Backend
 
-- [x] SQLite med initialisering og migrering. Skjemaet er no versjon 6 (§21).
+- [x] SQLite med initialisering og migrering. Skjemaet er no versjon 7 (§21, §23.1).
 - [x] Lagring av nøklar, health checks, historikk og rapporteksport.
 - [x] Varsellogikken (§7).
 - [x] Health endpoint.
@@ -421,9 +421,9 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 
 **Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken, og gjorde på nytt etterpå. Steg 4 og 6 vart kryssa av då §22 var verifisert.
 
-**Merk:** §23 er avtalt arbeid som kjem **før** steg 9–12. Steg 9–12 blir ikkje starta før punkta i §23 er implementerte og verifiserte.
+**Merk:** §23 er avtalt arbeid som kjem **før** steg 9–12. §23.1 er ferdig og verifisert. Steg 9–12 blir ikkje starta før òg §23.2–§23.5 er implementerte og verifiserte.
 
-**Testar:** 123 grøne testar. Køyr `python3 -m unittest discover -s tests`.
+**Testar:** 138 grøne testar. Køyr `python3 -m unittest discover -s tests`.
 
 **Hovudregel:** Bygg den minste løysinga som oppfyller lista over. Ikkje legg til nye funksjonar, tenester eller arkitektur utan at dei er nødvendige for punkta i denne TODO-lista.
 
@@ -441,23 +441,23 @@ Desse fire vart tekne undervegs og er no innarbeidde i §1–§18. Kvar referans
 
 **§22 — utilgjengeleg nøkkel gjer resten valfritt.** `Availability` er obligatorisk med berre Ja/Nei. Når han er Nei, blir programvare, standardar og KI-status skjulte og ikkje kravde, og dei må vere tomme i POST — elles svarar serveren `400`. Det blir ikkje lagra nokon slike rader, `wallet_software` er `NULL`, og `software_compatibility_status` blir `NOT_ASSESSED`. Nøkkel 3 held fram med dei utleidde cloud-verdiane sine og gir det samanslåtte varselet. Databasen kravde inga endring.
 
-## Framtidig arbeid, ikkje no
+## Framtidig arbeid, ikke no
 
 - [ ] Varsel om at oppsettet kan oppgraderast når alle nøklar og all programvare svarar `YES` på anten BIP327 eller SLIP39. Krev at appen ser på tvers av alle registreringar.
 - [ ] Ein måte å lukke eller kvittere ut varsel på.
 
 ---
 
-# 23. Avtalt vidare arbeid før StartOS-pakken (IKKJE IMPLEMENTERT)
+# 23. Avtalt vidare arbeid før StartOS-pakken
 
-Dette vart avtalt 02.10.2026. Ingenting i §23 er implementert, og alle punkta står opne til testane er grøne. Arbeidet skal gjerast **før** steg 9–12 i §18. Der §23 seier noko anna enn §3–§6, gjeld §23.
+Dette vart avtalt 02.10.2026. §23.1 er implementert og verifisert (138 grøne testar). §23.2–§23.5 står opne. Arbeidet skal gjerast **før** steg 9–12 i §18. Der §23 seier noko anna enn §3–§6, gjeld §23.
 
 ## 23.1 Skjemafiksar
 
-- [ ] Førehandsutfylling: `Firmware version`, `Address path` og `Software version` blir fylte med sist lagra verdi for den valde nøkkelen og den valde programvara. Verdien skal vere ein vanleg input-verdi, **ikkje** ein HTML-placeholder, slik at han blir lagra uendra dersom brukaren ikkje rører feltet. Feltet er tomt når det ikkje finst nokon relevant tidlegare verdi.
-- [ ] `Software compatibility` krev eit aktivt val mellom `OK` og `PROBLEM`. Nedtrekkslista startar på `Select status`. `NOT_ASSESSED` skal ikkje kunne sendast inn for nye registreringar, og serveren skal avvise manglande verdi med `400`. Gamle rader med `NOT_ASSESSED` blir framleis viste i historikk og eksport.
-- [ ] Kontaktspørsmålet blir endra til å gjelde berre nøkkelhaldaren til den valde nøkkelen, til dømes «Have you confirmed that the key holder contact details are current?».
-- [ ] Kontaktstadfesting får verdiane `Confirmed current` og `Needs external update`. `Needs external update` viser ei påminning om at kontaktinformasjonen må oppdaterast eksternt. Det blir framleis berre lagra status, aldri namn, adresse, telefonnummer, e-post eller påloggingsinformasjon.
+- [x] Førehandsutfylling: `Firmware version`, `Address path` og `Software version` blir fylte med sist lagra verdi for den valde nøkkelen og den valde programvara. Verdien skal vere ein vanleg input-verdi, **ikkje** ein HTML-placeholder, slik at han blir lagra uendra dersom brukaren ikkje rører feltet. Feltet er tomt når det ikkje finst nokon relevant tidlegare verdi.
+- [x] `Software compatibility` krev eit aktivt val mellom `OK` og `PROBLEM`. Nedtrekkslista startar på `Select status`. `NOT_ASSESSED` skal ikkje kunne sendast inn for nye registreringar, og serveren skal avvise manglande verdi med `400`. Gamle rader med `NOT_ASSESSED` blir framleis viste i historikk og eksport.
+- [x] Kontaktspørsmålet blir endra til å gjelde berre nøkkelhaldaren til den valde nøkkelen, til dømes «Have you confirmed that the key holder contact details are current?».
+- [x] Kontaktstadfesting får verdiane `Confirmed current` og `Needs external update`. `Needs external update` viser ei påminning om at kontaktinformasjonen må oppdaterast eksternt. Det blir framleis berre lagra status, aldri namn, adresse, telefonnummer, e-post eller påloggingsinformasjon.
 
 ## 23.2 Konfigurerbart nøkkeloppsett
 
@@ -476,7 +476,7 @@ Dette vart avtalt 02.10.2026. Ingenting i §23 er implementert, og alle punkta s
 - [ ] Hardware-nøklar følgjer dagens kontrollar for nøkkel 1 og 2. Cloud-nøklar følgjer Nunchuk-modellen, men viser det konfigurerte namnet.
 - [ ] `Wallet software`-vala er `Sparrow` pluss namnet på kvar konfigurert **cloud**-nøkkel. Namn på hardware-nøklar blir aldri lagde til i denne lista. `Nunchuk` kjem difor berre fram som software-val når ein cloud-nøkkel faktisk heiter Nunchuk.
 - [ ] KI-sikkerheitsstatus blir registrert for den valde nøkkelen (ved namn) og den valde programvara. Vidareføringa av status for ein tredje leverandør (§20) blir fjerna. Dupliserte rader blir unngåtte når namnet på nøkkelen og programvara er like.
-- [ ] BIP327/SLIP39 blir registrert for den valde nøkkelen og den valde programvara, utan duplikat.
+- [ ] BIP327/SLIP39 blir registrerte for den valde nøkkelen og den valde programvara, utan duplikat.
 - [ ] For ein cloud-nøkkel med sjølvvalt namn gjeld cloud-kontrollane framleis, men det konfigurerte namnet blir vist.
 
 ## 23.4 Datamodell og migrering
