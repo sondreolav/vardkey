@@ -58,10 +58,48 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("carriedSecurity", script)
         self.assertIn("Derived from availability", script)
         self.assertIn("Carried forward from the last saved check", script)
-        self.assertIn("placeholder", script)
         # The cloud key no longer renders the cloud results as form fields.
         self.assertNotIn('makeField("Cloud health check"', script)
         self.assertNotIn('makeField("Provider operational"', script)
+
+    def test_form_prefills_the_saved_values_as_input_values(self):
+        script = read_static("health-check.js")
+        # A previous value is a real input value, not an HTML placeholder, so an
+        # untouched field is saved as it stands (section 23.1).
+        self.assertIn("previousText", script)
+        self.assertIn("input.value = value", script)
+        self.assertNotIn("input.placeholder", script)
+        self.assertIn('previousText(previous, "firmware_version")', script)
+        self.assertIn('previousText(previous, "address_path")', script)
+        self.assertIn("updateSoftwareVersionValue", script)
+        self.assertIn("softwareVersionInput.value = reusable", script)
+        self.assertIn("previous.wallet_software === walletSoftwareSelect.value", script)
+
+    def test_form_requires_an_explicit_compatibility_status(self):
+        html = read_static("health-check.html")
+        script = read_static("health-check.js")
+        self.assertIn('id="software-compatibility"', html)
+        self.assertIn('<option value="">Select status</option>', html)
+        self.assertIn('name="software_compatibility_status" required', html)
+        self.assertNotIn('value="NOT_ASSESSED"', html)
+        # The hidden control carries the derived value for the cloud key and is
+        # not required for a key that was not available (sections 20 and 22).
+        self.assertIn("softwareCompatibilitySelect.required", script)
+        self.assertIn("compatibilityDerived", script)
+        self.assertIn('softwareCompatibilitySelect.value = "OK"', script)
+
+    def test_form_asks_about_the_selected_key_holder_and_reminds_about_updates(self):
+        html = read_static("health-check.html")
+        script = read_static("health-check.js")
+        self.assertIn("this key holder's contact details are current?", html)
+        self.assertIn('<option value="Confirmed current">', html)
+        self.assertIn('<option value="Needs external update">', html)
+        self.assertIn('id="contact-reminder"', html)
+        self.assertIn("syncContactReminder", script)
+        self.assertIn("contactReminder.hidden", script)
+        self.assertIn('CONTACT_NEEDS_UPDATE = "Needs external update"', script)
+        # Only the status is recorded, and the old flag is gone (section 23.1).
+        self.assertIn('statusValue(data, "contact_info_verified")', script)
 
     def test_form_can_hide_the_compatibility_grid_for_the_cloud_key(self):
         html = read_static("health-check.html")
@@ -70,9 +108,7 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("#software-section .field-grid", script)
 
     def test_form_uses_the_english_status_values(self):
-        html = read_static("health-check.html")
         script = read_static("health-check.js")
-        self.assertIn('value="NOT_ASSESSED"', html)
         self.assertIn("NOT_ASSESSED", script)
         self.assertNotIn("IKKJE_VURDERT", script)
         # BIP327 and SLIP39 answer yes or no, so they have their own option list,
@@ -119,6 +155,9 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn('verified.value === "OK"', script)
         self.assertIn('[name="address_path"]', script)
         self.assertIn('[name="address_path_verified"]', script)
+        # The control is disabled while it is hidden, so a pre-filled path is
+        # kept for the user and still never submitted with an unverified result.
+        self.assertIn("input.disabled = !show", script)
         # The field is a grid container, so the hidden attribute needs a rule.
         self.assertIn(".field[hidden]", styles)
 
@@ -134,6 +173,11 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("securityTable", script)
         self.assertIn("No BIP327 or SLIP39 results were recorded", script)
         self.assertIn("No security statuses were recorded", script)
+
+    def test_history_shows_the_contact_status_as_text(self):
+        script = read_static("history.js")
+        self.assertIn("Contact details confirmed", script)
+        self.assertIn("record.contact_info_verified", script)
 
     def test_stylesheet_makes_the_hidden_attribute_work_on_grid_containers(self):
         styles = read_static("styles.css")
