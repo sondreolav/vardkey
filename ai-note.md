@@ -9,6 +9,7 @@ Short working handover for the next model. Keep it short.
 ## Status
 
 - **Done and verified:** sections 19–22, section 18 steps 1–8, and the whole of section 23 (23.1–23.5). Ticked in `TODO.md`.
+- **Verified how:** the automated suite only. The browser flows and the migration of a real pre-section-23 database have not been run by hand yet; they are the manual tests in section 16 of `TODO.md`.
 - **Tests:** 178, all green. The user runs them: `python3 -m unittest discover -s tests`. They run on a Windows copy at `C:\Users\Driftsleiar\Downloads\helsesjekk`, so they must pass there as well as on Linux.
 - **Next work, not started:** section 18 steps 9–12 — the StartOS package, the persistent volume, backup/restore, and `.s9pk`. Covered by sections 13, 14, 16 and 17 of `TODO.md`.
 - **Future work, deliberately not built:** more than three keys, another threshold than 2-of-3, and a user-defined wallet-software list (section 23.6).
@@ -23,11 +24,11 @@ Short working handover for the next model. Keep it short.
 - Never add fields for seed phrases, private keys, PINs, passwords, cloud tokens, or contact details. The app records results only.
 - The HTTP tests create their own database and server per test. Keep them order-independent; a shared database already caused one order-dependent failure.
 - Record a new decision in `TODO.md` and this note **before** implementing it, and mark it as not implemented until the tests pass.
-- `gitea_update_file` needs a fresh `preview_id` from `gitea_preview_file` for the same path and content. `gitea_create_file` returns `422` on an existing file.
+- Use `gitea_update_file` for a file that already exists, and `gitea_create_file` only for a new one: creating an existing path returns `422`. `gitea_update_file` takes the whole file content, so send the complete file, not a fragment.
 
-## Section 23.2 and 23.3 — implemented and verified
+## Section 23.2–23.5 — implemented and verified
 
-Sections 23.2 and 23.3 were delivered together on purpose: the type is free, so the checks must follow the type, and a half-done step would handle a cloud key in the first slot wrongly.
+Sections 23.2 and 23.3 were delivered together on purpose: the type is free, so the checks must follow the type, and a half-done step would handle a cloud key in the first slot wrongly. Section 23.4 added schema version 8 and its migration, and 23.5 the tests.
 
 - **The setup is stored once.** `POST /api/setup` writes the three key rows; a second call is a `409`, because the names and the types are locked (section 23.2). `GET /api/setup` answers `{"configured": …, "keys": […]}`.
 - **A new database shows the setup step.** `/setup` is a page in `STATIC_FILES`, and both `static/app.js` and `static/health-check.js` send the browser there when `/api/setup` reports `configured: false`.
@@ -35,8 +36,12 @@ Sections 23.2 and 23.3 were delivered together on purpose: the type is free, so 
 - **The name is the product label.** `tool_checks.product` and `ai_security_checks.provider` hold the configured key name and the selected wallet software, so their old `CHECK` lists are gone. `validation.py` builds both lists from the key, and `static/health-check.js` does the same in `expectedLabels()`.
 - **The type decides, never the number.** `_key_check()` and `_compatibility_status()` switch on `key["type"]`, and `derivedValues()` in the script does too.
 - **The wallet software choices are `Sparrow Wallet` plus every configured cloud key name.** `_wallet_software_choices()` builds the list on the server and `walletSoftwareChoices()` in the script. A hardware key name is never a choice. A cloud key records its own name, because the provider is the software for that key. Section 23.3 writes the choice as `Sparrow`, but the stored value stayed `Sparrow Wallet`, so no data migration was needed.
-- **The section 20 carry-forward is gone.** A submission records the selected key and the selected software only, so `carriedSecurity` and the "Carried forward from the last saved check" summary are removed from the script. `/api/previous-values` still returns a `security` map that nothing consumes any more.
+- **The section 20 carry-forward is gone.** A submission records the selected key and the selected software only, so `carriedSecurity` and the "Carried forward from the last saved check" summary are removed from the script.
 - **The setup is validated.** `validate_key_setup()` rejects a wrong number of keys, a repeated or out-of-range key number, an empty or over-long name, a name that repeats another one without regard to case, and an unknown type. Name uniqueness is enforced there and not by a `UNIQUE` constraint, so a legacy database with odd rows is refused by the API instead of being impossible to open.
+
+### Known leftovers
+
+- `/api/previous-values` still returns a `security` map that nothing consumes any more. It is deliberate: removing it would shrink the endpoint, but nothing breaks while it stays.
 
 ## Rules that are easy to get wrong — do not re-open
 
