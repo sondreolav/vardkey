@@ -21,21 +21,13 @@ const saveStatus = document.querySelector("#save-status");
 const toolChecksSection = toolChecks.closest(".form-section");
 const securityChecksSection = securityChecks.closest(".form-section");
 
-const CLOUD_KEY_NUMBER = 3;
-const KEY_PRODUCTS = { 1: "SeedSigner", 2: "Blockstream Jade", 3: "Nunchuk" };
-const WALLET_SOFTWARE = ["Sparrow Wallet", "Nunchuk"];
+// Sparrow is always a wallet software choice; a cloud key contributes its own
+// name as well (section 23.3).
+const SPARROW_SOFTWARE = "Sparrow Wallet";
 const SECURITY_STATUSES = ["SECURE", "PATCHED", "VULNERABLE", "COMPROMISED"];
-// A status that still needs follow-up is never hidden (section 20).
-const UNRESOLVED_STATUSES = ["VULNERABLE", "COMPROMISED"];
-const DEFAULT_SECURITY_STATUS = "SECURE";
 const UNAVAILABLE_MESSAGE = "The remaining checks for this key cannot be recorded.";
 // The contact result that reminds the user to update their own records (section 23.1).
 const CONTACT_NEEDS_UPDATE = "Needs external update";
-const generalStatuses = [
-  ["NOT_ASSESSED", "Not assessed"],
-  ["OK", "OK"],
-  ["PROBLEM", "Problem"],
-];
 // BIP327 and SLIP39 answer yes or no, and "not assessed" is not a no (section 21).
 const standardsStatuses = [
   ["NOT_ASSESSED", "Not assessed"],
@@ -50,8 +42,7 @@ const verificationStatuses = [
 const availabilityOptions = [["", "Select availability"], ["1", "Yes"], ["0", "No"]];
 const booleanOptions = [["", "Not assessed"], ["1", "Yes"], ["0", "No"]];
 let keyProfiles = [];
-let previousValues = { keys: [], security: {} };
-let carriedSecurity = [];
+let previousValues = { keys: [] };
 // True while the compatibility control carries the value derived for a cloud key.
 let compatibilityDerived = false;
 
@@ -136,17 +127,35 @@ function previousForKey(keyId) {
   return (previousValues.keys || []).find((entry) => entry.key_id === keyId) || null;
 }
 
-function previousSecurity(provider) {
-  return (previousValues.security || {})[provider] || null;
-}
-
 function previousText(previous, field) {
   // An empty field is the right answer when no relevant value was saved.
   return (previous && previous[field]) || "";
 }
 
-function keyProductFor(key) {
-  return KEY_PRODUCTS[key.key_number];
+function walletSoftwareChoices() {
+  // Sparrow plus the name of every configured cloud key. A hardware key name is
+  // never a software choice (section 23.3).
+  const cloudNames = keyProfiles
+    .filter((key) => key.type === "cloud")
+    .map((key) => key.name);
+  return [...new Set([SPARROW_SOFTWARE, ...cloudNames])];
+}
+
+function renderWalletSoftwareOptions() {
+  const choices = walletSoftwareChoices();
+  const current = walletSoftwareSelect.value;
+  walletSoftwareSelect.replaceChildren();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select software";
+  walletSoftwareSelect.append(placeholder);
+  for (const name of choices) {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    walletSoftwareSelect.append(option);
+  }
+  walletSoftwareSelect.value = choices.includes(current) ? current : "";
 }
 
 function keyIsUnavailable() {
@@ -154,22 +163,14 @@ function keyIsUnavailable() {
   return Boolean(selectedKey()) && availability !== null && availability.value === "0";
 }
 
-function expectedProducts(key) {
+function expectedLabels(key) {
   const software = walletSoftwareSelect.value;
-  if (!key || !WALLET_SOFTWARE.includes(software)) {
+  if (!key || !software) {
     return [];
   }
-  return [...new Set([keyProductFor(key), software])];
-}
-
-function expectedProviders(key) {
-  if (!key) {
-    return [];
-  }
-  if (key.key_number === CLOUD_KEY_NUMBER) {
-    return ["Nunchuk"];
-  }
-  return [keyProductFor(key), "Sparrow Wallet", "Nunchuk"];
+  // The standards and the security statuses are recorded for the selected key,
+  // by its configured name, and for the selected wallet software (section 23.3).
+  return [...new Set([key.name, software])];
 }
 
 function renderKeySelect() {
@@ -280,18 +281,19 @@ function syncUnavailableState() {
 
 function lockSoftwareFields() {
   const key = selectedKey();
-  const isCloud = Boolean(key) && key.key_number === CLOUD_KEY_NUMBER;
-  const sparrow = walletSoftwareSelect.querySelector('option[value="Sparrow Wallet"]');
-  sparrow.disabled = isCloud;
+  const isCloud = Boolean(key) && key.type === "cloud";
+  const sparrow = walletSoftwareSelect.querySelector(`option[value="${SPARROW_SOFTWARE}"]`);
+  if (sparrow) {
+    sparrow.disabled = isCloud;
+  }
   softwareGrid.hidden = isCloud;
   if (isCloud) {
-    walletSoftwareSelect.value = "Nunchuk";
-    // Compatibility is derived from availability for the cloud key, so the
-    // hidden control carries the derived value instead of asking for one
-    // (section 20).
+    // A cloud key records its own name as the wallet software, and its
+    // compatibility is derived from availability (sections 20 and 23.3).
+    walletSoftwareSelect.value = key.name;
     softwareCompatibilitySelect.value = "OK";
     compatibilityDerived = true;
-    softwareHelp.textContent = "Compatibility is derived from availability for the cloud key: available gives OK, not available gives not assessed.";
+    softwareHelp.textContent = "Compatibility is derived from availability for a cloud key: available gives OK, not available gives not assessed.";
   } else {
     if (compatibilityDerived) {
       // The derived value is not an answer for another key, so it is cleared.
@@ -307,10 +309,10 @@ function updateSoftwareVersionValue() {
   const key = selectedKey();
   const previous = key ? previousForKey(key.id) : null;
   // The saved version belongs to the saved software choice, so it is only
-  // reused for the same key and the same software (section 23.1). The cloud key
+  // reused for the same key and the same software (section 23.1). A cloud key
   // has no version field of its own.
   const reusable = Boolean(key)
-    && key.key_number !== CLOUD_KEY_NUMBER
+    && key.type === "hardware"
     && previous
     && previous.wallet_software === walletSoftwareSelect.value
     && previous.software_version;
@@ -329,16 +331,16 @@ function renderToolChecks() {
     toolChecks.append(emptyState(UNAVAILABLE_MESSAGE));
     return;
   }
-  const products = expectedProducts(selectedKey());
-  if (!products.length) {
+  const labels = expectedLabels(selectedKey());
+  if (!labels.length) {
     toolChecks.append(emptyState("Select a key and software to see the products to check."));
     return;
   }
-  for (const product of products) {
-    const slug = productSlug(product);
+  for (const label of labels) {
+    const slug = productSlug(label);
     const bip327Name = `tool_${slug}_bip327_status`;
     const slip39Name = `tool_${slug}_slip39_status`;
-    const card = makeCard(product, "Record the support status for this submission.");
+    const card = makeCard(label, "Record the support status for this submission.");
     card.append(makeField("BIP327 status", bip327Name, makeSelect(standardsStatuses, bip327Name)));
     card.append(makeField("SLIP39 status", slip39Name, makeSelect(standardsStatuses, slip39Name)));
     toolChecks.append(card);
@@ -348,7 +350,6 @@ function renderToolChecks() {
 function renderSecurityChecks() {
   const key = selectedKey();
   securityChecks.replaceChildren();
-  carriedSecurity = [];
   if (!key) {
     securityChecks.append(emptyState("Select a key to see the providers to check."));
     return;
@@ -358,42 +359,22 @@ function renderSecurityChecks() {
     return;
   }
 
-  const software = walletSoftwareSelect.value;
-  const keyProduct = keyProductFor(key);
   const options = SECURITY_STATUSES.map((status) => [status, status]);
-  for (const provider of expectedProviders(key)) {
+  for (const provider of expectedLabels(key)) {
     const slug = productSlug(provider);
-    const last = previousSecurity(provider);
-    const relevant = provider === keyProduct || provider === software;
-    if (!relevant && !UNRESOLVED_STATUSES.includes(last)) {
-      // Hidden, and carried forward so nothing is lost (section 20).
-      carriedSecurity.push({ provider, status: last || DEFAULT_SECURITY_STATUS });
-      continue;
-    }
     const statusName = `security_${slug}_status`;
     const commentName = `security_${slug}_comments`;
     const card = makeCard(provider, "Enter the result of external research; do not include credentials or secrets.");
     const status = makeSelect(options, statusName, "Select a status");
     status.required = true;
-    if (!relevant && last) {
-      // A known problem stays visible, so it is never dropped silently.
-      status.value = last;
-    }
     card.append(makeField("Security status", statusName, status));
     card.append(makeField("Comment", commentName, makeTextarea(commentName, 1000)));
     securityChecks.append(card);
   }
-
-  for (const entry of carriedSecurity) {
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = `security_${productSlug(entry.provider)}_status`;
-    input.value = entry.status;
-    securityChecks.append(input);
-  }
 }
 
 function refreshKeySections() {
+  renderWalletSoftwareOptions();
   lockSoftwareFields();
   renderToolChecks();
   renderSecurityChecks();
@@ -454,7 +435,7 @@ function appendSummaryList(parent, title, items) {
 }
 
 function derivedSummary(key, available) {
-  if (!key || key.key_number !== CLOUD_KEY_NUMBER || available === null) {
+  if (!key || key.type !== "cloud" || available === null) {
     return [];
   }
   if (available === 1) {
@@ -506,13 +487,6 @@ function buildReview() {
   if (derived.length) {
     appendSummaryList(fragment, "Derived from availability", derived);
   }
-  if (carriedSecurity.length) {
-    appendSummaryList(
-      fragment,
-      "Carried forward from the last saved check",
-      carriedSecurity.map((entry) => `${entry.provider}: ${entry.status}`),
-    );
-  }
 
   const checkedAt = data.get("checked_at");
   const dates = document.createElement("p");
@@ -543,7 +517,7 @@ function statusValue(data, name) {
 
 function derivedValues(key, available) {
   // The cloud key records these from availability alone (section 20).
-  if (!key || key.key_number !== CLOUD_KEY_NUMBER) {
+  if (!key || key.type !== "cloud") {
     return {};
   }
   if (available === 1) {
@@ -613,17 +587,17 @@ function collectPayload() {
     contact_info_verified: statusValue(data, "contact_info_verified"),
     comments: textValue(data, "comments"),
     key_check: collectKeyCheck(data, key, derived),
-    tool_checks: unavailable ? [] : expectedProducts(key).map((product) => {
-      const slug = productSlug(product);
+    tool_checks: unavailable ? [] : expectedLabels(key).map((label) => {
+      const slug = productSlug(label);
       const bip327Name = `tool_${slug}_bip327_status`;
       const slip39Name = `tool_${slug}_slip39_status`;
       return {
-        product,
+        product: label,
         bip327_status: data.get(bip327Name),
         slip39_status: data.get(slip39Name),
       };
     }),
-    ai_security_checks: unavailable ? [] : expectedProviders(key).map((provider) => {
+    ai_security_checks: unavailable ? [] : expectedLabels(key).map((provider) => {
       const slug = productSlug(provider);
       const statusName = `security_${slug}_status`;
       const commentName = `security_${slug}_comments`;
@@ -669,12 +643,14 @@ async function loadFormData() {
       throw new Error("Key profiles are unavailable.");
     }
     keyProfiles = await keysResponse.json();
+    if (!keyProfiles.length) {
+      // A new database has no key setup yet, so the form cannot record anything.
+      window.location.assign("/setup");
+      return;
+    }
     if (previousResponse.ok) {
       const values = await previousResponse.json();
-      previousValues = {
-        keys: values.keys || [],
-        security: values.security || {},
-      };
+      previousValues = { keys: values.keys || [] };
     }
     renderKeySelect();
   } catch {
