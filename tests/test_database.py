@@ -232,6 +232,89 @@ SCHEMA_VERSION_5 = """
     PRAGMA user_version = 5;
 """
 
+# The schema version 8 layout, which is the current one except that it still
+# holds the tool_checks table and its rows. The migration to version 9 drops
+# that table and nothing else (sections 24.2 and 24.4).
+SCHEMA_VERSION_8 = """
+    CREATE TABLE keys (
+        id INTEGER PRIMARY KEY,
+        key_number INTEGER NOT NULL UNIQUE CHECK (key_number BETWEEN 1 AND 3),
+        name TEXT NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('hardware', 'cloud')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE health_checks (
+        id INTEGER PRIMARY KEY,
+        checked_at TEXT NOT NULL,
+        next_check_due TEXT NOT NULL,
+        wallet_software TEXT,
+        software_version TEXT,
+        software_compatibility_status TEXT NOT NULL DEFAULT 'NOT_ASSESSED'
+            CHECK (software_compatibility_status IN ('OK', 'PROBLEM', 'NOT_ASSESSED')),
+        sparrow_version TEXT,
+        nunchuk_version TEXT,
+        software_comments TEXT,
+        contact_info_verified TEXT
+            CHECK (contact_info_verified IN ('Confirmed current', 'Needs external update')),
+        comments TEXT
+    );
+    CREATE TABLE key_checks (
+        id INTEGER PRIMARY KEY,
+        health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
+        key_id INTEGER NOT NULL REFERENCES keys(id) ON DELETE RESTRICT,
+        available INTEGER CHECK (available IN (0, 1)),
+        hardware_works INTEGER CHECK (hardware_works IN (0, 1)),
+        firmware_version TEXT,
+        seed_backup_verified TEXT CHECK (seed_backup_verified IN ('OK', 'PROBLEM')),
+        cloud_health_status TEXT CHECK (cloud_health_status IN ('OK', 'PROBLEM', 'NOT_ASSESSED')),
+        cloud_provider_operational INTEGER CHECK (cloud_provider_operational IN (0, 1)),
+        address_path_verified TEXT CHECK (address_path_verified IN ('OK', 'PROBLEM')),
+        address_path TEXT,
+        comments TEXT,
+        UNIQUE (health_check_id, key_id)
+    );
+    CREATE TABLE tool_checks (
+        id INTEGER PRIMARY KEY,
+        health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
+        product TEXT NOT NULL,
+        bip327_status TEXT NOT NULL DEFAULT 'NOT_ASSESSED'
+            CHECK (bip327_status IN ('YES', 'NO', 'NOT_ASSESSED')),
+        slip39_status TEXT NOT NULL DEFAULT 'NOT_ASSESSED'
+            CHECK (slip39_status IN ('YES', 'NO', 'NOT_ASSESSED')),
+        version TEXT,
+        checked_at TEXT,
+        notes TEXT,
+        UNIQUE (health_check_id, product)
+    );
+    CREATE TABLE ai_security_checks (
+        id INTEGER PRIMARY KEY,
+        health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('SECURE', 'PATCHED', 'VULNERABLE', 'COMPROMISED')),
+        comments TEXT,
+        UNIQUE (health_check_id, provider)
+    );
+    INSERT INTO keys (id, key_number, name, type) VALUES
+        (1, 1, 'SeedSigner', 'hardware'),
+        (2, 2, 'Blockstream Jade', 'hardware'),
+        (3, 3, 'Nunchuk', 'cloud');
+    INSERT INTO health_checks (
+        id, checked_at, next_check_due, wallet_software, software_version,
+        software_compatibility_status, contact_info_verified, comments
+    ) VALUES (1, '2026-01-01', '2027-01-01', 'Sparrow Wallet', '1.8.0', 'OK', 'Confirmed current', 'Annual review');
+    INSERT INTO key_checks (
+        health_check_id, key_id, available, hardware_works, firmware_version,
+        seed_backup_verified, address_path_verified, address_path
+    ) VALUES (1, 1, 1, 1, '1.0.0', 'OK', 'OK', 'm/48''/0''/0''/2''/0/0');
+    INSERT INTO tool_checks (health_check_id, product, bip327_status, slip39_status) VALUES
+        (1, 'SeedSigner', 'YES', 'NO'),
+        (1, 'Sparrow Wallet', 'NOT_ASSESSED', 'NOT_ASSESSED');
+    INSERT INTO ai_security_checks (health_check_id, provider, status) VALUES
+        (1, 'SeedSigner', 'SECURE'),
+        (1, 'Sparrow Wallet', 'SECURE');
+    PRAGMA user_version = 8;
+"""
+
 
 class DatabaseInitializationTests(unittest.TestCase):
     def setUp(self):
@@ -408,6 +491,47 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(len(new_record["key_checks"]), 1)
         self.assertEqual(new_record["key_checks"][0]["key_number"], 3)
         self.assertEqual([entry["provider"] for entry in new_record["ai_security_checks"]], ["Nunchuk"])
+
+    def test_a_version_8_database_drops_only_the_tool_checks_table(self):
+        self.write_schema(SCHEMA_VERSION_8)
+        # The old database really holds the table and its rows before the
+        # migration runs (sections 24.2 and 24.4).
+        self.assertIn("tool_checks", self.table_names())
+
+        initialize_database(self.database_path)
+
+        with self.connect() as connection:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            checks = connection.execute("SELECT COUNT(*) FROM health_checks").fetchone()[0]
+            key_checks = connection.execute("SELECT COUNT(*) FROM key_checks").fetchone()[0]
+            security = connection.execute(
+                "SELECT provider, status FROM ai_security_checks ORDER BY provider"
+            ).fetchall()
+
+        self.assertEqual(version, 9)
+        self.assertEqual(version, SCHEMA_VERSION)
+        self.assertNotIn("tool_checks", self.table_names())
+        # Everything else survives the drop.
+        self.assertEqual((checks, key_checks), (1, 1))
+        self.assertEqual(security, [("SeedSigner", "SECURE"), ("Sparrow Wallet", "SECURE")])
+
+        record = get_health_check(1, self.database_path)
+        self.assertEqual(record["checked_at"], "2026-01-01")
+        self.assertEqual(record["wallet_software"], "Sparrow Wallet")
+        self.assertEqual(record["contact_info_verified"], "Confirmed current")
+        self.assertEqual(record["key_checks"][0]["seed_backup_verified"], "OK")
+        self.assertEqual(
+            [entry["provider"] for entry in record["ai_security_checks"]],
+            ["SeedSigner", "Sparrow Wallet"],
+        )
+
+        # The migrated database still records new checks.
+        keys = list_keys(self.database_path)
+        new_id = save_health_check(
+            validate_health_check(sample_payload(keys[0]), keys), self.database_path
+        )
+        self.assertEqual(get_health_check(new_id, self.database_path)["wallet_software"],
+                         "Sparrow Wallet")
 
     def test_status_values_migrate_to_english(self):
         self.write_schema(SCHEMA_VERSION_5)
