@@ -29,10 +29,8 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertNotIn("next_check_due", html)
         self.assertIn('name="contact_info_verified"', html)
 
-    def test_form_script_covers_all_four_products_and_checklist_fields(self):
+    def test_form_script_covers_the_checklist_fields_and_status_values(self):
         script = read_static("health-check.js")
-        for product in ("SeedSigner", "Blockstream Jade", "Nunchuk", "Sparrow Wallet"):
-            self.assertIn(product, script)
         for field in (
             "address_path_verified",
             "seed_backup_verified",
@@ -51,13 +49,35 @@ class HealthCheckFormTests(unittest.TestCase):
         for removed in ("seed_backup_status", "address_verified", "derivation_height"):
             self.assertNotIn(removed, script)
 
-    def test_form_script_derives_and_carries_values(self):
+    def test_the_wallet_software_choices_come_from_the_key_setup(self):
+        script = read_static("health-check.js")
+        html = read_static("health-check.html")
+        self.assertIn("walletSoftwareChoices", script)
+        self.assertIn('SPARROW_SOFTWARE = "Sparrow Wallet"', script)
+        self.assertIn("renderWalletSoftwareOptions", script)
+        # Sparrow plus the name of every configured cloud key, and nothing else.
+        self.assertIn('key.type === "cloud"', script)
+        self.assertIn("key.name", script)
+        # The old fixed list is gone from both the markup and the script.
+        self.assertNotIn('option value="Nunchuk"', html)
+        self.assertNotIn("KEY_PRODUCTS", script)
+
+    def test_form_script_uses_the_configured_key_name(self):
+        script = read_static("health-check.js")
+        self.assertIn("expectedLabels", script)
+        self.assertIn("key.name", script)
+        self.assertNotIn("keyProductFor", script)
+        self.assertNotIn("CLOUD_KEY_NUMBER", script)
+
+    def test_form_script_derives_from_availability(self):
         script = read_static("health-check.js")
         self.assertIn("/api/previous-values", script)
         self.assertIn("derivedValues", script)
-        self.assertIn("carriedSecurity", script)
         self.assertIn("Derived from availability", script)
-        self.assertIn("Carried forward from the last saved check", script)
+        self.assertIn('key.type === "cloud"', script)
+        # The section 20 carry-forward of a third provider is gone (section 23.3).
+        self.assertNotIn("carriedSecurity", script)
+        self.assertNotIn("Carried forward from the last saved check", script)
         # The cloud key no longer renders the cloud results as form fields.
         self.assertNotIn('makeField("Cloud health check"', script)
         self.assertNotIn('makeField("Provider operational"', script)
@@ -144,8 +164,7 @@ class HealthCheckFormTests(unittest.TestCase):
     def test_form_sends_nothing_else_for_an_unavailable_key(self):
         script = read_static("health-check.js")
         self.assertIn("unavailable ? null : data.get", script)
-        self.assertIn("unavailable ? [] : expectedProducts", script)
-        self.assertIn("unavailable ? [] : expectedProviders", script)
+        self.assertIn("unavailable ? [] : expectedLabels", script)
         self.assertIn('unavailable ? "NOT_ASSESSED"', script)
 
     def test_form_hides_the_address_path_until_it_is_verified(self):
@@ -167,6 +186,32 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("alert.check_id", script)
         self.assertIn("alert.checked_at", script)
         self.assertIn(".alert-origin", styles)
+
+    def test_dashboard_sends_to_the_key_setup_when_it_is_missing(self):
+        script = read_static("app.js")
+        self.assertIn("redirectWhenSetupIsMissing", script)
+        self.assertIn('"/api/setup"', script)
+        self.assertIn('window.location.assign("/setup")', script)
+
+    def test_health_check_page_sends_to_the_key_setup_when_it_is_missing(self):
+        script = read_static("health-check.js")
+        self.assertIn('window.location.assign("/setup")', script)
+
+    def test_the_setup_page_asks_for_a_name_and_a_type_for_three_keys(self):
+        html = read_static("setup.html")
+        script = read_static("setup.js")
+        self.assertIn('id="setup-form"', html)
+        self.assertIn("Never enter seed phrases", html)
+        for number in (1, 2, 3):
+            self.assertIn(f'name="key_{number}_name"', html)
+            self.assertIn(f'name="key_{number}_type"', html)
+        self.assertIn('<option value="hardware">Hardware</option>', html)
+        self.assertIn('<option value="cloud">Cloud</option>', html)
+        self.assertIn("KEY_COUNT = 3", script)
+        self.assertIn('fetch("/api/setup"', script)
+        self.assertIn("collectSetup", script)
+        # The names and the types are locked once the setup is saved.
+        self.assertIn("lockForm", script)
 
     def test_history_shows_a_note_when_nothing_was_recorded(self):
         script = read_static("history.js")
