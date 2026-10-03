@@ -243,10 +243,19 @@ class DatabaseInitializationTests(unittest.TestCase):
             connection.close()
 
     def write_schema(self, script):
-        """Create a database from an explicit older schema script."""
+        """Create a database from an explicit older schema script.
+
+        The connection is closed explicitly: using it as a context manager only
+        commits the transaction, and Windows keeps the database file locked
+        until every connection is closed.
+        """
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.database_path) as connection:
-            connection.executescript(script)
+        connection = sqlite3.connect(self.database_path)
+        try:
+            with connection:
+                connection.executescript(script)
+        finally:
+            connection.close()
 
     def test_initialization_creates_versioned_schema_and_is_idempotent(self):
         initialize_database(self.database_path)
@@ -697,8 +706,11 @@ class DatabaseInitializationTests(unittest.TestCase):
 
     def test_unknown_future_schema_version_is_rejected(self):
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.database_path) as connection:
+        connection = sqlite3.connect(self.database_path)
+        try:
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION + 1}")
+        finally:
+            connection.close()
 
         with self.assertRaises(RuntimeError):
             initialize_database(self.database_path)
