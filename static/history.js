@@ -127,29 +127,6 @@ function keyEntries(keyCheck) {
   return entries;
 }
 
-function toolCheckTable(toolChecks) {
-  if (!toolChecks.length) {
-    // A key that was not available records no standards at all (section 22).
-    return emptyNote("No BIP327 or SLIP39 results were recorded for this check.");
-  }
-  const headers = ["Product", "BIP327", "SLIP39"];
-  // Older records stored a version, a date, and notes for each product.
-  const hasLegacyColumns = toolChecks.some(
-    (entry) => entry.version || entry.checked_at || entry.notes,
-  );
-  if (hasLegacyColumns) {
-    headers.push("Version", "Date checked", "Notes");
-  }
-  const rows = toolChecks.map((entry) => {
-    const row = [entry.product, entry.bip327_status, entry.slip39_status];
-    if (hasLegacyColumns) {
-      row.push(entry.version, entry.checked_at, entry.notes);
-    }
-    return row;
-  });
-  return dataTable(headers, rows);
-}
-
 function securityTable(securityChecks) {
   if (!securityChecks.length) {
     return emptyNote("No security statuses were recorded for this check.");
@@ -172,8 +149,6 @@ function renderDetail(record) {
       definitionList(keyEntries(keyCheck)),
     ));
   }
-
-  fragment.append(card("BIP327 and SLIP39", toolCheckTable(record.tool_checks || [])));
 
   fragment.append(card("Security status", securityTable(record.ai_security_checks || [])));
 
