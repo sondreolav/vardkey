@@ -2,9 +2,9 @@
 
 One row per key check. A submission records one key, so a new export has one row
 per submission; records saved before section 19 can have up to three rows that
-share a ``check_id``. Results with more than one value per submission (BIP327,
-SLIP39, and the security statuses) are joined into a single cell as
-``Label: value; Label: value``.
+share a ``check_id``. The security statuses have more than one value per
+submission, so they are joined into a single cell as ``Label: value; Label:
+value``.
 
 Status values are written exactly as stored. The contact confirmation is one of
 the stored statuses (section 23.1), so it is written as text like every other
@@ -36,8 +36,6 @@ COLUMNS = (
     ("software_version", "Software version"),
     ("software_compatibility_status", "Software compatibility"),
     ("software_comments", "Software comments"),
-    ("bip327_status", "BIP327"),
-    ("slip39_status", "SLIP39"),
     ("security_status", "Security status"),
     ("contact_info_verified", "Contact details confirmed"),
     ("comments", "Overall comments"),
