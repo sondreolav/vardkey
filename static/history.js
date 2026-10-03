@@ -97,7 +97,9 @@ function summaryEntries(record) {
     ["Software version", record.software_version],
     ["Software compatibility", record.software_compatibility_status],
     ["Software notes", record.software_comments],
-    ["Contact details confirmed", displayFlag(record.contact_info_verified)],
+    // The contact confirmation is a stored status, so it is shown as text
+    // (section 23.1).
+    ["Contact details confirmed", record.contact_info_verified],
     ["Comments", record.comments],
   ];
   if (record.sparrow_version) {
