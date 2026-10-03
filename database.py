@@ -4,12 +4,9 @@ from pathlib import Path
 import sqlite3
 
 
-SCHEMA_VERSION = 7
-FIXED_KEYS = (
-    (1, "SeedSigner", "hardware", "SeedSigner"),
-    (2, "Blockstream Jade", "hardware", "Blockstream Jade"),
-    (3, "Nunchuk", "cloud", "Nunchuk"),
-)
+SCHEMA_VERSION = 8
+# The app always supports exactly three key slots (section 23.2).
+KEY_COUNT = 3
 # Table definitions use a {table} placeholder, so a migration can create the same
 # table under a temporary name while it rebuilds it.
 KEYS_TABLE = """
@@ -18,7 +15,6 @@ KEYS_TABLE = """
         key_number INTEGER NOT NULL UNIQUE CHECK (key_number BETWEEN 1 AND 3),
         name TEXT NOT NULL,
         type TEXT NOT NULL CHECK (type IN ('hardware', 'cloud')),
-        device TEXT NOT NULL CHECK (device IN ('SeedSigner', 'Blockstream Jade', 'Nunchuk')),
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
     """
@@ -157,6 +153,7 @@ def initialize_database(database_path="data/helsesjekk.sqlite3"):
                 _create_table(connection, table, statement)
             for table, column, definition in OPTIONAL_COLUMNS:
                 _ensure_column(connection, table, column, definition)
+            _migrate_keys(connection)
             _migrate_key_checks(connection)
             _migrate_ai_security_checks(connection)
             _migrate_status_values(connection)
@@ -289,6 +286,26 @@ def _verify_foreign_keys(connection):
         raise RuntimeError(
             f"Foreign key check failed for table {violations[0][0]}"
         )
+
+
+def _migrate_keys(connection):
+    """Rebuild keys when it still carries the removed device column.
+
+    The configured name is the product label everywhere, so the fixed device
+    value is gone (section 23.2). SQLite cannot drop a column from a table with
+    a CHECK constraint, so the table is rebuilt once.
+    """
+    columns = _table_columns(connection, "keys")
+    if not columns or "device" not in columns:
+        return
+
+    temporary = _create_replacement(connection, "keys", KEYS_TABLE)
+    connection.execute(f"""
+        INSERT INTO {temporary} (id, key_number, name, type, created_at)
+        SELECT id, key_number, name, type, created_at
+        FROM keys
+    """)
+    _replace_table(connection, "keys", temporary)
 
 
 def _migrate_key_checks(connection):
@@ -462,39 +479,56 @@ def _rebuild_tool_checks(connection):
     _replace_table(connection, "tool_checks", temporary)
 
 
-def seed_fixed_keys(database_path="data/helsesjekk.sqlite3"):
-    """Ensure the three fixed key profiles exist without overwriting custom names."""
-    connection = sqlite3.connect(database_path, timeout=5)
-    try:
-        with connection:
-            for key_number, name, key_type, device in FIXED_KEYS:
-                connection.execute(
-                    """
-                    INSERT INTO keys (key_number, name, type, device)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(key_number) DO UPDATE SET
-                        type = excluded.type,
-                        device = excluded.device
-                    """,
-                    (key_number, name, key_type, device),
-                )
-    finally:
-        connection.close()
-
-
 def list_keys(database_path="data/helsesjekk.sqlite3"):
-    """Return the configured key profiles in display order."""
+    """Return the stored key profiles in key order.
+
+    An empty list means a new database, which the app answers with the first-run
+    setup step. A database that holds only part of the setup raises an error, so
+    an unreadable database is never treated as a new installation
+    (section 23.2).
+    """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
     try:
         rows = connection.execute(
             """
-            SELECT id, key_number, name, type, device, created_at
+            SELECT id, key_number, name, type, created_at
             FROM keys
             ORDER BY key_number
             """
         ).fetchall()
-        return [dict(row) for row in rows]
+    finally:
+        connection.close()
+
+    keys = [dict(row) for row in rows]
+    if keys and len(keys) != KEY_COUNT:
+        raise RuntimeError(
+            f"The stored key setup has {len(keys)} of {KEY_COUNT} keys"
+        )
+    return keys
+
+
+def save_key_setup(entries, database_path="data/helsesjekk.sqlite3"):
+    """Store the key setup for the three key slots.
+
+    The setup is written once, because the names and the types are locked after
+    they are saved (section 23.2). A database that already holds a setup is left
+    untouched.
+    """
+    if list_keys(database_path):
+        raise RuntimeError("The key setup is already stored")
+
+    connection = sqlite3.connect(database_path, timeout=5)
+    connection.execute("PRAGMA foreign_keys = ON")
+    try:
+        with connection:
+            connection.executemany(
+                "INSERT INTO keys (key_number, name, type) VALUES (?, ?, ?)",
+                [
+                    (entry["key_number"], entry["name"], entry["type"])
+                    for entry in entries
+                ],
+            )
     finally:
         connection.close()
 
@@ -630,7 +664,7 @@ def list_key_status(database_path="data/helsesjekk.sqlite3"):
     try:
         rows = connection.execute(
             f"""
-            SELECT k.id AS key_id, k.key_number, k.name, k.type, k.device,
+            SELECT k.id AS key_id, k.key_number, k.name, k.type,
                    ({_LATEST_CHECK_QUERY.format(expression="hc.checked_at")}) AS last_checked_at,
                    ({_LATEST_CHECK_QUERY.format(expression="hc.next_check_due")}) AS next_check_due
             FROM keys AS k
@@ -757,7 +791,7 @@ def get_health_check(health_check_id, database_path="data/helsesjekk.sqlite3"):
             dict(row)
             for row in connection.execute(
                 """
-                SELECT kc.id, kc.key_id, k.key_number, k.name, k.type, k.device,
+                SELECT kc.id, kc.key_id, k.key_number, k.name, k.type,
                        kc.available, kc.hardware_works, kc.firmware_version,
                        kc.seed_backup_verified, kc.cloud_health_status,
                        kc.cloud_provider_operational, kc.address_path_verified,
