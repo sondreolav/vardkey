@@ -18,25 +18,29 @@ from database import (
     list_keys,
     list_previous_values,
     save_health_check,
-    seed_fixed_keys,
+    save_key_setup,
 )
 from export import build_csv
-from validation import ValidationError, validate_health_check
+from validation import ValidationError, validate_health_check, validate_key_setup
 
 
 ROOT = Path(__file__).resolve().parent
 STATIC_FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
+    "/setup": ("setup.html", "text/html; charset=utf-8"),
     "/health-check": ("health-check.html", "text/html; charset=utf-8"),
     "/history": ("history.html", "text/html; charset=utf-8"),
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "/setup.js": ("setup.js", "text/javascript; charset=utf-8"),
     "/health-check.js": ("health-check.js", "text/javascript; charset=utf-8"),
     "/history.js": ("history.js", "text/javascript; charset=utf-8"),
 }
 HEALTH_CHECK_PATH = re.compile(r"^/api/health-checks/([1-9][0-9]*)$")
 EXPORT_FILENAME = "helsesjekk-export.csv"
 MAX_REQUEST_BYTES = 262144
+# Errors that mean the stored data cannot be served as it stands.
+STORAGE_ERRORS = (OSError, sqlite3.Error, ValueError, RuntimeError)
 
 
 def get_database_path():
@@ -50,6 +54,9 @@ class AppHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/health":
             self._send_json(200, {"status": "ok"})
+            return
+        if path == "/api/setup":
+            self._send_setup()
             return
         if path == "/api/keys":
             self._send_keys()
@@ -96,12 +103,54 @@ class AppHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
-        """Store one validated health check for a single selected key."""
+        """Store the key setup once, or one validated health check for one key."""
         path = urlsplit(self.path).path
-        if path != "/api/health-checks":
-            self.send_error(404, "Not Found")
+        if path == "/api/setup":
+            self._save_setup()
+            return
+        if path == "/api/health-checks":
+            self._save_health_check()
             return
 
+        self.send_error(404, "Not Found")
+
+    def _save_setup(self):
+        """Store the key setup once, because the names and types are locked.
+
+        A new database has no key rows yet, so the first-run setup step is the
+        only way they are written (section 23.2).
+        """
+        try:
+            payload = self._read_json_body()
+        except ValueError as error:
+            self._send_json(400, {"error": str(error)})
+            return
+
+        database_path = get_database_path()
+        try:
+            existing = list_keys(database_path)
+        except STORAGE_ERRORS:
+            self._send_json(500, {"error": "The key setup is unavailable"})
+            return
+        if existing:
+            self._send_json(409, {"error": "The key setup is already stored"})
+            return
+
+        try:
+            entries = validate_key_setup(payload)
+            save_key_setup(entries, database_path)
+            keys = list_keys(database_path)
+        except ValidationError as error:
+            self._send_json(400, {"error": str(error)})
+            return
+        except STORAGE_ERRORS:
+            self._send_json(500, {"error": "The key setup could not be saved"})
+            return
+
+        self._send_json(201, {"configured": True, "keys": keys})
+
+    def _save_health_check(self):
+        """Store one validated health check for a single selected key."""
         try:
             payload = self._read_json_body()
         except ValueError as error:
@@ -116,36 +165,49 @@ class AppHandler(BaseHTTPRequestHandler):
         except ValidationError as error:
             self._send_json(400, {"error": str(error)})
             return
-        except (OSError, sqlite3.Error, ValueError):
+        except STORAGE_ERRORS:
             self._send_json(500, {"error": "The health check could not be saved"})
             return
 
         self._send_json(201, {"id": health_check_id})
 
+    def _send_setup(self):
+        """Return whether the key setup is stored, together with the stored keys.
+
+        A database that holds only part of the setup is reported as an error, so
+        it is never answered with the first-run setup step (section 23.2).
+        """
+        try:
+            keys = list_keys(get_database_path())
+        except STORAGE_ERRORS:
+            self._send_json(500, {"error": "The key setup is unavailable"})
+            return
+        self._send_json(200, {"configured": bool(keys), "keys": keys})
+
     def _send_keys(self):
         try:
             self._send_json(200, list_keys(get_database_path()))
-        except (OSError, sqlite3.Error, ValueError):
+        except STORAGE_ERRORS:
             self._send_json(500, {"error": "Key profiles are unavailable"})
 
     def _send_key_status(self):
         """Return each key with the dates of its newest saved check."""
         try:
             self._send_json(200, list_key_status(get_database_path()))
-        except (OSError, sqlite3.Error, ValueError):
+        except STORAGE_ERRORS:
             self._send_json(500, {"error": "Key status is unavailable"})
 
     def _send_previous_values(self):
         """Return the last saved values, so the form can pre-fill itself."""
         try:
             self._send_json(200, list_previous_values(get_database_path()))
-        except (OSError, sqlite3.Error, ValueError):
+        except STORAGE_ERRORS:
             self._send_json(500, {"error": "Previous values are unavailable"})
 
     def _send_health_check_list(self):
         try:
             self._send_json(200, list_health_checks(get_database_path()))
-        except (OSError, sqlite3.Error, ValueError):
+        except STORAGE_ERRORS:
             self._send_json(500, {"error": "Saved health checks are unavailable"})
 
     def _send_alerts(self):
@@ -162,7 +224,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 record = get_health_check(summary["id"], database_path)
                 if record is not None:
                     records.append(record)
-        except (OSError, sqlite3.Error, ValueError):
+        except STORAGE_ERRORS:
             self._send_json(500, {"error": "Alerts are unavailable"})
             return
 
@@ -172,7 +234,7 @@ class AppHandler(BaseHTTPRequestHandler):
         """Return every saved key check as a CSV download."""
         try:
             body = build_csv(list_export_rows(get_database_path())).encode("utf-8")
-        except (OSError, sqlite3.Error, ValueError):
+        except STORAGE_ERRORS:
             self._send_json(500, {"error": "The export is unavailable"})
             return
 
@@ -188,7 +250,7 @@ class AppHandler(BaseHTTPRequestHandler):
     def _send_health_check(self, health_check_id):
         try:
             record = get_health_check(health_check_id, get_database_path())
-        except (OSError, sqlite3.Error, ValueError):
+        except STORAGE_ERRORS:
             self._send_json(500, {"error": "Saved health checks are unavailable"})
             return
         if record is None:
@@ -230,7 +292,6 @@ class AppHandler(BaseHTTPRequestHandler):
 def main():
     database_path = get_database_path()
     initialize_database(database_path)
-    seed_fixed_keys(database_path)
 
     port = int(os.environ.get("PORT", "8080"))
     if not 1 <= port <= 65535:
