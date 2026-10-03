@@ -59,10 +59,6 @@ def sample_payload(key_number=1, wallet_software=None, keys=KEYS):
         "contact_info_verified": "Confirmed current",
         "comments": "Annual review",
         "key_check": entry,
-        "tool_checks": [
-            {"product": label, "bip327_status": "NOT_ASSESSED", "slip39_status": "NOT_ASSESSED"}
-            for label in labels
-        ],
         "ai_security_checks": [
             {"provider": label, "status": "SECURE", "comments": ""} for label in labels
         ],
@@ -87,7 +83,6 @@ def unavailable_payload(key_number=1, keys=KEYS):
         "contact_info_verified": "Needs external update",
         "comments": "Annual review",
         "key_check": entry,
-        "tool_checks": [],
         "ai_security_checks": [],
     }
 
@@ -182,20 +177,12 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(result["comments"], "Annual review")
         self.assertEqual(result["key_check"]["key_id"], 1)
         self.assertEqual(result["key_check"]["seed_backup_verified"], "OK")
-        self.assertEqual(
-            [entry["product"] for entry in result["tool_checks"]],
-            ["SeedSigner", "Sparrow Wallet"],
-        )
         self.assertEqual(len(result["ai_security_checks"]), 2)
 
     def test_the_configured_name_is_the_product_label(self):
         result = validate_health_check(sample_payload(key_number=2, keys=RENAMED_KEYS), RENAMED_KEYS)
 
         self.assertEqual(result["wallet_software"], "Sparrow Wallet")
-        self.assertEqual(
-            [entry["product"] for entry in result["tool_checks"]],
-            ["ColdCard", "Sparrow Wallet"],
-        )
         self.assertEqual(
             [entry["provider"] for entry in result["ai_security_checks"]],
             ["ColdCard", "Sparrow Wallet"],
@@ -205,7 +192,6 @@ class ValidationTests(unittest.TestCase):
         result = validate_health_check(sample_payload(key_number=1, keys=RENAMED_KEYS), RENAMED_KEYS)
 
         self.assertEqual(result["wallet_software"], "Coinbase")
-        self.assertEqual([entry["product"] for entry in result["tool_checks"]], ["Coinbase"])
         self.assertEqual([entry["provider"] for entry in result["ai_security_checks"]], ["Coinbase"])
         self.assertIsNone(result["key_check"]["hardware_works"])
         self.assertIsNone(result["key_check"]["seed_backup_verified"])
@@ -213,10 +199,6 @@ class ValidationTests(unittest.TestCase):
     def test_a_hardware_key_may_use_a_cloud_key_name_as_its_software(self):
         payload = sample_payload(key_number=2, keys=RENAMED_KEYS)
         payload["wallet_software"] = "Coinbase"
-        payload["tool_checks"] = [
-            {"product": label, "bip327_status": "YES", "slip39_status": "NO"}
-            for label in ("ColdCard", "Coinbase")
-        ]
         payload["ai_security_checks"] = [
             {"provider": label, "status": "SECURE", "comments": ""}
             for label in ("ColdCard", "Coinbase")
@@ -226,7 +208,7 @@ class ValidationTests(unittest.TestCase):
 
         self.assertEqual(result["wallet_software"], "Coinbase")
         self.assertEqual(
-            [entry["product"] for entry in result["tool_checks"]],
+            [entry["provider"] for entry in result["ai_security_checks"]],
             ["ColdCard", "Coinbase"],
         )
 
@@ -382,22 +364,6 @@ class ValidationTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 validate_health_check(payload, KEYS)
 
-    def test_standards_status_accepts_yes_no_and_not_assessed(self):
-        for field in ("bip327_status", "slip39_status"):
-            for value in ("YES", "NO", "NOT_ASSESSED"):
-                payload = sample_payload()
-                payload["tool_checks"][0][field] = value
-                result = validate_health_check(payload, KEYS)
-                self.assertEqual(result["tool_checks"][0][field], value)
-
-    def test_standards_status_rejects_the_general_values(self):
-        for field in ("bip327_status", "slip39_status"):
-            for value in ("OK", "PROBLEM", "IKKJE_VURDERT", ""):
-                payload = sample_payload()
-                payload["tool_checks"][0][field] = value
-                with self.assertRaises(ValidationError):
-                    validate_health_check(payload, KEYS)
-
     def test_security_status_must_use_the_four_english_values(self):
         for value in ("TRYGG", "UNKNOWN", ""):
             payload = sample_payload()
@@ -426,25 +392,6 @@ class ValidationTests(unittest.TestCase):
     def test_missing_key_check_is_rejected(self):
         payload = sample_payload()
         del payload["key_check"]
-
-        with self.assertRaises(ValidationError):
-            validate_health_check(payload, KEYS)
-
-    def test_irrelevant_product_is_rejected(self):
-        payload = sample_payload(key_number=1)
-        payload["tool_checks"] = [
-            {"product": "SeedSigner", "bip327_status": "YES", "slip39_status": "YES"},
-            {"product": "Blockstream Jade", "bip327_status": "YES", "slip39_status": "YES"},
-        ]
-
-        with self.assertRaises(ValidationError):
-            validate_health_check(payload, KEYS)
-
-    def test_every_relevant_product_is_required(self):
-        payload = sample_payload(key_number=1)
-        payload["tool_checks"] = [
-            {"product": "SeedSigner", "bip327_status": "YES", "slip39_status": "YES"},
-        ]
 
         with self.assertRaises(ValidationError):
             validate_health_check(payload, KEYS)
@@ -485,7 +432,6 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(result["next_check_due"], "2027-10-01")
         self.assertEqual(result["key_check"]["available"], 0)
         self.assertIsNone(result["wallet_software"])
-        self.assertEqual(result["tool_checks"], [])
         self.assertEqual(result["ai_security_checks"], [])
         self.assertEqual(result["software_compatibility_status"], "NOT_ASSESSED")
         self.assertEqual(result["contact_info_verified"], "Needs external update")
@@ -494,7 +440,6 @@ class ValidationTests(unittest.TestCase):
     def test_an_unavailable_key_rejects_recorded_results(self):
         recorded = (
             ("wallet_software", "Sparrow Wallet"),
-            ("tool_checks", [{"product": "SeedSigner", "bip327_status": "YES", "slip39_status": "YES"}]),
             ("ai_security_checks", [{"provider": "SeedSigner", "status": "SECURE", "comments": ""}]),
         )
         for field, value in recorded:
