@@ -4,11 +4,13 @@ One submission records one selected key only, as decided in section 19 of the
 requirements. The next check date is derived on the server and never taken from
 the client.
 
-The stored status values are English (sections 19 and 21). General results use
-``OK``, ``PROBLEM``, and ``NOT_ASSESSED``; the BIP327 and SLIP39 results use
-``YES``, ``NO``, and ``NOT_ASSESSED``. The software compatibility result is an
-explicit ``OK`` or ``PROBLEM`` for a hardware key (section 23.1), and the contact
-confirmation is ``Confirmed current`` or ``Needs external update``.
+The stored status values are English (sections 19 and 21). ``NOT_ASSESSED``
+survives only as the derived ``software_compatibility_status`` of a key that was
+not available; no other field offers or accepts it (section 24.1). The BIP327
+and SLIP39 results use ``YES``, ``NO``, and ``NOT_ASSESSED``. The software
+compatibility result is an explicit ``OK`` or ``PROBLEM`` for a hardware key
+(section 23.1), and the contact confirmation is ``Confirmed current`` or
+``Needs external update``.
 
 The key setup is configured once and stored in the database (section 23.2). The
 configured name is the product label of a key, and the key's type decides which
@@ -23,7 +25,10 @@ from datetime import date
 
 from database import KEY_COUNT
 
-GENERAL_STATUSES = ("OK", "PROBLEM", "NOT_ASSESSED")
+# The cloud health result is derived from availability, so it is only ever OK or
+# PROBLEM. "Not assessed" is not offered or accepted for it either (section
+# 24.1).
+CLOUD_HEALTH_STATUSES = ("OK", "PROBLEM")
 # Software compatibility requires an active choice, so "not assessed" is not
 # submittable for a new registration (section 23.1).
 COMPATIBILITY_STATUSES = ("OK", "PROBLEM")
@@ -223,7 +228,8 @@ def _compatibility_status(value, key, unavailable):
         return derived
     if unavailable:
         # The remaining checks could not be performed, so the result stays not
-        # assessed and no other value may accompany it (section 22).
+        # assessed and no other value may accompany it (section 22). This derived
+        # value is the only place NOT_ASSESSED is still allowed (section 24.1).
         if value not in (None, "", "NOT_ASSESSED"):
             raise ValidationError(
                 "software_compatibility_status cannot be recorded "
@@ -236,11 +242,12 @@ def _compatibility_status(value, key, unavailable):
 def _contact_status(value):
     """Return the contact confirmation for the selected key's holder.
 
-    Only the status is recorded, never names, addresses, phone numbers, or
-    credentials (section 23.1). A confirmation that was not assessed stays empty.
+    The confirmation is required, also when the key was not available, because
+    the question is still asked (section 24.1). Only the status is recorded,
+    never names, addresses, phone numbers, or credentials (section 23.1).
     """
     if value is None or value == "":
-        return None
+        raise ValidationError("contact_info_verified is required")
     return _status(value, "contact_info_verified", CONTACT_STATUSES)
 
 
@@ -281,7 +288,7 @@ def _key_check(entry, key, available):
         # The cloud key keeps its derived cloud results, because those describe
         # the provider rather than a check that could not be run (section 20).
         if key["type"] == "cloud":
-            check["cloud_health_status"] = _optional_status(
+            check["cloud_health_status"] = _cloud_health_status(
                 entry.get("cloud_health_status"), "cloud_health_status"
             )
             check["cloud_provider_operational"] = _flag(
@@ -291,7 +298,11 @@ def _key_check(entry, key, available):
 
     required = available == 1
     if key["type"] == "hardware":
-        check["hardware_works"] = _flag(entry.get("hardware_works"), "hardware_works")
+        # Hardware works requires an active Yes or No, so leaving it out is a
+        # 400 (section 24.1).
+        check["hardware_works"] = _flag_required(
+            entry.get("hardware_works"), "hardware_works"
+        )
         check["firmware_version"] = _text(
             entry.get("firmware_version"), "firmware_version", MAX_VERSION_LENGTH
         )
@@ -299,7 +310,7 @@ def _key_check(entry, key, available):
             entry.get("seed_backup_verified"), "seed_backup_verified", required
         )
     else:
-        check["cloud_health_status"] = _optional_status(
+        check["cloud_health_status"] = _cloud_health_status(
             entry.get("cloud_health_status"), "cloud_health_status"
         )
         check["cloud_provider_operational"] = _flag(
@@ -328,10 +339,15 @@ def _status(value, field, allowed):
     return value
 
 
-def _optional_status(value, field):
+def _cloud_health_status(value, field):
+    """Return a derived cloud result, which is OK or PROBLEM, or None.
+
+    The cloud result is derived from availability, so "not assessed" is never
+    offered or accepted for it (section 24.1).
+    """
     if value is None or value == "":
         return None
-    return _status(value, field, GENERAL_STATUSES)
+    return _status(value, field, CLOUD_HEALTH_STATUSES)
 
 
 def _verification(value, field, required):
@@ -344,6 +360,7 @@ def _verification(value, field, required):
 
 
 def _flag(value, field):
+    """Return 0 or 1, or None when the value was left out."""
     if value is None or value == "":
         return None
     if isinstance(value, bool):
@@ -351,6 +368,14 @@ def _flag(value, field):
     if value in (0, 1):
         return int(value)
     raise ValidationError(f"{field} must be 0 or 1")
+
+
+def _flag_required(value, field):
+    """Return 0 or 1, requiring an active choice (section 24.1)."""
+    flag = _flag(value, field)
+    if flag is None:
+        raise ValidationError(f"{field} is required when the key is available")
+    return flag
 
 
 def _text(value, field, max_length):
