@@ -23,7 +23,7 @@ HEALTH_CHECKS_TABLE = """
         id INTEGER PRIMARY KEY,
         checked_at TEXT NOT NULL,
         next_check_due TEXT NOT NULL,
-        wallet_software TEXT CHECK (wallet_software IN ('Sparrow Wallet', 'Nunchuk')),
+        wallet_software TEXT,
         software_version TEXT,
         software_compatibility_status TEXT NOT NULL DEFAULT 'NOT_ASSESSED'
             CHECK (software_compatibility_status IN ('OK', 'PROBLEM', 'NOT_ASSESSED')),
@@ -52,11 +52,13 @@ KEY_CHECKS_TABLE = """
         UNIQUE (health_check_id, key_id)
     )
     """
+# The product and the provider are the key's configured name and the selected
+# wallet software, so both columns hold free text (section 23.3).
 TOOL_CHECKS_TABLE = """
     CREATE TABLE IF NOT EXISTS {table} (
         id INTEGER PRIMARY KEY,
         health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
-        product TEXT NOT NULL CHECK (product IN ('SeedSigner', 'Blockstream Jade', 'Nunchuk', 'Sparrow Wallet')),
+        product TEXT NOT NULL,
         bip327_status TEXT NOT NULL DEFAULT 'NOT_ASSESSED'
             CHECK (bip327_status IN ('YES', 'NO', 'NOT_ASSESSED')),
         slip39_status TEXT NOT NULL DEFAULT 'NOT_ASSESSED'
@@ -71,7 +73,7 @@ AI_SECURITY_CHECKS_TABLE = """
     CREATE TABLE IF NOT EXISTS {table} (
         id INTEGER PRIMARY KEY,
         health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
-        provider TEXT NOT NULL CHECK (provider IN ('SeedSigner', 'Blockstream Jade', 'Nunchuk', 'Sparrow Wallet')),
+        provider TEXT NOT NULL,
         status TEXT NOT NULL CHECK (status IN ('SECURE', 'PATCHED', 'VULNERABLE', 'COMPROMISED')),
         comments TEXT,
         UNIQUE (health_check_id, provider)
@@ -118,6 +120,13 @@ LEGACY_STATUS_VALUE = "IKKJE_VURDERT"
 # flag with the two contact statuses. This substring marks a pre-section-23.1
 # health_checks table.
 LEGACY_CONTACT_CHECK = "contact_info_verified IN (0, 1)"
+# The product, the provider, and the wallet software used to be limited to the
+# four fixed product names. A key's configured name is its label, so those lists
+# are gone (section 23.3). These substrings mark a table that still has the old
+# CHECK constraint.
+LEGACY_PRODUCT_CHECK = "CHECK (product IN ("
+LEGACY_PROVIDER_CHECK = "CHECK (provider IN ("
+LEGACY_WALLET_SOFTWARE_CHECK = "CHECK (wallet_software IN ("
 # The newest saved check per key, used by the dashboard and the form. Duplicated
 # on purpose so the queries stay readable without a window function.
 _LATEST_CHECK_QUERY = """
@@ -365,9 +374,16 @@ def _migrate_key_checks(connection):
 
 
 def _migrate_ai_security_checks(connection):
-    """Rebuild ai_security_checks when it still allows the Norwegian values."""
+    """Rebuild ai_security_checks when it still uses an older definition.
+
+    Two changes need the same rebuild: the Norwegian status values became
+    English (section 21), and the fixed provider list was dropped because the
+    key's configured name is the provider label (section 23.3).
+    """
     sql = _table_sql(connection, "ai_security_checks")
-    if sql is None or "SECURE" in sql:
+    if sql is None:
+        return
+    if "SECURE" in sql and LEGACY_PROVIDER_CHECK not in sql:
         return
 
     connection.execute("ALTER TABLE ai_security_checks RENAME TO ai_security_checks_legacy")
@@ -386,10 +402,11 @@ def _migrate_ai_security_checks(connection):
 
 
 def _migrate_status_values(connection):
-    """Rewrite the columns whose stored values changed.
+    """Rewrite the tables whose stored values or CHECK constraints changed.
 
-    Section 21 made the status values English and section 23.1 replaced the 0/1
-    contact flag with the two contact statuses. SQLite cannot change a CHECK
+    Section 21 made the status values English, section 23.1 replaced the 0/1
+    contact flag with the two contact statuses, and section 23.3 dropped the
+    fixed product and wallet-software lists. SQLite cannot change a CHECK
     constraint, so each affected table is rebuilt: the replacement is created
     under a temporary name, the rows are copied with the mapped values, and the
     replacement takes the old table's place.
@@ -398,7 +415,7 @@ def _migrate_status_values(connection):
         _rebuild_health_checks(connection)
     if _uses_legacy_status_values(connection, "key_checks"):
         _rebuild_key_checks(connection)
-    if _uses_legacy_status_values(connection, "tool_checks"):
+    if _tool_checks_need_rebuild(connection):
         _rebuild_tool_checks(connection)
 
 
@@ -409,19 +426,40 @@ def _uses_legacy_status_values(connection, table):
 
 
 def _health_checks_need_rebuild(connection):
-    """Return True while health_checks still uses an older column definition."""
+    """Return True while health_checks still uses an older column definition.
+
+    That is either the pre-section-21 status values, the pre-section-23.1
+    contact flag, or the fixed wallet-software list of section 23.3.
+    """
     sql = _table_sql(connection, "health_checks")
     if sql is None:
         return False
-    return LEGACY_STATUS_VALUE in sql or LEGACY_CONTACT_CHECK in sql
+    return (
+        LEGACY_STATUS_VALUE in sql
+        or LEGACY_CONTACT_CHECK in sql
+        or LEGACY_WALLET_SOFTWARE_CHECK in sql
+    )
+
+
+def _tool_checks_need_rebuild(connection):
+    """Return True while tool_checks still uses an older definition.
+
+    That is either the pre-section-21 status values or the fixed product list of
+    section 23.3.
+    """
+    sql = _table_sql(connection, "tool_checks")
+    if sql is None:
+        return False
+    return LEGACY_STATUS_VALUE in sql or LEGACY_PRODUCT_CHECK in sql
 
 
 def _rebuild_health_checks(connection):
-    """Rebuild health_checks with the current status and contact values.
+    """Rebuild health_checks with the current status, contact, and software values.
 
-    ``IKKJE_VURDERT`` becomes ``NOT_ASSESSED`` (section 21) and the 0/1 contact
-    flag becomes ``Confirmed current`` or ``Needs external update``
-    (section 23.1).
+    ``IKKJE_VURDERT`` becomes ``NOT_ASSESSED`` (section 21), the 0/1 contact flag
+    becomes ``Confirmed current`` or ``Needs external update`` (section 23.1),
+    and the wallet software is no longer limited to the two fixed names
+    (section 23.3).
     """
     columns = _table_columns(connection, "health_checks")
     temporary = _create_replacement(connection, "health_checks", HEALTH_CHECKS_TABLE)
@@ -463,7 +501,7 @@ def _rebuild_key_checks(connection):
 
 
 def _rebuild_tool_checks(connection):
-    """Rebuild tool_checks with the YES / NO / NOT_ASSESSED values."""
+    """Rebuild tool_checks with the current status values and a free product name."""
     temporary = _create_replacement(connection, "tool_checks", TOOL_CHECKS_TABLE)
     bip327 = _mapped_status_sql("bip327_status", STANDARDS_STATUS_MIGRATION)
     slip39 = _mapped_status_sql("slip39_status", STANDARDS_STATUS_MIGRATION)
