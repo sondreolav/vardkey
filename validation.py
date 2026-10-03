@@ -6,7 +6,9 @@ the client.
 
 The stored status values are English (sections 19 and 21). General results use
 ``OK``, ``PROBLEM``, and ``NOT_ASSESSED``; the BIP327 and SLIP39 results use
-``YES``, ``NO``, and ``NOT_ASSESSED``.
+``YES``, ``NO``, and ``NOT_ASSESSED``. The software compatibility result is an
+explicit ``OK`` or ``PROBLEM`` for a hardware key (section 23.1), and the contact
+confirmation is ``Confirmed current`` or ``Needs external update``.
 
 ``available`` is always recorded (section 22). When the key was not available,
 the wallet software, the standards, and the security statuses are not recorded
@@ -16,9 +18,13 @@ either, so they may be left out of the payload.
 from datetime import date
 
 GENERAL_STATUSES = ("OK", "PROBLEM", "NOT_ASSESSED")
+# Software compatibility requires an active choice, so "not assessed" is not
+# submittable for a new registration (section 23.1).
+COMPATIBILITY_STATUSES = ("OK", "PROBLEM")
 VERIFICATION_STATUSES = ("OK", "PROBLEM")
 STANDARDS_STATUSES = ("YES", "NO", "NOT_ASSESSED")
 SECURITY_STATUSES = ("SECURE", "PATCHED", "VULNERABLE", "COMPROMISED")
+CONTACT_STATUSES = ("Confirmed current", "Needs external update")
 WALLET_SOFTWARE = ("Sparrow Wallet", "Nunchuk")
 KEY_PRODUCTS = {1: "SeedSigner", 2: "Blockstream Jade", 3: "Nunchuk"}
 CLOUD_KEY_NUMBER = 3
@@ -67,14 +73,12 @@ def validate_health_check(payload, keys):
             payload.get("software_version"), "software_version", MAX_VERSION_LENGTH
         ),
         "software_compatibility_status": _compatibility_status(
-            payload.get("software_compatibility_status"), unavailable
+            payload.get("software_compatibility_status"), key, unavailable
         ),
         "software_comments": _text(
             payload.get("software_comments"), "software_comments", MAX_NOTES_LENGTH
         ),
-        "contact_info_verified": _flag(
-            payload.get("contact_info_verified"), "contact_info_verified"
-        ),
+        "contact_info_verified": _contact_status(payload.get("contact_info_verified")),
         "comments": _text(payload.get("comments"), "comments", MAX_COMMENTS_LENGTH),
         "key_check": _key_check(entry, key, available),
         "tool_checks": _tool_checks(
@@ -125,11 +129,41 @@ def _wallet_software(value, key, unavailable):
     return value
 
 
-def _compatibility_status(value, unavailable):
-    """Return the compatibility result, defaulting to NOT_ASSESSED when skipped."""
-    if unavailable and (value is None or value == ""):
+def _compatibility_status(value, key, unavailable):
+    """Return the software compatibility result.
+
+    The cloud key derives it from availability (section 20), so only the derived
+    value is accepted there. A hardware key requires an active ``OK`` or
+    ``PROBLEM``, and a missing value is a ``400`` (section 23.1).
+    """
+    if key["type"] == "cloud":
+        derived = "NOT_ASSESSED" if unavailable else "OK"
+        if value not in (None, "", derived):
+            raise ValidationError(
+                "software_compatibility_status is derived for the cloud key"
+            )
+        return derived
+    if unavailable:
+        # The remaining checks could not be performed, so the result stays not
+        # assessed and no other value may accompany it (section 22).
+        if value not in (None, "", "NOT_ASSESSED"):
+            raise ValidationError(
+                "software_compatibility_status cannot be recorded "
+                "when the key was not available"
+            )
         return "NOT_ASSESSED"
-    return _status(value, "software_compatibility_status", GENERAL_STATUSES)
+    return _status(value, "software_compatibility_status", COMPATIBILITY_STATUSES)
+
+
+def _contact_status(value):
+    """Return the contact confirmation for the selected key's holder.
+
+    Only the status is recorded, never names, addresses, phone numbers, or
+    credentials (section 23.1). A confirmation that was not assessed stays empty.
+    """
+    if value is None or value == "":
+        return None
+    return _status(value, "contact_info_verified", CONTACT_STATUSES)
 
 
 def _require_nothing_recorded(entries, field):
