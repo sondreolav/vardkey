@@ -6,11 +6,15 @@ Helsesjekk is a local web application for recording annual checks of a fixed 2-o
 
 The English dashboard shows the three key profiles, the latest saved check dates, and every active follow-up alert. Each key card shows its own last check date and next due date, and the summary cards above the alerts show the earliest upcoming date and any key that has passed its due date. The annual health-check form records the checklist for **one selected key per submission** and saves it to a local SQLite database, and `/history` lists saved checks with a read-only detail view. `GET /api/export` returns every saved check as a CSV download. The StartOS package is not implemented yet. The application does not claim that any device or backup has been tested.
 
+The form is in six sections, in this order: 01 Schedule, 02 Key, 03 Compatibility, 04 External research, 05 Contact confirmation, 06 Notes.
+
 The key setup is configured once, on a new database, at `/setup`: the user gives each of the three key slots a name and a type (`hardware` or `cloud`). The names must be unique and non-empty, and both the name and the type are locked after the setup is saved. The configured name is the product label of that key everywhere: the check form, the alerts, the history, and the CSV export. An existing database is read from its stored key rows, so an installation that predates this step keeps its keys and all of its history.
 
 Each key has its own next-check date, calculated on the server as one calendar year after the check date (29 February is clamped to 28 February). The date is not editable in the form, and a submission for one key never changes another key's interval.
 
-`Availability` is the first question in the form and is required. When a key is not available, the rest of the check cannot be recorded, so the form hides the software compatibility, the standards, and the security statuses and submits only the availability, the key note, the contact confirmation, and the overall comment. That single submission is a complete result and raises the follow-up alert.
+`Availability` is the first question in the form and is required. When a key is not available, the rest of the check cannot be recorded, so the form hides the software compatibility and the security statuses and submits only the availability, the key note, the contact confirmation, and the overall comment. That single submission is a complete result and raises the follow-up alert.
+
+`Hardware works` and the contact confirmation are required choices. Both start on `Select status`, which is not an answer, and a submission that leaves either of them out is rejected with `400`.
 
 Firmware version, address path, and software version are pre-filled with the last saved value for the selected key and the selected wallet software. The value is a real input value, not a placeholder, so a field the user leaves untouched is saved as it stands. A field with no relevant saved value stays empty.
 
@@ -65,35 +69,32 @@ A name that is empty, a name that repeats another name (compared without regard 
 
 - `key_check` is one object with the selected `key_id` and `available`. `available` is required and is `1` (yes) or `0` (no).
 - When `available` is `1`, the fields below are recorded as described.
-- When `available` is `0`, the key could not be checked, so `wallet_software`, `tool_checks`, and `ai_security_checks` must be absent or empty. Sending them is a `400` rather than something dropped silently. `software_compatibility_status` may be omitted and is then stored as `NOT_ASSESSED`. No standards or security rows are stored, and `wallet_software` stays `NULL`.
+- When `available` is `0`, the key could not be checked, so `wallet_software` and `ai_security_checks` must be absent or empty. Sending them is a `400` rather than something dropped silently. `software_compatibility_status` may be omitted and is then stored as `NOT_ASSESSED`. No security rows are stored, and `wallet_software` stays `NULL`.
 - The remaining key fields are not required when the key was not available, and are stored as empty. The key note is kept. For a cloud key the derived cloud results are still stored (see below).
+- `hardware_works` (hardware keys only) requires an active `1` (yes) or `0` (no) when the key was available. A missing value is a `400`.
 - `wallet_software` is `Sparrow Wallet` or the name of a configured cloud key. A cloud key records its own name, because the provider is the software for that key.
-- `tool_checks` must cover the selected key by its configured name plus the selected wallet software, without duplicates: at most two rows, and one row when the key name and the software name are the same. `bip327_status` and `slip39_status` accept `YES`, `NO`, or `NOT_ASSESSED`.
-- `ai_security_checks` must cover the same two labels, so a hardware key records its own name and the selected software, and a cloud key records its own name once.
+- `ai_security_checks` must cover the selected key by its configured name plus the selected wallet software, without duplicates: at most two rows, and one row when the key name and the software name are the same. `status` accepts `SECURE`, `PATCHED`, `VULNERABLE`, or `COMPROMISED`.
 - `seed_backup_verified` (hardware keys only) and `address_path_verified` accept `OK` or `PROBLEM` and are required when the key was available.
-- `software_compatibility_status` requires an active choice when the key was available: `OK` or `PROBLEM`. A missing value, or `NOT_ASSESSED`, is a `400`. `NOT_ASSESSED` is only stored for a key that was not available, and a cloud key always derives its compatibility from availability.
-- `contact_info_verified` is `Confirmed current` or `Needs external update`, and may be omitted. Only the status is stored, never names, addresses, phone numbers, or credentials. `Needs external update` shows a reminder in the form to update the records externally.
+- `software_compatibility_status` requires an active choice when the key was available: `OK` or `PROBLEM`. A missing value, or `NOT_ASSESSED`, is a `400`. `NOT_ASSESSED` is only ever the derived `software_compatibility_status` of a key that was not available; no other field offers or accepts it. A cloud key always derives its compatibility from availability.
+- `contact_info_verified` is required and is `Confirmed current` or `Needs external update`, also for a key that was not available. Only the status is stored, never names, addresses, phone numbers, or credentials. `Needs external update` shows a reminder in the form to update the records externally.
 - `address_path` is only recorded when `address_path_verified` is `OK`; the form hides the field and clears it otherwise.
 - `next_check_due` is ignored; the server derives it from `checked_at`.
 
-A minimal submission for a key that was not available is therefore just the check date and the key check:
+A minimal submission for a key that was not available is therefore the check date, the key check, and the contact confirmation:
 
 ```json
-{"checked_at": "2026-10-01", "key_check": {"key_id": 2, "available": 0, "comments": "Key is with the third holder"}}
+{"checked_at": "2026-10-01", "contact_info_verified": "Confirmed current", "key_check": {"key_id": 2, "available": 0, "comments": "Key is with the third holder"}}
 ```
 
-Unknown statuses, unknown key ids, a missing `available`, irrelevant or duplicated products and providers, standards or security results for an unavailable key, invalid dates, and over-long text are rejected with `400`.
+Unknown statuses, unknown key ids, a missing `available`, a missing `hardware_works`, a missing contact confirmation, irrelevant or duplicated providers, security results for an unavailable key, invalid dates, and over-long text are rejected with `400`.
 
 ## CSV export
 
 `GET /api/export` sends `helsesjekk-export.csv` as a download: UTF-8, comma separated, CRLF line endings, with a header row. It contains every saved key check, oldest first.
 
-One row is one key check. The `Check id` column identifies the submission a row belongs to, so records saved before section 19 (up to three keys in one submission) stay grouped. Results that have more than one value per submission are joined into a single cell as `Label: value; Label: value`:
+One row is one key check. The `Check id` column identifies the submission a row belongs to, so records saved before section 19 (up to three keys in one submission) stay grouped. The `Security status` column has more than one value per submission, so those values are joined into a single cell as `Label: value; Label: value`.
 
-- `BIP327` and `SLIP39` list the key's configured name and the chosen wallet software.
-- `Security status` lists the same two labels.
-
-Stored `0`/`1` values are written as `No`/`Yes`, matching the history view. Status values are written exactly as stored, including the contact confirmation, which is `Confirmed current` or `Needs external update`. Empty values are written as empty cells, so a check that recorded only an unavailable key leaves the software, standards, and security columns empty. Text that contains a comma, a quote, or a semicolon is quoted and escaped by the standard CSV rules, so the file can be opened directly in a spreadsheet.
+Stored `0`/`1` values are written as `No`/`Yes`, matching the history view. That covers `Available`, `Hardware works`, and `Cloud provider operational`. Status values are written exactly as stored, including the contact confirmation, which is `Confirmed current` or `Needs external update`. Empty values are written as empty cells, so a check that recorded only an unavailable key leaves the software and security columns empty. Text that contains a comma, a quote, or a semicolon is quoted and escaped by the standard CSV rules, so the file can be opened directly in a spreadsheet.
 
 ## Alerts
 
@@ -107,9 +108,9 @@ Stored `0`/`1` values are written as `No`/`Yes`, matching the history view. Stat
 
 A key alert names the key by its number and its configured name, so renaming a key in the setup is not possible after the fact and an alert always matches the key it came from.
 
-`severity` is `critical` for results that require action (unavailable key, hardware failure, missing or damaged seed backup, a cloud provider that is not operating normally, failed address verification, software that no longer supports the hardware, security status `VULNERABLE` or `COMPROMISED`) and `info` for results that can be considered later (reported BIP327 or SLIP39 support, contact details that need an external update).
+`severity` is `critical` for results that require action (unavailable key, hardware failure, missing or damaged seed backup, a cloud provider that is not operating normally, failed address verification, software that no longer supports the hardware, security status `VULNERABLE` or `COMPROMISED`) and `info` for results that can be considered later (contact details that need an external update).
 
-A value that has not been assessed (`NOT_ASSESSED` or empty) never raises an alert, so "not assessed" is never confused with a negative result. A reported `NO` for BIP327 or SLIP39 is a negative result as well, and raises no alert. An unavailable key raises one critical alert only, because the remaining checks for the key could not be performed; for a cloud key that single alert also states that the provider is recorded as not operating.
+A value that has not been assessed (`NOT_ASSESSED` or empty) never raises an alert, so "not assessed" is never confused with a negative result. An unavailable key raises one critical alert only, because the remaining checks for the key could not be performed; for a cloud key that single alert also states that the provider is recorded as not operating.
 
 The application only reports these alerts. It never performs the follow-up actions itself, and it never contacts providers or AI services.
 
@@ -119,18 +120,19 @@ The web server, validation, alert rules, export, and database use Python's stand
 
 The application UI, source code, comments, and technical documentation are in English. `TODO.md` is intentionally written in Norwegian. Two names are deliberate exceptions to the English rule: the product name **Helsesjekk** and the database file name **`data/helsesjekk.sqlite3`**.
 
-Stored status values are English. General results are `OK`, `PROBLEM`, or `NOT_ASSESSED`; the two verification results are `OK` or `PROBLEM`; software compatibility is `OK` or `PROBLEM` for a new check; BIP327 and SLIP39 are `YES`, `NO`, or `NOT_ASSESSED`; the security statuses are `SECURE`, `PATCHED`, `VULNERABLE`, and `COMPROMISED`; the contact confirmation is `Confirmed current` or `Needs external update`.
+Stored status values are English. The two verification results are `OK` or `PROBLEM`; software compatibility is `OK` or `PROBLEM` for a new check; the security statuses are `SECURE`, `PATCHED`, `VULNERABLE`, and `COMPROMISED`; the contact confirmation is `Confirmed current` or `Needs external update`. `NOT_ASSESSED` is only ever the derived `software_compatibility_status` of a key that was not available, and no other field offers or accepts it.
 
-The product, the provider, and the wallet software are the configured key name and the selected software, so those columns hold free text. The database no longer limits them to the products that shipped with the first version.
+The provider and the wallet software are the configured key name and the selected software, so those columns hold free text. The database no longer limits them to the products that shipped with the first version.
 
-Databases created by earlier versions are migrated on startup, up to schema version 8:
+Databases created by earlier versions are migrated on startup, up to schema version 9:
 
 - The removed columns are dropped, and the old boolean verification flags become `OK`/`PROBLEM`.
 - The Norwegian security status values become the English ones.
-- `IKKJE_VURDERT` becomes `NOT_ASSESSED`, and the BIP327/SLIP39 results `OK`/`PROBLEM` become `YES`/`NO`.
+- `IKKJE_VURDERT` becomes `NOT_ASSESSED`.
 - The old `0`/`1` contact flag becomes `Confirmed current` (was `1`) or `Needs external update` (was `0`), and an empty value stays empty.
 - The fixed `device` column, the fixed product and provider lists, and the fixed wallet-software list are dropped, because the configured key name and the selected software replace them.
+- The `tool_checks` table is dropped, together with the BIP327/SLIP39 results it held. It is a child table, so the drop needs no rebuild of a parent table, and the rest of the history is kept.
 
-Because `health_checks` is a parent table with foreign keys from the three child tables, the migration disables foreign keys for the transaction, checks them with `PRAGMA foreign_key_check` before committing, and rolls back if anything is wrong. Older records keep rendering in the history.
+Because `health_checks` is a parent table with foreign keys from the child tables, the migration disables foreign keys for the transaction, checks them with `PRAGMA foreign_key_check` before committing, and rolls back if anything is wrong. Older records keep rendering in the history.
 
-Making the rest of a check optional for an unavailable key needs no migration: `wallet_software` is already nullable, and the standards and security results live in their own tables. A record with no such rows simply renders and exports as empty.
+Making the rest of a check optional for an unavailable key needs no migration: `wallet_software` is already nullable, and the security results live in their own table. A record with no such rows simply renders and exports as empty.
