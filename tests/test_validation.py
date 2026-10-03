@@ -1,30 +1,40 @@
-"""Tests for health check payload validation."""
+"""Tests for payload validation."""
 
 import unittest
 
-from validation import ValidationError, next_check_due, validate_health_check
+from validation import (
+    ValidationError,
+    next_check_due,
+    validate_health_check,
+    validate_key_setup,
+)
 
 
 KEYS = (
-    {"id": 1, "key_number": 1, "name": "SeedSigner", "type": "hardware", "device": "SeedSigner"},
-    {"id": 2, "key_number": 2, "name": "Blockstream Jade", "type": "hardware", "device": "Blockstream Jade"},
-    {"id": 3, "key_number": 3, "name": "Nunchuk", "type": "cloud", "device": "Nunchuk"},
+    {"id": 1, "key_number": 1, "name": "SeedSigner", "type": "hardware"},
+    {"id": 2, "key_number": 2, "name": "Blockstream Jade", "type": "hardware"},
+    {"id": 3, "key_number": 3, "name": "Nunchuk", "type": "cloud"},
 )
-KEY_PRODUCTS = {1: "SeedSigner", 2: "Blockstream Jade", 3: "Nunchuk"}
+# A setup with the cloud key in the first slot and a renamed hardware key, to
+# show that the type decides the checks and never the key number.
+RENAMED_KEYS = (
+    {"id": 1, "key_number": 1, "name": "Coinbase", "type": "cloud"},
+    {"id": 2, "key_number": 2, "name": "ColdCard", "type": "hardware"},
+    {"id": 3, "key_number": 3, "name": "Jade", "type": "hardware"},
+)
 
 
-def key_for(key_number):
+def key_for(key_number, keys=KEYS):
     """Return the key profile with the given number."""
-    return next(entry for entry in KEYS if entry["key_number"] == key_number)
+    return next(entry for entry in keys if entry["key_number"] == key_number)
 
 
-def sample_payload(key_number=1, wallet_software=None):
+def sample_payload(key_number=1, wallet_software=None, keys=KEYS):
     """Return a valid single-key payload for the given key number."""
-    key = key_for(key_number)
+    key = key_for(key_number, keys)
     if wallet_software is None:
-        wallet_software = "Nunchuk" if key_number == 3 else "Sparrow Wallet"
-    products = list(dict.fromkeys((KEY_PRODUCTS[key_number], wallet_software)))
-    providers = ["Nunchuk"] if key_number == 3 else [KEY_PRODUCTS[key_number], "Sparrow Wallet", "Nunchuk"]
+        wallet_software = key["name"] if key["type"] == "cloud" else "Sparrow Wallet"
+    labels = list(dict.fromkeys((key["name"], wallet_software)))
     entry = {
         "key_id": key["id"],
         "available": 1,
@@ -50,18 +60,18 @@ def sample_payload(key_number=1, wallet_software=None):
         "comments": "Annual review",
         "key_check": entry,
         "tool_checks": [
-            {"product": product, "bip327_status": "NOT_ASSESSED", "slip39_status": "NOT_ASSESSED"}
-            for product in products
+            {"product": label, "bip327_status": "NOT_ASSESSED", "slip39_status": "NOT_ASSESSED"}
+            for label in labels
         ],
         "ai_security_checks": [
-            {"provider": provider, "status": "SECURE", "comments": ""} for provider in providers
+            {"provider": label, "status": "SECURE", "comments": ""} for label in labels
         ],
     }
 
 
-def unavailable_payload(key_number=1):
+def unavailable_payload(key_number=1, keys=KEYS):
     """Return the payload the form sends for a key that was not available."""
-    key = key_for(key_number)
+    key = key_for(key_number, keys)
     entry = {
         "key_id": key["id"],
         "available": 0,
@@ -82,6 +92,88 @@ def unavailable_payload(key_number=1):
     }
 
 
+class KeySetupTests(unittest.TestCase):
+    def test_a_valid_setup_is_normalized_and_sorted(self):
+        result = validate_key_setup({"keys": [
+            {"key_number": 3, "name": "  Nunchuk  ", "type": "cloud"},
+            {"key_number": 1, "name": "ColdCard", "type": "hardware"},
+            {"key_number": 2, "name": "Jade", "type": "hardware"},
+        ]})
+
+        self.assertEqual(
+            result,
+            [
+                {"key_number": 1, "name": "ColdCard", "type": "hardware"},
+                {"key_number": 2, "name": "Jade", "type": "hardware"},
+                {"key_number": 3, "name": "Nunchuk", "type": "cloud"},
+            ],
+        )
+
+    def test_all_three_keys_may_be_cloud_keys(self):
+        result = validate_key_setup({"keys": [
+            {"key_number": 1, "name": "Provider one", "type": "cloud"},
+            {"key_number": 2, "name": "Provider two", "type": "cloud"},
+            {"key_number": 3, "name": "Provider three", "type": "cloud"},
+        ]})
+
+        self.assertEqual([entry["type"] for entry in result], ["cloud"] * 3)
+
+    def test_duplicate_names_are_rejected_without_regard_to_case(self):
+        for names in (("Jade", "Jade"), ("Jade", "jade"), ("Jade", " JADE ")):
+            with self.assertRaises(ValidationError):
+                validate_key_setup({"keys": [
+                    {"key_number": 1, "name": names[0], "type": "hardware"},
+                    {"key_number": 2, "name": names[1], "type": "hardware"},
+                    {"key_number": 3, "name": "Nunchuk", "type": "cloud"},
+                ]})
+
+    def test_an_empty_or_non_text_name_is_rejected(self):
+        for name in ("", "   ", None, 12):
+            with self.assertRaises(ValidationError):
+                validate_key_setup({"keys": [
+                    {"key_number": 1, "name": name, "type": "hardware"},
+                    {"key_number": 2, "name": "Jade", "type": "hardware"},
+                    {"key_number": 3, "name": "Nunchuk", "type": "cloud"},
+                ]})
+
+    def test_an_over_long_name_is_rejected(self):
+        with self.assertRaises(ValidationError):
+            validate_key_setup({"keys": [
+                {"key_number": 1, "name": "x" * 61, "type": "hardware"},
+                {"key_number": 2, "name": "Jade", "type": "hardware"},
+                {"key_number": 3, "name": "Nunchuk", "type": "cloud"},
+            ]})
+
+    def test_an_unknown_type_is_rejected(self):
+        for key_type in ("", "hardware ", "cloudy", None):
+            with self.assertRaises(ValidationError):
+                validate_key_setup({"keys": [
+                    {"key_number": 1, "name": "ColdCard", "type": key_type},
+                    {"key_number": 2, "name": "Jade", "type": "hardware"},
+                    {"key_number": 3, "name": "Nunchuk", "type": "cloud"},
+                ]})
+
+    def test_a_repeated_or_unknown_key_number_is_rejected(self):
+        for numbers in ((1, 1, 3), (1, 2, 4), (0, 2, 3), (1, 2, None), (1, 2, True)):
+            with self.assertRaises(ValidationError):
+                validate_key_setup({"keys": [
+                    {"key_number": numbers[0], "name": "ColdCard", "type": "hardware"},
+                    {"key_number": numbers[1], "name": "Jade", "type": "hardware"},
+                    {"key_number": numbers[2], "name": "Nunchuk", "type": "cloud"},
+                ]})
+
+    def test_the_wrong_number_of_keys_is_rejected(self):
+        entry = {"key_number": 1, "name": "ColdCard", "type": "hardware"}
+        for entries in ([], [entry], [entry, entry], [entry] * 4):
+            with self.assertRaises(ValidationError):
+                validate_key_setup({"keys": entries})
+
+    def test_a_missing_key_list_is_rejected(self):
+        for payload in ({}, {"keys": None}, {"keys": "ColdCard"}, []):
+            with self.assertRaises(ValidationError):
+                validate_key_setup(payload)
+
+
 class ValidationTests(unittest.TestCase):
     def test_valid_payload_is_normalized(self):
         result = validate_health_check(sample_payload(), KEYS)
@@ -94,16 +186,64 @@ class ValidationTests(unittest.TestCase):
             [entry["product"] for entry in result["tool_checks"]],
             ["SeedSigner", "Sparrow Wallet"],
         )
-        self.assertEqual(len(result["ai_security_checks"]), 3)
+        self.assertEqual(len(result["ai_security_checks"]), 2)
 
-    def test_cloud_key_records_nunchuk_only(self):
-        result = validate_health_check(sample_payload(key_number=3), KEYS)
+    def test_the_configured_name_is_the_product_label(self):
+        result = validate_health_check(sample_payload(key_number=2, keys=RENAMED_KEYS), RENAMED_KEYS)
 
-        self.assertEqual(result["wallet_software"], "Nunchuk")
-        self.assertEqual([entry["product"] for entry in result["tool_checks"]], ["Nunchuk"])
-        self.assertEqual([entry["provider"] for entry in result["ai_security_checks"]], ["Nunchuk"])
+        self.assertEqual(result["wallet_software"], "Sparrow Wallet")
+        self.assertEqual(
+            [entry["product"] for entry in result["tool_checks"]],
+            ["ColdCard", "Sparrow Wallet"],
+        )
+        self.assertEqual(
+            [entry["provider"] for entry in result["ai_security_checks"]],
+            ["ColdCard", "Sparrow Wallet"],
+        )
+
+    def test_a_cloud_key_records_its_own_name_once(self):
+        result = validate_health_check(sample_payload(key_number=1, keys=RENAMED_KEYS), RENAMED_KEYS)
+
+        self.assertEqual(result["wallet_software"], "Coinbase")
+        self.assertEqual([entry["product"] for entry in result["tool_checks"]], ["Coinbase"])
+        self.assertEqual([entry["provider"] for entry in result["ai_security_checks"]], ["Coinbase"])
         self.assertIsNone(result["key_check"]["hardware_works"])
         self.assertIsNone(result["key_check"]["seed_backup_verified"])
+
+    def test_a_hardware_key_may_use_a_cloud_key_name_as_its_software(self):
+        payload = sample_payload(key_number=2, keys=RENAMED_KEYS)
+        payload["wallet_software"] = "Coinbase"
+        payload["tool_checks"] = [
+            {"product": label, "bip327_status": "YES", "slip39_status": "NO"}
+            for label in ("ColdCard", "Coinbase")
+        ]
+        payload["ai_security_checks"] = [
+            {"provider": label, "status": "SECURE", "comments": ""}
+            for label in ("ColdCard", "Coinbase")
+        ]
+
+        result = validate_health_check(payload, RENAMED_KEYS)
+
+        self.assertEqual(result["wallet_software"], "Coinbase")
+        self.assertEqual(
+            [entry["product"] for entry in result["tool_checks"]],
+            ["ColdCard", "Coinbase"],
+        )
+
+    def test_a_hardware_key_name_is_not_a_wallet_software_choice(self):
+        # "Jade" is a hardware key in this setup, so it is never software.
+        payload = sample_payload(key_number=2, keys=RENAMED_KEYS)
+        payload["wallet_software"] = "Jade"
+
+        with self.assertRaises(ValidationError):
+            validate_health_check(payload, RENAMED_KEYS)
+
+    def test_a_cloud_key_rejects_another_wallet_software(self):
+        for value in ("Sparrow Wallet", "ColdCard"):
+            payload = sample_payload(key_number=1, keys=RENAMED_KEYS)
+            payload["wallet_software"] = value
+            with self.assertRaises(ValidationError):
+                validate_health_check(payload, RENAMED_KEYS)
 
     def test_next_check_due_is_derived_on_the_server(self):
         payload = sample_payload()
@@ -226,12 +366,11 @@ class ValidationTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 validate_health_check(payload, KEYS)
 
-    def test_security_providers_are_specific_to_the_selected_key(self):
+    def test_security_labels_are_specific_to_the_selected_key(self):
         payload = sample_payload(key_number=1)
         payload["ai_security_checks"] = [
             {"provider": "SeedSigner", "status": "SECURE", "comments": ""},
             {"provider": "Sparrow Wallet", "status": "SECURE", "comments": ""},
-            {"provider": "Nunchuk", "status": "SECURE", "comments": ""},
             {"provider": "Blockstream Jade", "status": "SECURE", "comments": ""},
         ]
 
@@ -248,17 +387,6 @@ class ValidationTests(unittest.TestCase):
     def test_missing_key_check_is_rejected(self):
         payload = sample_payload()
         del payload["key_check"]
-
-        with self.assertRaises(ValidationError):
-            validate_health_check(payload, KEYS)
-
-    def test_cloud_key_rejects_sparrow_wallet(self):
-        payload = sample_payload(key_number=3)
-        payload["wallet_software"] = "Sparrow Wallet"
-        payload["tool_checks"] = [
-            {"product": "Nunchuk", "bip327_status": "YES", "slip39_status": "YES"},
-            {"product": "Sparrow Wallet", "bip327_status": "YES", "slip39_status": "YES"},
-        ]
 
         with self.assertRaises(ValidationError):
             validate_health_check(payload, KEYS)
