@@ -1,4 +1,4 @@
-"""Validation of incoming health check payloads.
+"""Validation of incoming payloads.
 
 One submission records one selected key only, as decided in section 19 of the
 requirements. The next check date is derived on the server and never taken from
@@ -10,12 +10,18 @@ The stored status values are English (sections 19 and 21). General results use
 explicit ``OK`` or ``PROBLEM`` for a hardware key (section 23.1), and the contact
 confirmation is ``Confirmed current`` or ``Needs external update``.
 
+The key setup is configured once and stored in the database (section 23.2). The
+configured name is the product label of a key, and the key's type decides which
+checks apply, never the key number (section 23.3).
+
 ``available`` is always recorded (section 22). When the key was not available,
 the wallet software, the standards, and the security statuses are not recorded
 either, so they may be left out of the payload.
 """
 
 from datetime import date
+
+from database import KEY_COUNT
 
 GENERAL_STATUSES = ("OK", "PROBLEM", "NOT_ASSESSED")
 # Software compatibility requires an active choice, so "not assessed" is not
@@ -25,9 +31,11 @@ VERIFICATION_STATUSES = ("OK", "PROBLEM")
 STANDARDS_STATUSES = ("YES", "NO", "NOT_ASSESSED")
 SECURITY_STATUSES = ("SECURE", "PATCHED", "VULNERABLE", "COMPROMISED")
 CONTACT_STATUSES = ("Confirmed current", "Needs external update")
-WALLET_SOFTWARE = ("Sparrow Wallet", "Nunchuk")
-KEY_PRODUCTS = {1: "SeedSigner", 2: "Blockstream Jade", 3: "Nunchuk"}
-CLOUD_KEY_NUMBER = 3
+KEY_TYPES = ("hardware", "cloud")
+# The wallet software that is always available, whatever the key setup is
+# (section 23.3).
+SPARROW_SOFTWARE = "Sparrow Wallet"
+MAX_KEY_NAME_LENGTH = 60
 MAX_VERSION_LENGTH = 100
 MAX_PATH_LENGTH = 200
 MAX_NOTES_LENGTH = 2000
@@ -35,7 +43,7 @@ MAX_COMMENTS_LENGTH = 4000
 
 
 class ValidationError(ValueError):
-    """Raised when a payload does not match the expected health check shape."""
+    """Raised when a payload does not match the expected shape."""
 
 
 def next_check_due(checked_at):
@@ -45,6 +53,48 @@ def next_check_due(checked_at):
         return checked.replace(year=checked.year + 1).isoformat()
     except ValueError:
         return checked.replace(year=checked.year + 1, day=28).isoformat()
+
+
+def validate_key_setup(payload):
+    """Return the normalized key setup for the three key slots.
+
+    The user names each key and picks its type once, and both are locked after
+    the setup is saved (section 23.2). The names must be non-empty and unique,
+    compared without regard to case.
+    """
+    if not isinstance(payload, dict):
+        raise ValidationError("payload must be a JSON object")
+
+    entries = payload.get("keys")
+    if not isinstance(entries, list):
+        raise ValidationError("keys must be a list")
+    if len(entries) != KEY_COUNT:
+        raise ValidationError(f"exactly {KEY_COUNT} keys must be configured")
+
+    normalized = []
+    numbers = set()
+    names = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValidationError("each key must be an object")
+        number = entry.get("key_number")
+        if isinstance(number, bool) or number not in range(1, KEY_COUNT + 1):
+            raise ValidationError(f"key_number must be between 1 and {KEY_COUNT}")
+        if number in numbers:
+            raise ValidationError("each key number may only be configured once")
+        numbers.add(number)
+
+        name = _key_name(entry.get("name"))
+        if name.casefold() in names:
+            raise ValidationError("key names must be unique")
+        names.add(name.casefold())
+
+        key_type = entry.get("type")
+        if key_type not in KEY_TYPES:
+            raise ValidationError("key type must be hardware or cloud")
+        normalized.append({"key_number": number, "name": name, "type": key_type})
+
+    return sorted(normalized, key=lambda entry: entry["key_number"])
 
 
 def validate_health_check(payload, keys):
@@ -62,13 +112,14 @@ def validate_health_check(payload, keys):
     # A key that was not available cannot be checked any further, so the wallet
     # software, the standards, and the security statuses stay empty (section 22).
     unavailable = available == 0
+    wallet_software = _wallet_software(
+        payload.get("wallet_software"), key, keys, unavailable
+    )
 
     return {
         "checked_at": checked_at,
         "next_check_due": next_check_due(checked_at),
-        "wallet_software": _wallet_software(
-            payload.get("wallet_software"), key, unavailable
-        ),
+        "wallet_software": wallet_software,
         "software_version": _text(
             payload.get("software_version"), "software_version", MAX_VERSION_LENGTH
         ),
@@ -82,12 +133,24 @@ def validate_health_check(payload, keys):
         "comments": _text(payload.get("comments"), "comments", MAX_COMMENTS_LENGTH),
         "key_check": _key_check(entry, key, available),
         "tool_checks": _tool_checks(
-            payload.get("tool_checks"), key, payload.get("wallet_software"), unavailable
+            payload.get("tool_checks"), key, wallet_software, unavailable
         ),
         "ai_security_checks": _ai_security_checks(
-            payload.get("ai_security_checks"), key, unavailable
+            payload.get("ai_security_checks"), key, wallet_software, unavailable
         ),
     }
+
+
+def _key_name(value):
+    """Return the configured key name, which must be non-empty text."""
+    if not isinstance(value, str):
+        raise ValidationError("key name must be text")
+    name = value.strip()
+    if not name:
+        raise ValidationError("key name must not be empty")
+    if len(name) > MAX_KEY_NAME_LENGTH:
+        raise ValidationError("key name is too long")
+    return name
 
 
 def _select_key(key_id, keys):
@@ -108,24 +171,39 @@ def _availability(value):
     return available
 
 
-def _wallet_software(value, key, unavailable):
-    """Return the selected wallet software, fixed to Nunchuk for the cloud key.
+def _wallet_software_choices(keys):
+    """Return the wallet software choices.
 
-    A key that was not available records no software, so the field must be left
-    out then (section 22).
+    Sparrow is always available, and every configured cloud key contributes its
+    own name. A hardware key name is never a software choice (section 23.3).
+    """
+    names = (key["name"] for key in keys if key["type"] == "cloud")
+    return tuple(dict.fromkeys((SPARROW_SOFTWARE, *names)))
+
+
+def _wallet_software(value, key, keys, unavailable):
+    """Return the selected wallet software.
+
+    A cloud key records its own name, because the provider is the software for
+    that key (section 23.3). A key that was not available records no software,
+    so the field must be left out then (section 22).
     """
     if value is None or value == "":
         if unavailable:
             return None
-        raise ValidationError("wallet_software must be Sparrow Wallet or Nunchuk")
+        raise ValidationError("wallet_software is required when the key is available")
     if unavailable:
         raise ValidationError(
             "wallet_software cannot be recorded when the key was not available"
         )
-    if value not in WALLET_SOFTWARE:
-        raise ValidationError("wallet_software must be Sparrow Wallet or Nunchuk")
-    if key["key_number"] == CLOUD_KEY_NUMBER and value != "Nunchuk":
-        raise ValidationError("Nunchuk is the only wallet software for the cloud key")
+    if key["type"] == "cloud":
+        if value != key["name"]:
+            raise ValidationError("a cloud key records its own name as the wallet software")
+        return value
+    if value not in _wallet_software_choices(keys):
+        raise ValidationError(
+            f"wallet_software must be {SPARROW_SOFTWARE} or the name of a cloud key"
+        )
     return value
 
 
@@ -173,16 +251,15 @@ def _require_nothing_recorded(entries, field):
     raise ValidationError(f"{field} cannot be recorded when the key was not available")
 
 
-def _expected_products(key, wallet_software):
-    """Return the products to record BIP327/SLIP39 for, without duplicates."""
-    return tuple(dict.fromkeys((KEY_PRODUCTS[key["key_number"]], wallet_software)))
+def _expected_labels(key, wallet_software):
+    """Return the labels a submission records, without duplicates.
 
-
-def _expected_providers(key):
-    """Return the security status providers relevant to the selected key."""
-    if key["key_number"] == CLOUD_KEY_NUMBER:
-        return ("Nunchuk",)
-    return (KEY_PRODUCTS[key["key_number"]], "Sparrow Wallet", "Nunchuk")
+    Both the standards and the security statuses are recorded for the selected
+    key, by its configured name, and for the selected wallet software
+    (section 23.3). A cloud key that is named after its own software therefore
+    contributes one label only.
+    """
+    return tuple(dict.fromkeys((key["name"], wallet_software)))
 
 
 def _key_check(entry, key, available):
@@ -289,13 +366,13 @@ def _text(value, field, max_length):
 
 
 def _tool_checks(entries, key, wallet_software, unavailable):
-    """Return the BIP327/SLIP39 rows for the key product and selected software."""
+    """Return the BIP327/SLIP39 rows for the selected key and wallet software."""
     if unavailable:
         _require_nothing_recorded(entries, "tool_checks")
         return []
     if not isinstance(entries, list):
         raise ValidationError("tool_checks must be a list")
-    allowed = set(_expected_products(key, wallet_software))
+    allowed = set(_expected_labels(key, wallet_software))
     seen = set()
     normalized = []
     for entry in entries:
@@ -321,14 +398,14 @@ def _tool_checks(entries, key, wallet_software, unavailable):
     return normalized
 
 
-def _ai_security_checks(entries, key, unavailable):
-    """Return the security status rows relevant to the selected key."""
+def _ai_security_checks(entries, key, wallet_software, unavailable):
+    """Return the security status rows for the selected key and wallet software."""
     if unavailable:
         _require_nothing_recorded(entries, "ai_security_checks")
         return []
     if not isinstance(entries, list):
         raise ValidationError("ai_security_checks must be a list")
-    allowed = set(_expected_providers(key))
+    allowed = set(_expected_labels(key, wallet_software))
     seen = set()
     normalized = []
     for entry in entries:
