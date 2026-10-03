@@ -40,7 +40,9 @@ const verificationStatuses = [
 ];
 // Availability is always recorded, so it has no "not assessed" value (section 22).
 const availabilityOptions = [["", "Select availability"], ["1", "Yes"], ["0", "No"]];
-const booleanOptions = [["", "Not assessed"], ["1", "Yes"], ["0", "No"]];
+// Hardware works requires an active choice, so the placeholder is not an answer
+// (section 24.1).
+const hardwareWorksOptions = [["", "Select status"], ["1", "Yes"], ["0", "No"]];
 let keyProfiles = [];
 let previousValues = { keys: [] };
 // True while the compatibility control carries the value derived for a cloud key.
@@ -204,7 +206,12 @@ function renderKeyCheck() {
   const details = document.createElement("div");
   details.className = "form-stack";
   if (key.type === "hardware") {
-    details.append(makeField("Hardware works", "hardware_works", makeSelect(booleanOptions, "hardware_works")));
+    // Hardware works requires an active Yes or No (section 24.1).
+    details.append(makeField(
+      "Hardware works",
+      "hardware_works",
+      makeSelect(hardwareWorksOptions, "hardware_works"),
+    ));
     details.append(makeField(
       "Firmware version",
       "firmware_version",
@@ -238,12 +245,15 @@ function renderKeyCheck() {
 }
 
 function syncRequiredFields() {
+  // Hardware works and the two verification results all require an active choice
+  // for a key that was available (sections 23.1 and 24.1). The required flag is
+  // cleared when the key was not available, because a hidden required control
+  // would block the submission.
   const key = selectedKey();
   const availability = form.querySelector('[name="available"]');
   const required = Boolean(key) && availability !== null && availability.value === "1";
-  for (const name of ["seed_backup_verified", "address_path_verified"]) {
-    const selector = `[name="${name}"]`;
-    const select = form.querySelector(selector);
+  for (const name of ["hardware_works", "seed_backup_verified", "address_path_verified"]) {
+    const select = form.querySelector(`[name="${name}"]`);
     if (select) {
       select.required = required;
     }
