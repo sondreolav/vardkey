@@ -323,6 +323,38 @@ class ValidationTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             validate_health_check(payload, KEYS)
 
+    def test_not_assessed_is_only_the_derived_compatibility(self):
+        # No other field offers or accepts NOT_ASSESSED (section 24.1). The
+        # cloud health result is derived from availability, so it is only ever
+        # OK or PROBLEM.
+        payload = sample_payload(key_number=3)
+        payload["key_check"]["cloud_health_status"] = "NOT_ASSESSED"
+
+        with self.assertRaises(ValidationError):
+            validate_health_check(payload, KEYS)
+
+    def test_hardware_works_is_required_for_an_available_hardware_key(self):
+        # Hardware works requires an active Yes or No (section 24.1).
+        for value in ("", None, "NOT_ASSESSED"):
+            payload = sample_payload()
+            payload["key_check"]["hardware_works"] = value
+            with self.assertRaises(ValidationError):
+                validate_health_check(payload, KEYS)
+
+        payload = sample_payload()
+        del payload["key_check"]["hardware_works"]
+        with self.assertRaises(ValidationError):
+            validate_health_check(payload, KEYS)
+
+    def test_hardware_works_accepts_yes_and_no(self):
+        for value in (1, 0):
+            payload = sample_payload()
+            payload["key_check"]["hardware_works"] = value
+            self.assertEqual(
+                validate_health_check(payload, KEYS)["key_check"]["hardware_works"],
+                value,
+            )
+
     def test_contact_status_uses_the_two_stored_values(self):
         for value in ("Confirmed current", "Needs external update"):
             payload = sample_payload()
@@ -331,10 +363,17 @@ class ValidationTests(unittest.TestCase):
                 validate_health_check(payload, KEYS)["contact_info_verified"], value
             )
 
-    def test_contact_status_is_optional_and_never_a_flag(self):
-        payload = sample_payload()
-        payload["contact_info_verified"] = ""
-        self.assertIsNone(validate_health_check(payload, KEYS)["contact_info_verified"])
+    def test_contact_status_is_required_and_never_a_flag(self):
+        # The confirmation is required, also when the key was not available,
+        # because the question is still asked (section 24.1).
+        for payload in (sample_payload(), unavailable_payload()):
+            for value in ("", None):
+                payload["contact_info_verified"] = value
+                with self.assertRaises(ValidationError):
+                    validate_health_check(payload, KEYS)
+            del payload["contact_info_verified"]
+            with self.assertRaises(ValidationError):
+                validate_health_check(payload, KEYS)
 
         # The old 0/1 flag is no longer a valid value (section 23.1).
         for value in (1, 0, True, "yes"):
@@ -432,8 +471,12 @@ class ValidationTests(unittest.TestCase):
                 validate_health_check(payload, KEYS)
 
     def test_a_minimal_unavailable_payload_is_accepted(self):
+        # The check date, the key check, and the contact confirmation are the
+        # minimum, because the confirmation is required for every submission
+        # (section 24.1).
         payload = {
             "checked_at": "2026-10-01",
+            "contact_info_verified": "Needs external update",
             "key_check": {"key_id": 1, "available": 0},
         }
 
@@ -445,7 +488,7 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(result["tool_checks"], [])
         self.assertEqual(result["ai_security_checks"], [])
         self.assertEqual(result["software_compatibility_status"], "NOT_ASSESSED")
-        self.assertIsNone(result["contact_info_verified"])
+        self.assertEqual(result["contact_info_verified"], "Needs external update")
         self.assertIsNone(result["comments"])
 
     def test_an_unavailable_key_rejects_recorded_results(self):
