@@ -4,7 +4,7 @@
 
 Bygg ein **enkel lokal web-app** som køyrer som ein StartOS 0.4.0-service.
 
-Appen skal hjelpe éin brukar å gjennomføre og dokumentere ein årleg health check av eit fast **2-av-3 multisig-oppsett** med tre nøklar:
+Appen skal hjelpe éin brukar å gjennomføre og dokumentere ein årleg health check av eit **2-av-3 multisig-oppsett** med tre nøklar (namn og type blir konfigurerte ved første oppstart, §23.2):
 
 - Nøkkel 1: SeedSigner
 - Nøkkel 2: Blockstream Jade
@@ -70,9 +70,9 @@ Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 
 ---
 
-# 3. Fast oppsett som appen skal støtte
+# 3. Nøkkeloppsettet appen er bygd for
 
-Appen skal starte med eitt fast multisig-oppsett:
+Appen er bygd for eitt 2-av-3 multisig-oppsett. Tabellen under viser standardoppsettet:
 
 | Nøkkel | Type | Einheit |
 |---|---|---|
@@ -337,7 +337,7 @@ Unngå:
 # 15. Sikkerheit og personvern
 
 - [x] Ingen seed phrase, private keys, wallet-passord eller sky-tokens i databasen.
-- [x] Ingen unødvendige personopplysningar. Kontaktinfo blir berre registrert som verifisert / ikkje verifisert.
+- [x] Ingen unødvendige personopplysningar. Kontaktinfo blir berre registrert som status (`Confirmed current` / `Needs external update`).
 - [x] Valider input på serveren.
 - [x] Bruk parameteriserte SQL-spørringar.
 - [x] Ikkje implementer eigen kryptografi.
@@ -368,7 +368,7 @@ Unngå:
 - [ ] Test SLIP39-resultat.
 - [ ] Test KI-status `VULNERABLE`.
 - [ ] Test KI-status `COMPROMISED`.
-- [ ] Test kontaktinfo `NEI`.
+- [ ] Test kontaktinfo `Needs external update`.
 
 ## StartOS-test
 
@@ -392,7 +392,7 @@ Før første release skal alle desse vere oppfylte:
 - [ ] Dei tre nøklane er representerte i appen.
 - [ ] Ein komplett årleg health check kan gjennomførast i nettlesaren.
 - [ ] Alle årlege kontrollpunkt kan registrerast.
-- [ ] BIP327/SLIP39 kan registrerast for SeedSigner, Blockstream Jade, Nunchuk og Sparrow.
+- [ ] BIP327/SLIP39 kan registrerast for den valde nøkkelen (ved namn) og den valde programvara.
 - [ ] KI-status kan registrerast som SECURE, PATCHED, VULNERABLE eller COMPROMISED.
 - [ ] Kontaktinfo kan verifiserast utan å lagre kontaktinformasjonen.
 - [ ] Problem gir tydelege varsel.
@@ -411,7 +411,7 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 
 - [x] 1. Opprett grunnleggande web-app.
 - [x] 2. Opprett SQLite og datamodellen.
-- [x] 3. Implementer dei tre faste nøklane.
+- [x] 3. Implementer dei tre nøklane.
 - [x] 4. Implementer health check-skjemaet.
 - [x] 5. Implementer lagring og historikk.
 - [x] 6. Implementer varsellogikken.
@@ -436,13 +436,13 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 
 Desse fire vart tekne undervegs og er no innarbeidde i §1–§18. Kvar referanse i §1–§18 peikar på avsnittet nedanfor. Den fulle grunngjevinga ligg i git-historikken. §23 endra enkelte av detaljane etterpå; det står i så fall i parentes.
 
-**§19 — registrering per nøkkel.** Ei innsending gjeld **éin vald nøkkel**, ikkje alle tre. Brukaren vel éi wallet-programvare (`Sparrow Wallet` eller `Nunchuk`; nøkkel 3 er låst til Nunchuk) med eitt versjonsfelt. `seed_backup_status`, `address_verified` og `derivation_height` er fjerna. Migreringa er bakoverkompatibel, og eldre historikk blir framleis vist.
+**§19 — registrering per nøkkel.** Ei innsending gjeld **éin vald nøkkel**, ikkje alle tre. Brukaren vel éi wallet-programvare (`Sparrow Wallet` eller `Nunchuk`; nøkkel 3 er låst til Nunchuk) med eitt versjonsfelt. `seed_backup_status`, `address_verified` og `derivation_height` er fjerna. Migreringa er bakoverkompatibel, og eldre historikk blir framleis vist. (§23.3 endra vala: `Sparrow Wallet` pluss namnet på kvar cloud-nøkkel, og ein cloud-nøkkel er låst til sitt eige namn.)
 
 **§20 — skjulte felt som blir utleidde eller vidareførte.** Nøkkel 3 samlar berre `Availability`; cloud-helse, «leverandøren er i drift» og kompatibilitet blir utleidde. For nøkkel 1 og 2 blir den tredje leverandøren vidareført, men kjem tilbake av seg sjølv om statusen var `VULNERABLE` eller `COMPROMISED`. Førre lagra verdi blir fylt inn i feltet. Alt utleidd og vidareført blir lista i Review-oppsummeringa, merkt som nettopp det. (§23.1 gjorde den førre verdien til ein vanleg input-verdi i staden for ein placeholder, og §23.3 fjerna vidareføringa av den tredje leverandøren.)
 
-**§21 — engelske statusverdiar, adressesti og alle varsel.** `IKKJE_VURDERT` → `NOT_ASSESSED`, og BIP327/SLIP39 får `YES`/`NO`/`NOT_ASSESSED`. Skjema versjon 6: kvar råka tabell blir bygd opp att med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit. `Address path` blir berre vist og lagra når verifiseringa er `OK`. `GET /api/alerts` summerer alle lagra kontrollar, med `check_id` og `checked_at`, slår saman like varsel og listar kritiske først. «Helsesjekk» og `data/helsesjekk.sqlite3` er dokumenterte unntak frå engelskregelen.
+**§21 — engelske statusverdiar, adressesti og alle varsel.** `IKKJE_VURDERT` → `NOT_ASSESSED`, og BIP327/SLIP39 får `YES`/`NO`/`NOT_ASSESSED`. Skjema versjon 6 (no versjon 8, §23.4): kvar råka tabell blir bygd opp att med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit. `Address path` blir berre vist og lagra når verifiseringa er `OK`. `GET /api/alerts` summerer alle lagra kontrollar, med `check_id` og `checked_at`, slår saman like varsel og listar kritiske først. «Helsesjekk» og `data/helsesjekk.sqlite3` er dokumenterte unntak frå engelskregelen.
 
-**§22 — utilgjengeleg nøkkel gjer resten valfritt.** `Availability` er obligatorisk med berre Ja/Nei. Når han er Nei, blir programvare, standardar og KI-status skjulte og ikkje kravde, og dei må vere tomme i POST — elles svarar serveren `400`. Det blir ikkje lagra nokon slike rader, `wallet_software` er `NULL`, og `software_compatibility_status` blir `NOT_ASSESSED`. Nøkkel 3 held fram med dei utleidde cloud-verdiane sine og gir det samanslåtte varselet. Databasen kravde inga endring.
+**§22 — utilgjengeleg nøkkel gjer resten valfritt.** `Availability` er obligatorisk med berre Ja/Nei. Når han er Nei, blir programvare, standardar og KI-status skjulte og ikkje kravde, og dei må vere tomme i POST — elles svarar serveren `400`. Det blir ikkje lagra nokon slike rader, `wallet_software` er `NULL`, og `software_compatibility_status` blir `NOT_ASSESSED`. Ein cloud-nøkkel held fram med dei utleidde cloud-verdiane sine og gir det samanslåtte varselet. Databasen kravde inga endring.
 
 ## Framtidig arbeid, ikke no
 
@@ -451,9 +451,11 @@ Desse fire vart tekne undervegs og er no innarbeidde i §1–§18. Kvar referans
 
 ---
 
-# 23. Avtalt vidare arbeid før StartOS-pakken
+# 23. Avtalt arbeid før StartOS-pakken (implementert)
 
 Dette vart avtalt 02.10.2026. Heile §23.1–§23.5 er implementert og verifisert (178 grøne testar). Arbeidet vart gjort **før** steg 9–12 i §18. Der §23 seier noko anna enn §3–§6, gjeld §23.
+
+Det som er verifisert, er testsuiten. Nettlesarflytane og migreringa av ein verkeleg eldre database står att som manuelle testar i §16 og er ikkje køyrde enno.
 
 ## 23.1 Skjemafiksar
 
