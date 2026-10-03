@@ -59,7 +59,7 @@
           </div>
           <div class="field-grid">
             <label class="field"><span>Wallet software</span><select id="wallet-software" name="wallet_software" required><option value="">Select software</option><option value="Sparrow Wallet">Sparrow Wallet</option><option value="Nunchuk">Nunchuk</option></select></label>
-            <label class="field"><span>Compatibility status</span><select name="software_compatibility_status"><option value="NOT_ASSESSED">Not assessed</option><option value="OK">OK</option><option value="PROBLEM">Problem</option></select></label>
+            <label class="field"><span>Compatibility status</span><select id="software-compatibility" name="software_compatibility_status" required><option value="">Select status</option><option value="OK">OK</option><option value="PROBLEM">Problem</option></select></label>
             <label class="field"><span>Software version <span class="optional">(if used)</span></span><input id="software-version" name="software_version" type="text" maxlength="100" autocomplete="off"></label>
           </div>
           <p class="field-help" id="software-help">Record the version of the software you selected for this key.</p>
@@ -89,8 +89,9 @@
             <p class="eyebrow">06 / Contact confirmation</p>
             <h2 id="contact-title">Contact information</h2>
           </div>
-          <label class="field"><span>Have you confirmed that all key holders' contact details are current?</span><select name="contact_info_verified"><option value="">Not assessed</option><option value="1">Yes</option><option value="0">No</option></select></label>
-          <p class="field-help">Only the confirmation is recorded in the saved check. Do not enter names, email addresses, or phone numbers.</p>
+          <label class="field"><span>Have you confirmed that this key holder's contact details are current?</span><select id="contact-info-verified" name="contact_info_verified"><option value="">Not assessed</option><option value="Confirmed current">Confirmed current</option><option value="Needs external update">Needs external update</option></select></label>
+          <p class="field-help">Only the confirmation for the selected key is recorded in the saved check. Do not enter names, email addresses, or phone numbers.</p>
+          <p class="field-help" id="contact-reminder" hidden>Contact details must be updated in your external documentation.</p>
         </section>
 
         <section class="form-section" aria-labelledby="comments-title">
