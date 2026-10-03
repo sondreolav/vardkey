@@ -42,8 +42,6 @@ def build_alerts(record):
     for key_check in record.get("key_checks") or ():
         alerts.extend(_key_alerts(key_check))
     alerts.extend(_software_alerts(record))
-    for tool_check in record.get("tool_checks") or ():
-        alerts.extend(_tool_alerts(tool_check))
     for security_check in record.get("ai_security_checks") or ():
         alerts.extend(_security_alerts(security_check))
     alerts.extend(_contact_alerts(record))
@@ -146,32 +144,6 @@ def _software_alerts(record):
             "The software no longer supports the hardware. Consider alternative software.",
         )]
     return []
-
-
-def _tool_alerts(tool_check):
-    """Return the informational alerts for reported BIP327 or SLIP39 support.
-
-    Only a positive result raises an alert. ``NO`` is a reported lack of support
-    and ``NOT_ASSESSED`` is an open question, so neither needs follow-up.
-    """
-    product = tool_check.get("product")
-    alerts = []
-
-    if tool_check.get("bip327_status") == "YES":
-        alerts.append(_alert(
-            "bip327_available",
-            INFO,
-            f"{product} (BIP327)",
-            "BIP327 support is reported as available. A future BIP327 upgrade can be considered.",
-        ))
-    if tool_check.get("slip39_status") == "YES":
-        alerts.append(_alert(
-            "slip39_available",
-            INFO,
-            f"{product} (SLIP39)",
-            "SLIP39 support is reported as available. A future SLIP39 activation can be considered.",
-        ))
-    return alerts
 
 
 def _security_alerts(security_check):
