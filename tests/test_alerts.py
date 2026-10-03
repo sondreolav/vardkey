@@ -33,10 +33,6 @@ def clean_record(key_number=1, name="SeedSigner", key_type="hardware"):
         "software_compatibility_status": "OK",
         "contact_info_verified": "Confirmed current",
         "key_checks": [entry],
-        "tool_checks": [
-            {"product": "SeedSigner", "bip327_status": "NOT_ASSESSED", "slip39_status": "NOT_ASSESSED"},
-            {"product": "Sparrow Wallet", "bip327_status": "NOT_ASSESSED", "slip39_status": "NOT_ASSESSED"},
-        ],
         "ai_security_checks": [
             {"provider": "SeedSigner", "status": "SECURE"},
             {"provider": "Sparrow Wallet", "status": "SECURE"},
@@ -154,39 +150,6 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(self.codes(record), ["software_incompatible"])
         self.assertEqual(alerts[0]["source"], "Software compatibility")
 
-    def test_reported_bip327_support_is_an_informational_alert(self):
-        record = clean_record()
-        record["tool_checks"][0]["bip327_status"] = "YES"
-
-        alerts = build_alerts(record)
-
-        self.assertEqual(self.codes(record), ["bip327_available"])
-        self.assertEqual(alerts[0]["severity"], "info")
-        self.assertEqual(alerts[0]["source"], "SeedSigner (BIP327)")
-
-    def test_reported_slip39_support_is_an_informational_alert(self):
-        record = clean_record()
-        record["tool_checks"][1]["slip39_status"] = "YES"
-
-        alerts = build_alerts(record)
-
-        self.assertEqual(self.codes(record), ["slip39_available"])
-        self.assertEqual(alerts[0]["source"], "Sparrow Wallet (SLIP39)")
-
-    def test_a_reported_lack_of_support_raises_no_alert(self):
-        record = clean_record()
-        record["tool_checks"][0]["bip327_status"] = "NO"
-        record["tool_checks"][1]["slip39_status"] = "NO"
-
-        self.assertEqual(build_alerts(record), [])
-
-    def test_the_old_standards_values_raise_no_alert(self):
-        record = clean_record()
-        record["tool_checks"][0]["bip327_status"] = "OK"
-        record["tool_checks"][1]["slip39_status"] = "PROBLEM"
-
-        self.assertEqual(build_alerts(record), [])
-
     def test_a_vulnerable_security_status_must_be_followed_up(self):
         record = clean_record()
         record["ai_security_checks"][2]["status"] = "VULNERABLE"
@@ -250,16 +213,15 @@ class AlertTests(unittest.TestCase):
     def test_critical_alerts_are_listed_before_informational_ones(self):
         record = clean_record(key_number=3, name="Nunchuk", key_type="cloud")
         record["contact_info_verified"] = "Needs external update"
-        record["tool_checks"][0]["bip327_status"] = "YES"
         record["ai_security_checks"][1]["status"] = "VULNERABLE"
         record["key_checks"][0]["available"] = 0
 
         severities = [alert["severity"] for alert in build_alerts(record)]
 
-        self.assertEqual(severities, ["critical", "critical", "info", "info"])
+        self.assertEqual(severities, ["critical", "critical", "info"])
         self.assertEqual(
             self.codes(record),
-            ["key_unavailable", "security_vulnerable", "bip327_available", "contact_info_unconfirmed"],
+            ["key_unavailable", "security_vulnerable", "contact_info_unconfirmed"],
         )
 
 
