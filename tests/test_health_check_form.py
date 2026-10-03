@@ -108,6 +108,26 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("compatibilityDerived", script)
         self.assertIn('softwareCompatibilitySelect.value = "OK"', script)
 
+    def test_form_requires_hardware_works_and_the_contact_confirmation(self):
+        html = read_static("health-check.html")
+        script = read_static("health-check.js")
+        # Hardware works is a required choice for an available hardware key
+        # (section 24.1), so the placeholder is not an answer.
+        self.assertIn("hardwareWorksOptions", script)
+        self.assertIn('["", "Select status"]', script)
+        self.assertIn('makeSelect(hardwareWorksOptions, "hardware_works")', script)
+        self.assertNotIn("booleanOptions", script)
+        # The required flag is cleared when the key was not available, because a
+        # hidden required control would block the submission.
+        self.assertIn(
+            '["hardware_works", "seed_backup_verified", "address_path_verified"]',
+            script,
+        )
+        # The confirmation is required in the markup, with the same placeholder,
+        # and it has no "not assessed" value.
+        self.assertIn('name="contact_info_verified" required', html)
+        self.assertNotIn("Not assessed", html)
+
     def test_form_asks_about_the_selected_key_holder_and_reminds_about_updates(self):
         html = read_static("health-check.html")
         script = read_static("health-check.js")
