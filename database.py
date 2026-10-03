@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlite3
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 FIXED_KEYS = (
     (1, "SeedSigner", "hardware", "SeedSigner"),
     (2, "Blockstream Jade", "hardware", "Blockstream Jade"),
@@ -34,7 +34,8 @@ HEALTH_CHECKS_TABLE = """
         sparrow_version TEXT,
         nunchuk_version TEXT,
         software_comments TEXT,
-        contact_info_verified INTEGER CHECK (contact_info_verified IN (0, 1)),
+        contact_info_verified TEXT
+            CHECK (contact_info_verified IN ('Confirmed current', 'Needs external update')),
         comments TEXT
     )
     """
@@ -117,6 +118,10 @@ STANDARDS_STATUS_MIGRATION = (
     ("IKKJE_VURDERT", "NOT_ASSESSED"),
 )
 LEGACY_STATUS_VALUE = "IKKJE_VURDERT"
+# The contact confirmation was stored as 0/1 before section 23.1 replaced the
+# flag with the two contact statuses. This substring marks a pre-section-23.1
+# health_checks table.
+LEGACY_CONTACT_CHECK = "contact_info_verified IN (0, 1)"
 # The newest saved check per key, used by the dashboard and the form. Duplicated
 # on purpose so the queries stay readable without a window function.
 _LATEST_CHECK_QUERY = """
@@ -237,6 +242,23 @@ def _verification_expression(columns, mappings):
     return "CASE " + " ".join(cases) + " ELSE NULL END"
 
 
+def _contact_status_expression(columns):
+    """Build a CASE expression that maps the pre-section-23.1 contact flag.
+
+    The old flag answered a yes/no question, so ``0`` meant the details were not
+    confirmed and is now the status ``Needs external update`` (section 23.1). A
+    table without the column has no contact result at all.
+    """
+    if "contact_info_verified" not in columns:
+        return "NULL"
+    return (
+        "CASE contact_info_verified"
+        " WHEN 0 THEN 'Needs external update'"
+        " WHEN 1 THEN 'Confirmed current'"
+        " ELSE contact_info_verified END"
+    )
+
+
 def _create_replacement(connection, table, statement):
     """Create the temporary table a rebuild copies its rows into.
 
@@ -347,13 +369,15 @@ def _migrate_ai_security_checks(connection):
 
 
 def _migrate_status_values(connection):
-    """Rewrite the status columns that became English (section 21).
+    """Rewrite the columns whose stored values changed.
 
-    SQLite cannot change a CHECK constraint, so each affected table is rebuilt:
-    the replacement is created under a temporary name, the rows are copied with
-    the mapped values, and the replacement takes the old table's place.
+    Section 21 made the status values English and section 23.1 replaced the 0/1
+    contact flag with the two contact statuses. SQLite cannot change a CHECK
+    constraint, so each affected table is rebuilt: the replacement is created
+    under a temporary name, the rows are copied with the mapped values, and the
+    replacement takes the old table's place.
     """
-    if _uses_legacy_status_values(connection, "health_checks"):
+    if _health_checks_need_rebuild(connection):
         _rebuild_health_checks(connection)
     if _uses_legacy_status_values(connection, "key_checks"):
         _rebuild_key_checks(connection)
@@ -367,12 +391,27 @@ def _uses_legacy_status_values(connection, table):
     return sql is not None and LEGACY_STATUS_VALUE in sql
 
 
+def _health_checks_need_rebuild(connection):
+    """Return True while health_checks still uses an older column definition."""
+    sql = _table_sql(connection, "health_checks")
+    if sql is None:
+        return False
+    return LEGACY_STATUS_VALUE in sql or LEGACY_CONTACT_CHECK in sql
+
+
 def _rebuild_health_checks(connection):
-    """Rebuild health_checks with NOT_ASSESSED instead of IKKJE_VURDERT."""
+    """Rebuild health_checks with the current status and contact values.
+
+    ``IKKJE_VURDERT`` becomes ``NOT_ASSESSED`` (section 21) and the 0/1 contact
+    flag becomes ``Confirmed current`` or ``Needs external update``
+    (section 23.1).
+    """
+    columns = _table_columns(connection, "health_checks")
     temporary = _create_replacement(connection, "health_checks", HEALTH_CHECKS_TABLE)
     compatibility = _mapped_status_sql(
         "software_compatibility_status", NOT_ASSESSED_MIGRATION
     )
+    contact = _contact_status_expression(columns)
     connection.execute(f"""
         INSERT INTO {temporary} (
             id, checked_at, next_check_due, wallet_software, software_version,
@@ -382,7 +421,7 @@ def _rebuild_health_checks(connection):
         SELECT id, checked_at, next_check_due, wallet_software, software_version,
                {compatibility},
                sparrow_version, nunchuk_version, software_comments,
-               contact_info_verified, comments
+               {contact}, comments
         FROM health_checks
     """)
     _replace_table(connection, "health_checks", temporary)
@@ -609,7 +648,7 @@ def list_previous_values(database_path="data/helsesjekk.sqlite3"):
     ``keys`` carries the last recorded firmware version, address path, wallet
     software, and software version for each key. ``security`` carries the last
     recorded security status for each provider, whatever key recorded it. Both
-    are used for the placeholders and for carrying hidden fields forward.
+    are used to pre-fill the form and to carry hidden fields forward.
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
