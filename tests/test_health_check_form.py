@@ -1,6 +1,7 @@
 """Tests for annual health-check form content and client-side behavior."""
 
 from pathlib import Path
+import re
 import unittest
 
 
@@ -28,6 +29,24 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn('id="next-check-preview"', html)
         self.assertNotIn("next_check_due", html)
         self.assertIn('name="contact_info_verified"', html)
+
+    def test_the_form_sections_follow_the_agreed_order(self):
+        html = read_static("health-check.html")
+        eyebrows = re.findall(r'<p class="eyebrow">([^<]+)</p>', html)
+
+        # The form is renumbered, and 04 / Standards is gone (section 24.3).
+        self.assertEqual(
+            eyebrows,
+            [
+                "01 / Schedule",
+                "02 / Key",
+                "03 / Compatibility",
+                "04 / External research",
+                "05 / Contact confirmation",
+                "06 / Notes",
+                "Review",
+            ],
+        )
 
     def test_form_script_covers_the_checklist_fields_and_status_values(self):
         script = read_static("health-check.js")
