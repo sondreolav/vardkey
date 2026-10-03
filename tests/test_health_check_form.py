@@ -34,10 +34,12 @@ class HealthCheckFormTests(unittest.TestCase):
         html = read_static("health-check.html")
         eyebrows = re.findall(r'<p class="eyebrow">([^<]+)</p>', html)
 
-        # The form is renumbered, and 04 / Standards is gone (section 24.3).
+        # The page heading comes first, and the form is renumbered with
+        # 04 / Standards gone (section 24.3).
         self.assertEqual(
             eyebrows,
             [
+                "Annual security check",
                 "01 / Schedule",
                 "02 / Key",
                 "03 / Compatibility",
