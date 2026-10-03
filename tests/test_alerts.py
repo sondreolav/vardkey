@@ -31,7 +31,7 @@ def clean_record(key_number=1, name="SeedSigner", key_type="hardware"):
         "checked_at": "2026-10-01",
         "next_check_due": "2027-10-01",
         "software_compatibility_status": "OK",
-        "contact_info_verified": 1,
+        "contact_info_verified": "Confirmed current",
         "key_checks": [entry],
         "tool_checks": [
             {"product": "SeedSigner", "bip327_status": "NOT_ASSESSED", "slip39_status": "NOT_ASSESSED"},
@@ -213,14 +213,24 @@ class AlertTests(unittest.TestCase):
 
         self.assertEqual(build_alerts(record), [])
 
-    def test_unconfirmed_contact_information_is_reported(self):
+    def test_contact_details_that_need_an_external_update_are_reported(self):
         record = clean_record()
-        record["contact_info_verified"] = 0
+        record["contact_info_verified"] = "Needs external update"
 
         alerts = build_alerts(record)
 
         self.assertEqual(self.codes(record), ["contact_info_unconfirmed"])
+        self.assertEqual(alerts[0]["severity"], "info")
         self.assertEqual(alerts[0]["source"], "Contact information")
+        self.assertIn("external update", alerts[0]["message"])
+
+    def test_the_old_contact_flag_raises_no_alert(self):
+        # The 0/1 flag is migrated to a status, so a raw flag is never a result
+        # (section 23.1).
+        record = clean_record()
+        record["contact_info_verified"] = 0
+
+        self.assertEqual(build_alerts(record), [])
 
     def test_unassessed_values_are_not_treated_as_failures(self):
         record = clean_record()
@@ -239,7 +249,7 @@ class AlertTests(unittest.TestCase):
 
     def test_critical_alerts_are_listed_before_informational_ones(self):
         record = clean_record(key_number=3, name="Nunchuk", key_type="cloud")
-        record["contact_info_verified"] = 0
+        record["contact_info_verified"] = "Needs external update"
         record["tool_checks"][0]["bip327_status"] = "YES"
         record["ai_security_checks"][1]["status"] = "VULNERABLE"
         record["key_checks"][0]["available"] = 0
@@ -328,7 +338,7 @@ class CollectAlertsTests(unittest.TestCase):
         older["key_checks"][0]["hardware_works"] = 0
         newer = dated_record(2, "2026-10-01", key_number=2, name="Blockstream Jade")
         newer["key_checks"][0]["seed_backup_verified"] = "PROBLEM"
-        newer["contact_info_verified"] = 0
+        newer["contact_info_verified"] = "Needs external update"
 
         alerts = collect_alerts([newer, older])
 
