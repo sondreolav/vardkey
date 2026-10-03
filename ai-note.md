@@ -10,7 +10,7 @@ Short working handover for the next model. Keep it short.
 
 - **Done and verified:** sections 19–22 and section 18 steps 1–8. All ticked in `TODO.md`.
 - **Implemented, waiting for the test run:** section 23.1 — pre-filled form values, required compatibility status, contact statuses, and schema version 7 with its migration. Not ticked in `TODO.md` yet.
-- **Tests:** 123 before section 23.1. The user runs them: `python3 -m unittest discover -s tests` from `/home/snes/start9/helsesjekk`.
+- **Tests:** 138 after section 23.1 (123 before). The user runs them: `python3 -m unittest discover -s tests`. They now run on a Windows copy at `C:\Users\Driftsleiar\Downloads\helsesjekk`, so they must pass there as well as on Linux.
 - **Agreed next work, not started:** section 23.2–23.5 — configurable key setup, type-driven checks, dynamic wallet-software choices, and the matching migration and tests.
 - **Remaining after that:** steps 9–12 — StartOS package, persistent volume, backup/restore, `.s9pk`. Covered by sections 13, 14, 16 and 17 of `TODO.md`.
 
@@ -85,6 +85,7 @@ Two things that are easy to break:
 
 ## Traps that already cost time — do not repeat
 
+- **`with sqlite3.connect(...)` does not close the connection.** It only commits or rolls back the transaction. On Windows the database file stays locked and `TemporaryDirectory.cleanup()` fails with `WinError 32`. Always close explicitly with `try`/`finally`; see `write_schema()` in `tests/test_database.py`.
 - **A `required` control inside a `display:none` container still blocks submission.** The browser refuses to submit and logs "An invalid form control is not focusable". Hiding a section is not enough: the required flags must be cleared, or the section must render something other than required fields. That is why `renderToolChecks()` and `renderSecurityChecks()` show an empty note instead of cards when the key is unavailable, and why `syncUnavailableState()` clears `softwareCompatibilitySelect.required` and the cloud key carries a derived value.
 - **Do not assert on the quoting style of the JavaScript.** `static/health-check.js` uses single quotes for constant selectors and template literals where a `${...}` substitution is needed. Assert on the selector text, e.g. `[name="address_path"]`.
 - **`clean_record()` in `tests/test_alerts.py` has a fixed provider list.** A test that needs another provider must replace the entry itself.
