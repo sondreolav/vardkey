@@ -6,8 +6,11 @@ const keyCheck = document.querySelector("#key-check");
 const softwareSection = document.querySelector("#software-section");
 const softwareGrid = document.querySelector("#software-section .field-grid");
 const walletSoftwareSelect = document.querySelector("#wallet-software");
+const softwareCompatibilitySelect = document.querySelector("#software-compatibility");
 const softwareVersionInput = document.querySelector("#software-version");
 const softwareHelp = document.querySelector("#software-help");
+const contactSelect = document.querySelector("#contact-info-verified");
+const contactReminder = document.querySelector("#contact-reminder");
 const toolChecks = document.querySelector("#tool-checks");
 const securityChecks = document.querySelector("#security-checks");
 const nextCheckPreview = document.querySelector("#next-check-preview");
@@ -26,6 +29,8 @@ const SECURITY_STATUSES = ["SECURE", "PATCHED", "VULNERABLE", "COMPROMISED"];
 const UNRESOLVED_STATUSES = ["VULNERABLE", "COMPROMISED"];
 const DEFAULT_SECURITY_STATUS = "SECURE";
 const UNAVAILABLE_MESSAGE = "The remaining checks for this key cannot be recorded.";
+// The contact result that reminds the user to update their own records (section 23.1).
+const CONTACT_NEEDS_UPDATE = "Needs external update";
 const generalStatuses = [
   ["NOT_ASSESSED", "Not assessed"],
   ["OK", "OK"],
@@ -47,6 +52,8 @@ const booleanOptions = [["", "Not assessed"], ["1", "Yes"], ["0", "No"]];
 let keyProfiles = [];
 let previousValues = { keys: [], security: {} };
 let carriedSecurity = [];
+// True while the compatibility control carries the value derived for a cloud key.
+let compatibilityDerived = false;
 
 function emptyState(text) {
   const message = document.createElement("p");
@@ -83,15 +90,15 @@ function makeSelect(options, name, placeholder = "") {
   return select;
 }
 
-function makeTextInput(name, maxLength = 200, placeholder = "") {
+function makeTextInput(name, maxLength = 200, value = "") {
   const input = document.createElement("input");
   input.type = "text";
   input.name = name;
   input.maxLength = maxLength;
   input.autocomplete = "off";
-  if (placeholder) {
-    input.placeholder = placeholder;
-  }
+  // A previous value is a real input value, not a placeholder, so a field the
+  // user does not touch is saved as it stands (section 23.1).
+  input.value = value;
   return input;
 }
 
@@ -131,6 +138,11 @@ function previousForKey(keyId) {
 
 function previousSecurity(provider) {
   return (previousValues.security || {})[provider] || null;
+}
+
+function previousText(previous, field) {
+  // An empty field is the right answer when no relevant value was saved.
+  return (previous && previous[field]) || "";
 }
 
 function keyProductFor(key) {
@@ -195,7 +207,7 @@ function renderKeyCheck() {
     details.append(makeField(
       "Firmware version",
       "firmware_version",
-      makeTextInput("firmware_version", 100, previous ? previous.firmware_version : ""),
+      makeTextInput("firmware_version", 100, previousText(previous, "firmware_version")),
     ));
     details.append(makeField(
       "Seed backup intact and matching the device",
@@ -208,7 +220,7 @@ function renderKeyCheck() {
   details.append(makeField(
     "Address path",
     "address_path",
-    makeTextInput("address_path", 200, previous ? previous.address_path : ""),
+    makeTextInput("address_path", 200, previousText(previous, "address_path")),
   ));
   card.append(details);
   card.append(makeField("Key notes", "key_comments", makeTextarea("key_comments")));
@@ -239,17 +251,18 @@ function syncRequiredFields() {
 
 function syncAddressPathField() {
   // The path is only recorded when it was verified as OK, so an unverified or
-  // failed result never stores a path (section 21).
+  // failed result never stores a path (section 21). The control is disabled
+  // while it is hidden instead of cleared, so a pre-filled path is kept for the
+  // user and still cannot be submitted with an unverified result.
   const field = form.querySelector('[name="address_path"]')?.closest(".field");
   const verified = form.querySelector('[name="address_path_verified"]');
   if (!field || verified === null) {
     return;
   }
+  const input = form.querySelector('[name="address_path"]');
   const show = Boolean(selectedKey()) && verified.value === "OK";
   field.hidden = !show;
-  if (!show) {
-    form.querySelector('[name="address_path"]').value = "";
-  }
+  input.disabled = !show;
 }
 
 function syncUnavailableState() {
@@ -260,6 +273,9 @@ function syncUnavailableState() {
   toolChecksSection.hidden = unavailable;
   securityChecksSection.hidden = unavailable;
   walletSoftwareSelect.required = !unavailable;
+  // A hidden required control blocks the submission, so the compatibility
+  // result is not required for a key that was not available either.
+  softwareCompatibilitySelect.required = !unavailable;
 }
 
 function lockSoftwareFields() {
@@ -270,22 +286,41 @@ function lockSoftwareFields() {
   softwareGrid.hidden = isCloud;
   if (isCloud) {
     walletSoftwareSelect.value = "Nunchuk";
+    // Compatibility is derived from availability for the cloud key, so the
+    // hidden control carries the derived value instead of asking for one
+    // (section 20).
+    softwareCompatibilitySelect.value = "OK";
+    compatibilityDerived = true;
     softwareHelp.textContent = "Compatibility is derived from availability for the cloud key: available gives OK, not available gives not assessed.";
   } else {
+    if (compatibilityDerived) {
+      // The derived value is not an answer for another key, so it is cleared.
+      softwareCompatibilitySelect.value = "";
+      compatibilityDerived = false;
+    }
     softwareHelp.textContent = "Record the version of the software you selected for this key.";
   }
-  updateSoftwareVersionPlaceholder();
+  updateSoftwareVersionValue();
 }
 
-function updateSoftwareVersionPlaceholder() {
+function updateSoftwareVersionValue() {
   const key = selectedKey();
   const previous = key ? previousForKey(key.id) : null;
+  // The saved version belongs to the saved software choice, so it is only
+  // reused for the same key and the same software (section 23.1). The cloud key
+  // has no version field of its own.
   const reusable = Boolean(key)
     && key.key_number !== CLOUD_KEY_NUMBER
     && previous
     && previous.wallet_software === walletSoftwareSelect.value
     && previous.software_version;
-  softwareVersionInput.placeholder = reusable ? previous.software_version : "";
+  softwareVersionInput.value = reusable ? previous.software_version : "";
+}
+
+function syncContactReminder() {
+  // "Needs external update" records the status only and reminds the user to
+  // update the contact details in their own documentation (section 23.1).
+  contactReminder.hidden = contactSelect.value !== CONTACT_NEEDS_UPDATE;
 }
 
 function renderToolChecks() {
@@ -449,7 +484,13 @@ function buildReview() {
     const value = data.get(select.name);
     if (value === "" || value === "NOT_ASSESSED") {
       missing.push(label);
-    } else if (value === "PROBLEM" || value === "0" || value === "VULNERABLE" || value === "COMPROMISED") {
+    } else if (
+      value === "PROBLEM"
+      || value === "0"
+      || value === "VULNERABLE"
+      || value === "COMPROMISED"
+      || value === CONTACT_NEEDS_UPDATE
+    ) {
       const problem = `${label}: ${value}`;
       problems.push(problem);
     }
@@ -567,9 +608,9 @@ function collectPayload() {
     wallet_software: unavailable ? null : data.get("wallet_software"),
     software_version: unavailable ? "" : textValue(data, "software_version"),
     software_compatibility_status: derived.software_compatibility_status
-      || (unavailable ? "NOT_ASSESSED" : data.get("software_compatibility_status")),
+      || (unavailable ? "NOT_ASSESSED" : statusValue(data, "software_compatibility_status")),
     software_comments: unavailable ? "" : textValue(data, "software_comments"),
-    contact_info_verified: flagValue(data, "contact_info_verified"),
+    contact_info_verified: statusValue(data, "contact_info_verified"),
     comments: textValue(data, "comments"),
     key_check: collectKeyCheck(data, key, derived),
     tool_checks: unavailable ? [] : expectedProducts(key).map((product) => {
@@ -647,16 +688,18 @@ async function loadFormData() {
 setCheckDate();
 renderKeyCheck();
 refreshKeySections();
+syncContactReminder();
 saveButton.addEventListener("click", saveHealthCheck);
 keySelect.addEventListener("change", () => {
   renderKeyCheck();
   refreshKeySections();
 });
 walletSoftwareSelect.addEventListener("change", () => {
-  updateSoftwareVersionPlaceholder();
+  updateSoftwareVersionValue();
   renderToolChecks();
   renderSecurityChecks();
 });
+contactSelect.addEventListener("change", syncContactReminder);
 form.addEventListener("input", resetReview);
 form.addEventListener("submit", (event) => {
   event.preventDefault();
