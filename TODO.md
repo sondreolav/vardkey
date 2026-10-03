@@ -14,7 +14,7 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 
 Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 
-**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. Fire avgjerder vart tekne undervegs, alle implementerte og verifiserte, og er innarbeidde i §1–§18; dei står att som eit kort vedlegg i §19–§22. §23 er konfigurerbart nøkkeloppsett, implementert og verifisert. §24 er avtalt arbeid som **ikkje er implementert**, og som skal gjerast før steg 9–12 i §18. Den fulle grunngjevinga for kvar avgjerd ligg i git-historikken.
+**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. Fire avgjerder vart tekne undervegs, alle implementerte og verifiserte, og er innarbeidde i §1–§18; dei står att som eit kort vedlegg i §19–§22. §23 er konfigurerbart nøkkeloppsett, implementert og verifisert. §24 er avtalt arbeid som skal gjerast før steg 9–12 i §18; §24.1 er implementert og verifisert, medan §24.2–§24.5 står opne. Den fulle grunngjevinga for kvar avgjerd ligg i git-historikken.
 
 ## Språkkrav
 
@@ -61,7 +61,7 @@ Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 
 # 2. Viktige reglar for appen
 
-- [x] Appen skal aldri spørje etter seed phrase, private keys, PIN, passord eller wallet-hemmeligheiter.
+- [x] Appen skal aldri spørje etter seed phrase, private keys, PIN, passord eller wallet-hemmelegheiter.
 - [x] Appen skal aldri lagre slike hemmelegheiter, og ikkje lagre kontaktinnhald.
 - [x] Kontaktinformasjon til nøkkelhaldarar skal ikkje lagrast; berre om kontaktinfo er verifisert.
 - [x] Appen skal ikkje late som han sjølv har utført ein hardware-test. Brukaren registrerer resultatet av testen.
@@ -118,8 +118,8 @@ Reglar:
 - [x] `provider` lagrar det konfigurerte nøkkelnamnet og den valde programvara, ikkje faste produktnamn (§23.3).
 - [x] `wallet_software` og `contact_info_verified` er fri tekst; dei faste listene er fjerna (§23.1, §23.3).
 - [x] `device`-kolonnen er fjerna; det konfigurerte namnet er den einaste produktetikketten (§23.2).
-- [ ] `hardware_works` er obligatorisk (`0` eller `1`) for ein tilgjengeleg hardware-nøkkel (§24.1).
-- [ ] `contact_info_verified` er obligatorisk og har ingen «not assessed»-verdi (§24.1).
+- [x] `hardware_works` er obligatorisk (`0` eller `1`) for ein tilgjengeleg hardware-nøkkel (§24.1).
+- [x] `contact_info_verified` er obligatorisk og har ingen «not assessed»-verdi (§24.1).
 - [ ] `tool_checks`-tabellen er fjerna (§24.2, §24.4).
 
 ---
@@ -133,9 +133,9 @@ Reglar:
 - [x] Ikkje bland saman «ikkje vurdert» og eit faktisk negativt resultat.
 - [x] Kontaktstadfesting brukar `Confirmed current` eller `Needs external update` i staden for Ja/Nei (§23.1).
 - [x] `Software compatibility` krev eit aktivt val (`OK` / `PROBLEM`) for ein hardware-nøkkel (§23.1).
-- [ ] `Hardware works` krev eit aktivt val (`Yes` / `No`) for ein tilgjengeleg hardware-nøkkel (§24.1).
-- [ ] Kontaktstadfesting er obligatorisk og har ingen «not assessed»-verdi (§24.1).
-- [ ] `NOT_ASSESSED` er berre lovleg som den utleidde verdien for `software_compatibility_status` når nøkkelen er utilgjengeleg (§24.1).
+- [x] `Hardware works` krev eit aktivt val (`Yes` / `No`) for ein tilgjengeleg hardware-nøkkel (§24.1).
+- [x] Kontaktstadfesting er obligatorisk og har ingen «not assessed»-verdi (§24.1).
+- [x] `NOT_ASSESSED` er berre lovleg som den utleidde verdien for `software_compatibility_status` når nøkkelen er utilgjengeleg (§24.1).
 - [ ] BIP327- og SLIP39-statusane er fjerna saman med funksjonen sin (§24.2).
 
 ---
@@ -158,7 +158,7 @@ Stega følgjer seksjonane i skjemaet.
 ### Hardware-nøkkel
 
 - [x] Tilgjengeleg / ikkje tilgjengeleg.
-- [ ] `Hardware works` er obligatorisk: Ja eller Nei (§24.1).
+- [x] `Hardware works` er obligatorisk: Ja eller Nei (§24.1).
 - [x] Registrer firmware-versjon.
 - [x] Seed-backup intakt og stemmer med hardware → `seed_backup_verified` (`OK` / `PROBLEM`).
 - [x] Verifiser adresse, derivasjonshøgd og adresse-sti → `address_path_verified` (`OK` / `PROBLEM`) og `address_path`.
@@ -190,7 +190,7 @@ Stega følgjer seksjonane i skjemaet.
 ## Steg 5 — Contact confirmation (05 / Contact confirmation)
 
 - [x] Stadfest at kontaktinformasjonen til nøkkelhaldaren til den valde nøkkelen er gyldig, og lagre berre statusen (§23.1).
-- [ ] Stadfestinga er obligatorisk: `Confirmed current` eller `Needs external update` (§24.1). Ho blir spurt om også når nøkkelen er utilgjengeleg.
+- [x] Stadfestinga er obligatorisk: `Confirmed current` eller `Needs external update` (§24.1). Ho blir spurt om også når nøkkelen er utilgjengeleg.
 - [x] Ikkje lagre namn, telefonnummer, e-post eller anna kontaktinnhald.
 
 ## Steg 6 — Notes (06 / Notes)
@@ -252,7 +252,7 @@ Stega følgjer seksjonane i skjemaet.
 
 # 11. Backend
 
-- [x] SQLite med initialisering og migrering. Skjemaet er no versjon 8 (§21, §23.1, §23.4) og blir versjon 9 når §24.2 er implementert.
+- [x] SQLite med initialisering og migrering. Skjemaet er no versjon 8 (§21, §23.1, §23.4) og blir versjon 9 når §24.4 er implementert.
 - [x] Lagring av nøklar, health checks, historikk og rapporteksport.
 - [x] Varsellogikken (§7).
 - [x] Health endpoint.
@@ -425,9 +425,9 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 
 **Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken, og gjorde på nytt etterpå. Steg 4 og 6 vart kryssa av då §22 var verifisert.
 
-**Merk:** §23 er implementert og verifisert. §24 er avtalt, men **ikkje implementert**, og skal gjerast før steg 9–12.
+**Merk:** §23 er implementert og verifisert. §24 er avtalt arbeid før steg 9–12; §24.1 er implementert og verifisert, medan §24.2–§24.5 står opne.
 
-**Testar:** 178 grøne testar etter §23. Talet blir oppdatert når §24 er implementert og testane er grøne. Køyr `python3 -m unittest discover -s tests`.
+**Testar:** 184 grøne testar etter §24.1 (178 etter §23). Køyr `python3 -m unittest discover -s tests`.
 
 **Hovudregel:** Bygg den minste løysinga som oppfyller lista over. Ikkje legg til nye funksjonar, tenester eller arkitektur utan at dei er nødvendige for punkta i denne TODO-lista.
 
@@ -464,24 +464,24 @@ Avtalt 02.10.2026, implementert og verifisert før steg 9–12 i §18. Reglane s
 - Skjemaversjon 8, og 178 grøne testar. Nye endepunkt: `GET /api/setup` og `POST /api/setup`.
 - Verifisert med testsuiten. Nettlesarflytane og migreringa av ein verkeleg eldre database står att som manuelle testar i §16.
 
-## Framtidig arbeid, ikkje no
+## Framtidig arbeid, ikke no
 
 - [ ] Fleire enn tre nøklar, og andre tersklar enn 2-av-3.
 - [ ] Ei brukardefinert liste over wallet-programvare, slik at brukaren kan leggje inn si eiga liste.
 
 ---
 
-# 24. Avtalt arbeid før StartOS-pakken (IKKJE IMPLEMENTERT)
+# 24. Avtalt arbeid før StartOS-pakken
 
-Avtalt 03.10.2026. Ingenting i §24 er implementert, og alle punkta står opne til testane er grøne. Arbeidet skal gjerast **før** steg 9–12 i §18. Der §24 seier noko anna enn §3–§12, gjeld §24.
+Avtalt 03.10.2026. §24.1 er implementert og verifisert (184 grøne testar). §24.2–§24.5 står opne, og punkta der blir kryssa av når testane er grøne. Arbeidet skal gjerast **før** steg 9–12 i §18. Der §24 seier noko anna enn §3–§12, gjeld §24.
 
-## 24.1 Obligatoriske val
+## 24.1 Obligatoriske val (implementert og verifisert)
 
-- [ ] `Hardware works` blir eit obligatorisk val mellom `Yes` og `No`. Nedtrekkslista startar på `Select status`, som ikkje kan veljast. Feltet er berre relevant for ein hardware-nøkkel, og kravet blir fjerna når nøkkelen er utilgjengeleg.
-- [ ] Serveren avviser ein tilgjengeleg hardware-nøkkel utan `hardware_works` med `400`.
-- [ ] `Contact confirmation` blir eit obligatorisk val mellom `Confirmed current` og `Needs external update`. Nedtrekkslista startar på `Select status`, som ikkje kan veljast.
-- [ ] Kontaktstadfestinga er obligatorisk også når nøkkelen er utilgjengeleg, sidan ho framleis blir spurt om. Serveren avviser manglande verdi med `400`.
-- [ ] `NOT_ASSESSED` er berre lovleg som den utleidde verdien for `software_compatibility_status` når nøkkelen er utilgjengeleg. Ingen andre felt tilbyr eller godtar han.
+- [x] `Hardware works` blir eit obligatorisk val mellom `Yes` og `No`. Nedtrekkslista startar på `Select status`, som ikkje kan veljast. Feltet er berre relevant for ein hardware-nøkkel, og kravet blir fjerna når nøkkelen er utilgjengeleg.
+- [x] Serveren avviser ein tilgjengeleg hardware-nøkkel utan `hardware_works` med `400`.
+- [x] `Contact confirmation` blir eit obligatorisk val mellom `Confirmed current` og `Needs external update`. Nedtrekkslista startar på `Select status`, som ikkje kan veljast.
+- [x] Kontaktstadfestinga er obligatorisk også når nøkkelen er utilgjengeleg, sidan ho framleis blir spurt om. Serveren avviser manglande verdi med `400`.
+- [x] `NOT_ASSESSED` er berre lovleg som den utleidde verdien for `software_compatibility_status` når nøkkelen er utilgjengeleg. Ingen andre felt tilbyr eller godtar han.
 
 ## 24.2 Fjerning av BIP327/SLIP39
 
