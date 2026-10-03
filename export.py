@@ -5,6 +5,10 @@ per submission; records saved before section 19 can have up to three rows that
 share a ``check_id``. Results with more than one value per submission (BIP327,
 SLIP39, and the security statuses) are joined into a single cell as
 ``Label: value; Label: value``.
+
+Status values are written exactly as stored. The contact confirmation is one of
+the stored statuses (section 23.1), so it is written as text like every other
+status, while the yes/no columns keep their ``No``/``Yes`` wording.
 """
 
 import csv
@@ -44,7 +48,6 @@ FLAG_KEYS = frozenset({
     "available",
     "hardware_works",
     "cloud_provider_operational",
-    "contact_info_verified",
 })
 
 
