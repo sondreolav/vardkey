@@ -46,7 +46,7 @@ def sample_payload(key_number=1, wallet_software=None):
         "software_version": "1.8.0",
         "software_compatibility_status": "OK",
         "software_comments": "",
-        "contact_info_verified": 1,
+        "contact_info_verified": "Confirmed current",
         "comments": "Annual review",
         "key_check": entry,
         "tool_checks": [
@@ -74,7 +74,7 @@ def unavailable_payload(key_number=1):
         "checked_at": "2026-10-01",
         "wallet_software": None,
         "software_compatibility_status": "NOT_ASSESSED",
-        "contact_info_verified": 1,
+        "contact_info_verified": "Needs external update",
         "comments": "Annual review",
         "key_check": entry,
         "tool_checks": [],
@@ -139,17 +139,69 @@ class ValidationTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             validate_health_check(payload, KEYS)
 
-    def test_general_status_accepts_not_assessed_and_rejects_the_norwegian_value(self):
-        payload = sample_payload()
+    def test_compatibility_status_requires_an_explicit_choice(self):
+        # "not assessed" is no longer submittable for a new registration
+        # (section 23.1).
+        for value in ("", None, "NOT_ASSESSED", "IKKJE_VURDERT"):
+            payload = sample_payload()
+            payload["software_compatibility_status"] = value
+            with self.assertRaises(ValidationError):
+                validate_health_check(payload, KEYS)
+
+    def test_compatibility_status_accepts_ok_and_problem(self):
+        for value in ("OK", "PROBLEM"):
+            payload = sample_payload()
+            payload["software_compatibility_status"] = value
+            self.assertEqual(
+                validate_health_check(payload, KEYS)["software_compatibility_status"],
+                value,
+            )
+
+    def test_cloud_key_compatibility_is_derived_from_availability(self):
+        payload = sample_payload(key_number=3)
+        payload["software_compatibility_status"] = "OK"
+        self.assertEqual(
+            validate_health_check(payload, KEYS)["software_compatibility_status"],
+            "OK",
+        )
+
+        for value in ("PROBLEM", "NOT_ASSESSED"):
+            payload = sample_payload(key_number=3)
+            payload["software_compatibility_status"] = value
+            with self.assertRaises(ValidationError):
+                validate_health_check(payload, KEYS)
+
+    def test_unavailable_key_keeps_the_derived_compatibility(self):
+        payload = unavailable_payload()
         payload["software_compatibility_status"] = "NOT_ASSESSED"
         self.assertEqual(
             validate_health_check(payload, KEYS)["software_compatibility_status"],
             "NOT_ASSESSED",
         )
 
-        payload["software_compatibility_status"] = "IKKJE_VURDERT"
+        payload["software_compatibility_status"] = "OK"
         with self.assertRaises(ValidationError):
             validate_health_check(payload, KEYS)
+
+    def test_contact_status_uses_the_two_stored_values(self):
+        for value in ("Confirmed current", "Needs external update"):
+            payload = sample_payload()
+            payload["contact_info_verified"] = value
+            self.assertEqual(
+                validate_health_check(payload, KEYS)["contact_info_verified"], value
+            )
+
+    def test_contact_status_is_optional_and_never_a_flag(self):
+        payload = sample_payload()
+        payload["contact_info_verified"] = ""
+        self.assertIsNone(validate_health_check(payload, KEYS)["contact_info_verified"])
+
+        # The old 0/1 flag is no longer a valid value (section 23.1).
+        for value in (1, 0, True, "yes"):
+            payload = sample_payload()
+            payload["contact_info_verified"] = value
+            with self.assertRaises(ValidationError):
+                validate_health_check(payload, KEYS)
 
     def test_standards_status_accepts_yes_no_and_not_assessed(self):
         for field in ("bip327_status", "slip39_status"):
@@ -316,13 +368,6 @@ class ValidationTests(unittest.TestCase):
         self.assertIsNone(result["key_check"]["address_path"])
         self.assertEqual(result["software_compatibility_status"], "NOT_ASSESSED")
         self.assertEqual(result["key_check"]["comments"], "Key is with the third holder")
-
-    def test_invalid_flag_is_rejected(self):
-        payload = sample_payload()
-        payload["contact_info_verified"] = "yes"
-
-        with self.assertRaises(ValidationError):
-            validate_health_check(payload, KEYS)
 
     def test_over_long_text_is_rejected(self):
         payload = sample_payload()
