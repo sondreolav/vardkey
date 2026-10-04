@@ -1,14 +1,20 @@
 """SQLite schema, initialization, and storage for Helsesjekk."""
 
+from datetime import datetime
 from pathlib import Path
 import sqlite3
 
 
-# Version 9 drops the tool_checks table, together with the BIP327/SLIP39
-# function it belonged to (sections 24.2 and 24.4).
-SCHEMA_VERSION = 9
+# Version 10 adds the key address path, the wallet software list, and the alert
+# acknowledgements, and drops the two derived cloud results from key_checks
+# (sections 25.1, 25.4 and 25.6).
+SCHEMA_VERSION = 10
 # The app always supports exactly three key slots (section 23.2).
 KEY_COUNT = 3
+# A database without any wallet software entry starts with this one, so a
+# hardware key has a choice from the first check on. The list is stored whole,
+# and this entry may be replaced once another one has been added (section 25.4).
+DEFAULT_WALLET_SOFTWARE = "Sparrow Wallet"
 # Table definitions use a {table} placeholder, so a migration can create the same
 # table under a temporary name while it rebuilds it.
 KEYS_TABLE = """
@@ -17,6 +23,7 @@ KEYS_TABLE = """
         key_number INTEGER NOT NULL UNIQUE CHECK (key_number BETWEEN 1 AND 3),
         name TEXT NOT NULL,
         type TEXT NOT NULL CHECK (type IN ('hardware', 'cloud')),
+        address_path TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
     """
@@ -37,6 +44,8 @@ HEALTH_CHECKS_TABLE = """
         comments TEXT
     )
     """
+# The two derived cloud results are gone: a cloud key records only its
+# availability (section 25.6).
 KEY_CHECKS_TABLE = """
     CREATE TABLE IF NOT EXISTS {table} (
         id INTEGER PRIMARY KEY,
@@ -46,8 +55,6 @@ KEY_CHECKS_TABLE = """
         hardware_works INTEGER CHECK (hardware_works IN (0, 1)),
         firmware_version TEXT,
         seed_backup_verified TEXT CHECK (seed_backup_verified IN ('OK', 'PROBLEM')),
-        cloud_health_status TEXT CHECK (cloud_health_status IN ('OK', 'PROBLEM', 'NOT_ASSESSED')),
-        cloud_provider_operational INTEGER CHECK (cloud_provider_operational IN (0, 1)),
         address_path_verified TEXT CHECK (address_path_verified IN ('OK', 'PROBLEM')),
         address_path TEXT,
         comments TEXT,
@@ -66,13 +73,40 @@ AI_SECURITY_CHECKS_TABLE = """
         UNIQUE (health_check_id, provider)
     )
     """
+# The wallet software list the user maintains in the settings, stored whole
+# (section 25.4).
+WALLET_SOFTWARE_TABLE = """
+    CREATE TABLE IF NOT EXISTS {table} (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """
+# One row per acknowledged alert. ``check_id`` is the newest check that raised
+# the alert when it was acknowledged, so a newer check for the same code and
+# source raises it again (section 25.3).
+ALERT_ACKNOWLEDGEMENTS_TABLE = """
+    CREATE TABLE IF NOT EXISTS {table} (
+        id INTEGER PRIMARY KEY,
+        code TEXT NOT NULL,
+        source TEXT NOT NULL,
+        check_id INTEGER,
+        reason TEXT NOT NULL,
+        acknowledged_at TEXT NOT NULL
+    )
+    """
 TABLES = (
     ("keys", KEYS_TABLE),
     ("health_checks", HEALTH_CHECKS_TABLE),
     ("key_checks", KEY_CHECKS_TABLE),
     ("ai_security_checks", AI_SECURITY_CHECKS_TABLE),
+    ("wallet_software", WALLET_SOFTWARE_TABLE),
+    ("alert_acknowledgements", ALERT_ACKNOWLEDGEMENTS_TABLE),
 )
+# The address path is part of the key's identity and is written by the setup
+# step (section 25.1). It is added to a database that predates version 10.
 OPTIONAL_COLUMNS = (
+    ("keys", "address_path", "TEXT NOT NULL DEFAULT ''"),
     ("health_checks", "software_comments", "TEXT"),
     ("health_checks", "wallet_software", "TEXT"),
     ("health_checks", "software_version", "TEXT"),
@@ -86,6 +120,9 @@ INDEX_STATEMENTS = (
 )
 # Columns that only exist in the pre-section-19 key_checks layout.
 LEGACY_KEY_CHECK_COLUMNS = ("seed_backup_status", "address_verified", "derivation_height")
+# Columns that were dropped when a cloud key stopped recording derived results
+# (section 25.6).
+REMOVED_CLOUD_COLUMNS = ("cloud_health_status", "cloud_provider_operational")
 # Value mapping used when the security status values became English.
 SECURITY_STATUS_MIGRATION = (
     ("TRYGG", "SECURE"),
@@ -147,6 +184,7 @@ def initialize_database(database_path="data/helsesjekk.sqlite3"):
             _migrate_ai_security_checks(connection)
             _migrate_status_values(connection)
             _drop_tool_checks(connection)
+            _seed_default_wallet_software(connection)
             for table, column, statement in INDEX_STATEMENTS:
                 _ensure_index(connection, table, column, statement)
             _verify_foreign_keys(connection)
@@ -278,12 +316,30 @@ def _verify_foreign_keys(connection):
         )
 
 
+def _seed_default_wallet_software(connection):
+    """Give a database without wallet software one starting entry.
+
+    A new database starts with ``Sparrow Wallet``, so a hardware key has a
+    choice from the first check on. The list is stored whole, and the entry may
+    be replaced once another one has been added (section 25.4). A database whose
+    list is not empty is left untouched.
+    """
+    count = connection.execute("SELECT COUNT(*) FROM wallet_software").fetchone()[0]
+    if count == 0:
+        connection.execute(
+            "INSERT INTO wallet_software (name) VALUES (?)",
+            (DEFAULT_WALLET_SOFTWARE,),
+        )
+
+
 def _migrate_keys(connection):
     """Rebuild keys when it still carries the removed device column.
 
     The configured name is the product label everywhere, so the fixed device
     value is gone (section 23.2). SQLite cannot drop a column from a table with
-    a CHECK constraint, so the table is rebuilt once.
+    a CHECK constraint, so the table is rebuilt once. The address path is part
+    of the current definition and takes its default for the copied rows
+    (section 25.1).
     """
     columns = _table_columns(connection, "keys")
     if not columns or "device" not in columns:
@@ -304,7 +360,8 @@ def _migrate_key_checks(connection):
     The legacy table stored the verification results as 0/1 flags and kept the
     removed columns seed_backup_status, address_verified, and derivation_height.
     SQLite cannot change a CHECK constraint, so the table is rebuilt once and the
-    legacy flags are folded into the OK/PROBLEM values.
+    legacy flags are folded into the OK/PROBLEM values. The two derived cloud
+    results are dropped with the rest of the old layout (section 25.6).
     """
     columns = _table_columns(connection, "key_checks")
     if not columns or not set(LEGACY_KEY_CHECK_COLUMNS) & columns:
@@ -325,15 +382,10 @@ def _migrate_key_checks(connection):
             ("address_verified", 1, "OK"),
             ("address_verified", 0, "PROBLEM"),
         ))
-        if "cloud_health_status" in columns:
-            cloud_health = _mapped_status_sql("cloud_health_status", NOT_ASSESSED_MIGRATION)
-        else:
-            cloud_health = "NULL"
         connection.execute(f"""
             INSERT INTO key_checks (
                 id, health_check_id, key_id, available, hardware_works, firmware_version,
-                seed_backup_verified, cloud_health_status, cloud_provider_operational,
-                address_path_verified, address_path, comments
+                seed_backup_verified, address_path_verified, address_path, comments
             )
             SELECT
                 {_column_or_null(columns, "id")},
@@ -343,8 +395,6 @@ def _migrate_key_checks(connection):
                 {_column_or_null(columns, "hardware_works")},
                 {_column_or_null(columns, "firmware_version")},
                 {seed_backup},
-                {cloud_health},
-                {_column_or_null(columns, "cloud_provider_operational")},
                 {address_path},
                 {_column_or_null(columns, "address_path")},
                 {_column_or_null(columns, "comments")}
@@ -386,15 +436,16 @@ def _migrate_status_values(connection):
     """Rewrite the tables whose stored values or CHECK constraints changed.
 
     Section 21 made the status values English, section 23.1 replaced the 0/1
-    contact flag with the two contact statuses, and section 23.3 dropped the
-    fixed provider and wallet-software lists. SQLite cannot change a CHECK
-    constraint, so each affected table is rebuilt: the replacement is created
-    under a temporary name, the rows are copied with the mapped values, and the
-    replacement takes the old table's place.
+    contact flag with the two contact statuses, section 23.3 dropped the fixed
+    provider and wallet-software lists, and section 25.6 dropped the two derived
+    cloud results. SQLite cannot change a CHECK constraint or drop a column from
+    a table with one, so each affected table is rebuilt: the replacement is
+    created under a temporary name, the rows are copied with the mapped values,
+    and the replacement takes the old table's place.
     """
     if _health_checks_need_rebuild(connection):
         _rebuild_health_checks(connection)
-    if _uses_legacy_status_values(connection, "key_checks"):
+    if _key_checks_need_rebuild(connection):
         _rebuild_key_checks(connection)
 
 
@@ -432,6 +483,21 @@ def _health_checks_need_rebuild(connection):
     )
 
 
+def _key_checks_need_rebuild(connection):
+    """Return True while key_checks still uses an older column definition.
+
+    That is either the pre-section-21 status values or a table that still holds
+    the two derived cloud results (section 25.6).
+    """
+    sql = _table_sql(connection, "key_checks")
+    if sql is None:
+        return False
+    return (
+        LEGACY_STATUS_VALUE in sql
+        or any(name in sql for name in REMOVED_CLOUD_COLUMNS)
+    )
+
+
 def _rebuild_health_checks(connection):
     """Rebuild health_checks with the current status, contact, and software values.
 
@@ -462,18 +528,20 @@ def _rebuild_health_checks(connection):
 
 
 def _rebuild_key_checks(connection):
-    """Rebuild key_checks with NOT_ASSESSED instead of IKKJE_VURDERT."""
+    """Rebuild key_checks with the current column set.
+
+    The pre-section-21 ``IKKJE_VURDERT`` value is gone from the definition, and
+    the two derived cloud results are dropped because a cloud key records only
+    its availability (sections 21 and 25.6). Every surviving column is copied.
+    """
     temporary = _create_replacement(connection, "key_checks", KEY_CHECKS_TABLE)
-    cloud_health = _mapped_status_sql("cloud_health_status", NOT_ASSESSED_MIGRATION)
     connection.execute(f"""
         INSERT INTO {temporary} (
             id, health_check_id, key_id, available, hardware_works, firmware_version,
-            seed_backup_verified, cloud_health_status, cloud_provider_operational,
-            address_path_verified, address_path, comments
+            seed_backup_verified, address_path_verified, address_path, comments
         )
         SELECT id, health_check_id, key_id, available, hardware_works, firmware_version,
-               seed_backup_verified, {cloud_health}, cloud_provider_operational,
-               address_path_verified, address_path, comments
+               seed_backup_verified, address_path_verified, address_path, comments
         FROM key_checks
     """)
     _replace_table(connection, "key_checks", temporary)
@@ -485,14 +553,15 @@ def list_keys(database_path="data/helsesjekk.sqlite3"):
     An empty list means a new database, which the app answers with the first-run
     setup step. A database that holds only part of the setup raises an error, so
     an unreadable database is never treated as a new installation
-    (section 23.2).
+    (section 23.2). The address path is part of the key's identity and is
+    compared with every submitted path (section 25.1).
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
     try:
         rows = connection.execute(
             """
-            SELECT id, key_number, name, type, created_at
+            SELECT id, key_number, name, type, address_path, created_at
             FROM keys
             ORDER BY key_number
             """
@@ -511,9 +580,9 @@ def list_keys(database_path="data/helsesjekk.sqlite3"):
 def save_key_setup(entries, database_path="data/helsesjekk.sqlite3"):
     """Store the key setup for the three key slots.
 
-    The setup is written once, because the names and the types are locked after
-    they are saved (section 23.2). A database that already holds a setup is left
-    untouched.
+    The setup is written once, because the names, the types and the address
+    paths are locked after they are saved (sections 23.2 and 25.1). A database
+    that already holds a setup is left untouched.
     """
     if list_keys(database_path):
         raise RuntimeError("The key setup is already stored")
@@ -523,12 +592,134 @@ def save_key_setup(entries, database_path="data/helsesjekk.sqlite3"):
     try:
         with connection:
             connection.executemany(
-                "INSERT INTO keys (key_number, name, type) VALUES (?, ?, ?)",
+                "INSERT INTO keys (key_number, name, type, address_path) VALUES (?, ?, ?, ?)",
                 [
-                    (entry["key_number"], entry["name"], entry["type"])
+                    (
+                        entry["key_number"],
+                        entry["name"],
+                        entry["type"],
+                        entry["address_path"],
+                    )
                     for entry in entries
                 ],
             )
+    finally:
+        connection.close()
+
+
+def key_has_check(key_id, database_path="data/helsesjekk.sqlite3"):
+    """Return True when the key already has a saved check.
+
+    The address path is the identity of a key, so it may only be changed while
+    the key has no saved check (section 25.1).
+    """
+    connection = sqlite3.connect(database_path, timeout=5)
+    try:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM key_checks WHERE key_id = ?", (key_id,)
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    return count > 0
+
+
+def save_key_settings(key_id, name, address_path, database_path="data/helsesjekk.sqlite3"):
+    """Store the name and the address path of one key.
+
+    The name is only a label, while the address path is part of the key's
+    identity (sections 25.1 and 25.2). Whether the path may change is decided by
+    the caller, which reads the key's saved checks from the same database.
+    """
+    connection = sqlite3.connect(database_path, timeout=5)
+    connection.execute("PRAGMA foreign_keys = ON")
+    try:
+        with connection:
+            cursor = connection.execute(
+                "UPDATE keys SET name = ?, address_path = ? WHERE id = ?",
+                (name, address_path, key_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError(f"Key {key_id} does not exist")
+    finally:
+        connection.close()
+
+
+def list_wallet_software(database_path="data/helsesjekk.sqlite3"):
+    """Return the stored wallet software names in their stored order.
+
+    The list is maintained in the settings and stored whole; every entry is a
+    wallet software choice for a hardware key (section 25.4).
+    """
+    connection = sqlite3.connect(database_path, timeout=5)
+    try:
+        rows = connection.execute(
+            "SELECT name FROM wallet_software ORDER BY id"
+        ).fetchall()
+    finally:
+        connection.close()
+    return [row[0] for row in rows]
+
+
+def save_wallet_software(names, database_path="data/helsesjekk.sqlite3"):
+    """Replace the stored wallet software list with the given names.
+
+    The list is stored whole, not entry by entry (section 25.4). Removing a name
+    does not touch any saved check, because ``health_checks`` keeps the selected
+    software as free text.
+    """
+    connection = sqlite3.connect(database_path, timeout=5)
+    try:
+        with connection:
+            connection.execute("DELETE FROM wallet_software")
+            connection.executemany(
+                "INSERT INTO wallet_software (name) VALUES (?)",
+                [(name,) for name in names],
+            )
+    finally:
+        connection.close()
+
+
+def save_alert_acknowledgement(code, source, check_id, reason, database_path="data/helsesjekk.sqlite3"):
+    """Store one acknowledged alert, so it stays hidden until it is raised again.
+
+    ``check_id`` is the newest check that raised the alert when it was
+    acknowledged. A newer check for the same code and source gets a higher id
+    and therefore raises the alert again (section 25.3).
+    """
+    connection = sqlite3.connect(database_path, timeout=5)
+    try:
+        with connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO alert_acknowledgements (code, source, check_id, reason, acknowledged_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    code,
+                    source,
+                    check_id,
+                    reason,
+                    datetime.now().isoformat(timespec="seconds"),
+                ),
+            )
+        return cursor.lastrowid
+    finally:
+        connection.close()
+
+
+def list_alert_acknowledgements(database_path="data/helsesjekk.sqlite3"):
+    """Return every stored acknowledgement, newest first."""
+    connection = sqlite3.connect(database_path, timeout=5)
+    connection.row_factory = sqlite3.Row
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, code, source, check_id, reason, acknowledged_at
+            FROM alert_acknowledgements
+            ORDER BY id DESC
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
     finally:
         connection.close()
 
@@ -564,9 +755,8 @@ def save_health_check(data, database_path="data/helsesjekk.sqlite3"):
                 """
                 INSERT INTO key_checks (
                     health_check_id, key_id, available, hardware_works, firmware_version,
-                    seed_backup_verified, cloud_health_status, cloud_provider_operational,
-                    address_path_verified, address_path, comments
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    seed_backup_verified, address_path_verified, address_path, comments
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     health_check_id,
@@ -575,8 +765,6 @@ def save_health_check(data, database_path="data/helsesjekk.sqlite3"):
                     key_check["hardware_works"],
                     key_check["firmware_version"],
                     key_check["seed_backup_verified"],
-                    key_check["cloud_health_status"],
-                    key_check["cloud_provider_operational"],
                     key_check["address_path_verified"],
                     key_check["address_path"],
                     key_check["comments"],
@@ -719,8 +907,7 @@ def list_export_rows(database_path="data/helsesjekk.sqlite3"):
                    hc.contact_info_verified, hc.comments,
                    kc.key_id, k.key_number, k.name AS key_name, k.type AS key_type,
                    kc.available, kc.hardware_works, kc.firmware_version,
-                   kc.seed_backup_verified, kc.cloud_health_status,
-                   kc.cloud_provider_operational, kc.address_path_verified,
+                   kc.seed_backup_verified, kc.address_path_verified,
                    kc.address_path, kc.comments AS key_comments
             FROM key_checks AS kc
             JOIN health_checks AS hc ON hc.id = kc.health_check_id
@@ -750,7 +937,12 @@ def _grouped_values(connection, table, label_column, value_column):
 
 
 def get_health_check(health_check_id, database_path="data/helsesjekk.sqlite3"):
-    """Return one saved health check with its related rows, or None."""
+    """Return one saved health check with its related rows, or None.
+
+    The key rows are read through ``keys``, so the history, the alerts and the
+    export show the name a key has now, which the settings may change
+    (section 25.2).
+    """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
     try:
@@ -773,8 +965,7 @@ def get_health_check(health_check_id, database_path="data/helsesjekk.sqlite3"):
                 """
                 SELECT kc.id, kc.key_id, k.key_number, k.name, k.type,
                        kc.available, kc.hardware_works, kc.firmware_version,
-                       kc.seed_backup_verified, kc.cloud_health_status,
-                       kc.cloud_provider_operational, kc.address_path_verified,
+                       kc.seed_backup_verified, kc.address_path_verified,
                        kc.address_path, kc.comments
                 FROM key_checks AS kc
                 JOIN keys AS k ON k.id = kc.key_id
