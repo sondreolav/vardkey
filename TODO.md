@@ -14,7 +14,7 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 
 Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 
-**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. §19–§22 er eit kort vedlegg med dei fire avgjerdene som vart tekne undervegs, alle innarbeidde i §1–§18. §23 (konfigurerbart nøkkeloppsett) og §24 (obligatoriske val, fjerning av BIP327/SLIP39, ny skjemastruktur og skjemaversjon 9) er implementerte og verifiserte. §25 (nøkkelidentitet, rotering, varselkvittering og innstillingar) er avtalt, men **ikkje implementert**, og skal gjerast før steg 9–12 i §18. Den fulle grunngjevinga for kvar avgjerd ligg i git-historikken.
+**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. §19–§22 er eit kort vedlegg med dei fire avgjerdene som vart tekne undervegs, alle innarbeidde i §1–§18. §23 (konfigurerbart nøkkeloppsett) og §24 (obligatoriske val, fjerning av BIP327/SLIP39, ny skjemastruktur og skjemaversjon 9) er implementerte og verifiserte. §25 (nøkkelidentitet, rotering, varselkvittering og innstillingar) er **implementert og ventar på verifisering**, og kjem før steg 9–12 i §18. Den fulle grunngjevinga for kvar avgjerd ligg i git-historikken.
 
 ## Språkkrav
 
@@ -109,7 +109,7 @@ SQLite med så få tabellar som mogleg. Kvar tabell har éi rad per kolonne her;
 `id`, `name`, `created_at`.
 
 **`alert_acknowledgements`** — kvitterte varsel (§25.3).
-`id`, `code`, `source`, `reason`, `acknowledged_at`.
+`id`, `code`, `source`, `check_id`, `reason`, `acknowledged_at`.
 
 Reglar:
 
@@ -453,7 +453,7 @@ Før første release skal alle desse vere oppfylte:
 
 ---
 
-# 18. Arbeidsrekkefølgje for AI-programmeraren
+# 18. Arbeidsrekkjefølgje for AI-programmeraren
 
 Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjonar:
 
@@ -472,7 +472,7 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 
 **Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken, og gjorde på nytt etterpå. Steg 4 og 6 vart kryssa av då §22 var verifisert.
 
-**Merk:** §23 og §24 er implementerte og verifiserte. §25 er avtalt, men **ikkje implementert**, og skal gjerast før steg 9–12. Steg 9–12 er ikkje starta.
+**Merk:** §23 og §24 er implementerte og verifiserte. §25 er implementert og ventar på verifisering, og kjem før steg 9–12. Steg 9–12 er ikkje starta.
 
 **Testar:** 178 grøne testar etter §24. Talet blir oppdatert når §25 er verifisert. Køyr `python3 -m unittest discover -s tests`.
 
@@ -482,13 +482,13 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 
 # 19–22. Vedtekne avgjerder (implementerte og verifiserte)
 
-Desse fire vart tekne undervegs og er no innarbeidde i §1–§18. Kvar referanse i §1–§18 peikar på avsnittet nedanfor. Den fulle grunngjevinga ligg i git-historikken. §23 og §24 endra enkelte av detaljane etterpå; det står i så fall i parentes. §25 er avtalt og endrar detaljane nedanfor når han er implementert.
+Desse fire vart tekne undervegs og er no innarbeidde i §1–§18. Kvar referanse i §1–§18 peikar på avsnittet nedanfor. Den fulle grunngjevinga ligg i git-historikken. §23 og §24 endra enkelte av detaljane etterpå; det står i så fall i parentes. §25 endrar detaljane nedanfor, og er no implementert.
 
 **§19 — registrering per nøkkel.** Ei innsending gjeld **éin vald nøkkel**, ikkje alle tre. Brukaren vel éi wallet-programvare med eitt versjonsfelt. `seed_backup_status`, `address_verified` og `derivation_height` er fjerna. Migreringa er bakoverkompatibel, og eldre historikk blir framleis vist. (§23.3 endra vala: `Sparrow Wallet` pluss namnet på kvar cloud-nøkkel, og ein cloud-nøkkel er låst til sitt eige namn.)
 
 **§20 — skjulte felt som blir utleidde.** Ein cloud-nøkkel samlar berre `Availability`; cloud-helse, «leverandøren er i drift» og kompatibilitet blir utleidde. Førre lagra verdi blir fylt inn i feltet. Alt utleidd blir lista i Review-oppsummeringa, merkt som nettopp det. (§23.1 gjorde den førre verdien til ein vanleg input-verdi i staden for ein placeholder, §23.3 fjerna vidareføringa av ein tredje leverandør, og §25.3 fjernar dei to utleidde cloud-felta.)
 
-**§21 — engelske statusverdiar, adressesti og alle varsel.** `IKKJE_VURDERT` → `NOT_ASSESSED`. Skjema versjon 6 (no versjon 9, §23.4 og §24.4; versjon 10 når §25.6 er implementert): kvar råka tabell blir bygd opp att med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit. `Address path` blir berre vist og lagra når verifiseringa er `OK`. `GET /api/alerts` summerer alle lagra kontrollar, med `check_id` og `checked_at`, slår saman like varsel og listar kritiske først. «Helsesjekk» og `data/helsesjekk.sqlite3` er dokumenterte unntak frå engelskregelen. (§25.1 erstattar kravet om at `Address path` berre blir lagra når verifiseringa er `OK`, og §25.3 legg kvittering til.)
+**§21 — engelske statusverdiar, adressesti og alle varsel.** `IKKJE_VURDERT` → `NOT_ASSESSED`. Skjema versjon 6 (no versjon 9, §23.4 og §24.4; versjon 10 når §25.6 er verifisert): kvar råka tabell blir bygd opp att med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit. `Address path` blir berre vist og lagra når verifiseringa er `OK`. `GET /api/alerts` summerer alle lagra kontrollar, med `check_id` og `checked_at`, slår saman like varsel og listar kritiske først. «Helsesjekk» og `data/helsesjekk.sqlite3` er dokumenterte unntak frå engelskregelen. (§25.1 erstattar kravet om at `Address path` berre blir lagra når verifiseringa er `OK`, og §25.3 legg kvittering til.)
 
 **§22 — utilgjengeleg nøkkel gjer resten valfritt.** `Availability` er obligatorisk med berre Ja/Nei. Når han er Nei, blir programvare og KI-status skjulte og ikkje kravde, og dei må vere tomme i POST — elles svarar serveren `400`. Det blir ikkje lagra nokon slike rader, `wallet_software` er `NULL`, og `software_compatibility_status` blir `NOT_ASSESSED`. Ein cloud-nøkkel held fram med dei utleidde cloud-verdiane sine og gir det samanslåtte varselet. Databasen kravde inga endring. (§25.1 brukar same mønsteret for ein adressestifeil.)
 
@@ -498,13 +498,13 @@ Desse fire vart tekne undervegs og er no innarbeidde i §1–§18. Kvar referans
 
 Avtalt 02.10.2026, implementert og verifisert før steg 9–12 i §18. Reglane står i §3–§6; dette er berre eit kort samandrag, så fila er lett å lese.
 
-- Kvar nøkkel blir konfigurert éin gong ved første oppstart: namn og type (`hardware`/`cloud`). (§25.1 legg adressestien til og §25.2 gjer namnet endreleg, når §25 er implementert.)
+- Kvar nøkkel blir konfigurert éin gong ved første oppstart: namn og type (`hardware`/`cloud`). (§25.1 legg adressestien til og §25.2 gjer namnet endreleg.)
 - Namnet brukaren skriv er produktetiketten overalt: skjema, varsel, historikk og CSV-eksport. Nøkkelnummeret blir vist saman med namnet der det trengst, t.d. `Key 1: ColdCard`.
 - Nøkkeltypen styrer kontrollane, aldri nøkkelnummeret. Ein cloud-nøkkel følgjer Nunchuk-modellen med det konfigurerte namnet.
 - `Wallet software`-vala er `Sparrow Wallet` pluss namnet på kvar konfigurert cloud-nøkkel. Namn på hardware-nøklar er aldri eit software-val.
 - Oppsettet blir lagra i SQLite saman med historikken. Nye databasar får eit oppsettsteg; eksisterande databasar blir migrerte frå nøkkelradene sine. Ei uleseleg database gir ein feil og blir ikkje behandla som ny.
 - Skjemafiksar: `Firmware version`, `Address path` og `Software version` blir fylte med førre lagra verdi som ein vanleg input-verdi; `Software compatibility` krev eit aktivt val; kontaktspørsmålet gjeld berre nøkkelhaldaren til den valde nøkkelen, med verdiane `Confirmed current` / `Needs external update`.
-- Skjemaversjon 8 då §23 vart ferdig (§24.4 tok han til 9), og 178 grøne testar. Nye endepunkt: `GET /api/setup` og `POST /api/setup`.
+- Skjemaversjon 8 då §23 vart ferdig (§24.4 tok han til 9, §25.6 til 10), og 178 grøne testar. Nye endepunkt: `GET /api/setup` og `POST /api/setup`.
 - Verifisert med testsuiten. Nettlesarflytane og migreringa av ein verkeleg eldre database står att som manuelle testar i §16.
 
 ## Framtidig arbeid, ikke no
@@ -529,9 +529,9 @@ Avtalt 03.10.2026, implementert og verifisert før steg 9–12 i §18. Der §24 
 
 ---
 
-# 25. Nøkkelidentitet, rotering, varselkvittering og innstillingar (AVTALT, IKKJE IMPLEMENTERT)
+# 25. Nøkkelidentitet, rotering, varselkvittering og innstillingar (IMPLEMENTERT, VENTAR PÅ VERIFISERING)
 
-Avtalt 04.10.2026. Ingenting i §25 er implementert, og alle punkta står opne til testane er grøne. Arbeidet skal gjerast **før** steg 9–12 i §18. Der §25 seier noko anna enn §3–§12, gjeld §25 når han er implementert; fram til då gjeld §3–§12 som dei står.
+Avtalt 04.10.2026. Arbeidet er utført, men punkta under blir ikkje kryssa av før testane er grøne og brukaren har stadfesta at det verkar. Arbeidet vart gjort **før** steg 9–12 i §18. Der §25 seier noko anna enn §3–§12, gjeld §25. Testtalet i §18 blir oppdatert når verifiseringa er gjord.
 
 ## 25.1 Adressestien er nøkkelens identitet
 
@@ -545,6 +545,8 @@ Avtalt 04.10.2026. Ingenting i §25 er implementert, og alle punkta står opne t
 - [ ] Adressestien kan berre endrast i innstillingane så lenge nøkkelen ikkje har nokon lagra kontroll. Etter det er han låst, fordi han er identiteten til nøkkelen.
 - [ ] Adressestien er ein offentleg derivasjonssti og inneheld inga hemmelegheit.
 
+**Gjort:** `keys.address_path` er lagd til (ikkje-tom ved oppsett, låst etter første lagra kontroll), oppsettsteget spør om han, og skjemaet registrerer berre `Address path`. Serveren samanliknar stien etter `strip` og set `address_path_verified` sjølv; eit innsend resultat blir ignorert. Ved ulik sti blir nøkkelen handsama som ein nøkkel som ikkje kunne kontrollerast, med `400` om programvare eller KI-status følgjer med, og nettlesaren viser eit påminningsvarsel med ei avkryssing før innsending.
+
 ## 25.2 Namn kan endrast, og ein nøkkel kan roterast
 
 - [ ] Namnet i `keys` kan endrast i innstillingane. Typen og adressestien kan ikkje endrast.
@@ -553,9 +555,11 @@ Avtalt 04.10.2026. Ingenting i §25 er implementert, og alle punkta står opne t
 - [ ] Rotering oppdaterer nøkkelraden og kvitterer ut varsla som høyrer til nøkkelen.
 - [ ] Rotering gjer inga endring i tidlegare lagra kontrollar.
 
+**Gjort:** `POST /api/settings/keys` lagrar eit nytt namn (og adressestien medan han er ulåst), og `POST /api/keys/<id>/rotate` stadfestar byttet, held eller endrar namnet, kvitterer ut nøkkelens eigne varsel, og rører ingen tidlegare kontroll. Rotering ligg berre på `/settings`, kan gjere fleire nøklar i éi handling, og sida varslar om at rotering gir ei ny lommebok, slik at midla må flyttast frå den gamle multisig-oppsetninga før dei gamle nøklane blir kasserte.
+
 ## 25.3 Varselkvittering
 
-Eit kvittert varsel held seg skjult til ein nyare kontroll for same `code` og `source` utløyser det igjen. Kvitteringa blir lagra med `code`, `source`, `acknowledged_at` og ein årsak.
+Eit kvittert varsel held seg skjult til ein nyare kontroll for same `code` og `source` utløyser det igjen. Kvitteringa blir lagra med `code`, `source`, `acknowledged_at` og ein årsak. I tillegg lagrar han `check_id` til den nyaste kontrollen som heva varselet, slik at eit nyare varsel alltid kjem tilbake.
 
 | `code` | Alvor | Utløyst av | Slik blir det lukka |
 |---|---|---|---|
@@ -574,6 +578,8 @@ Eit kvittert varsel held seg skjult til ein nyare kontroll for same `code` og `s
 - [ ] `address_verification_failed` er fjerna og erstatta av `address_path_mismatch`.
 - [ ] Kvar handling som lukkar eit varsel krev ei stadfesting frå brukaren, og appen utfører aldri eit tiltak sjølv.
 
+**Gjort:** `alerts.py` har `address_path_mismatch` med eigen ordlyd, kvart varsel oppgjev `actions` (`rotate`/`acknowledge`) og `key_id`, og `collect_alerts` filtrerer bort kvitterte varsel. `cloud_provider_problem` og `address_verification_failed` er fjerna, og den samanslåtte cloud-ordlyden forsvann — éi `key_unavailable`-melding gjeld no alle nøklar. `POST /api/alerts/acknowledge` lagrar `code`, `source`, `check_id`, årsak og tidspunkt, svarar `404` når varselet ikkje finst, og `actions` i UI-et avgjer kva knappar som blir viste.
+
 ## 25.4 Innstillingar
 
 - [ ] Ny side `/settings`, med tydelege seksjonar: `01 / Keys` (namn og adressesti per nøkkel) og `02 / Wallet software` (lista brukaren vedlikeheld).
@@ -584,11 +590,15 @@ Eit kvittert varsel held seg skjult til ein nyare kontroll for same `code` og `s
 - [ ] Sida må leggjast inn i `STATIC_FILES` i `app.py`, elles svarar ho `404`.
 - [ ] Dashboardet får ei lenke til innstillingane.
 
+**Gjort:** `/settings` er lagd inn i `STATIC_FILES` og har `01 / Keys`, `02 / Wallet software` og `03 / Key rotation`, med eitt lagre-kall per nøkkel og éin lagring for heile software-lista. Lista blir sådd med `Sparrow Wallet` ved oppstart, må aldri bli tom, og kan ikkje innehalde eit namn som alt kjem frå ein cloud-nøkkel. Software-vala i skjemaet er lista pluss cloud-nøkkelnamna, og dashboardet har ei lenkje til innstillingane.
+
 ## 25.5 Skjemajusteringar
 
 - [ ] `Software version (if used)` blir `Software version`.
 - [ ] Ein cloud-nøkkel får òg `Software version`, medan `Wallet software` og `Compatibility status` held fram med å vere skjulte og utleidde.
 - [ ] Versjonen blir gjenbrukt frå førre lagra verdi for same nøkkel, som i dag.
+
+**Gjort:** feltet heiter no `Software version` og står utanfor det gridet som blir skjult for ein cloud-nøkkel, slik at alle nøklar får det. Versjonen blir framleis gjenbrukt frå førre lagra verdi for same nøkkel og same programvare.
 
 ## 25.6 Datamodell og migrering (versjon 10)
 
@@ -596,6 +606,8 @@ Eit kvittert varsel held seg skjult til ein nyare kontroll for same `code` og `s
 - [ ] Fjerna: `cloud_health_status` og `cloud_provider_operational` i `key_checks`, saman med dei utleidde verdiane i skjemaet.
 - [ ] Inga datamigrering for eldre testdatabasar. Skjemaversjonen blir heva til 10, og dei eksisterande migreringane for eldre oppsett blir ståande som dei er.
 - [ ] Migreringa køyrer framleis med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit (§21).
+
+**Gjort:** skjema versjon 10 med `keys.address_path`, `wallet_software` og `alert_acknowledgements`, og dei to cloud-kolonnane er fjerna frå `key_checks`. Ingen datamigrering for eldre testdatabasar: `data`-mappa blir sletta og oppsettet gjort på nytt. Migreringa køyrer framleis med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit.
 
 ## 25.7 Testar og dokumentasjon
 
@@ -608,3 +620,5 @@ Eit kvittert varsel held seg skjult til ein nyare kontroll for same `code` og `s
 - [ ] Testar for at dei fjerna varsla ikkje lenger kan utløysast.
 - [ ] Alle testar skal vere grøne, og talet i §18 skal oppdaterast.
 - [ ] `README.md`, `TODO.md` og `ai-note.md` skal oppdaterast.
+
+**Gjort:** alle seks testfilene er oppdaterte og utvida med testar for punkta over, og `README.md`, `TODO.md` og `ai-note.md` er oppdaterte. Testane er ikkje køyrde av brukaren enno, så talet i §18 står framleis på 178.
