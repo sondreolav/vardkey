@@ -14,7 +14,7 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 
 Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 
-**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. §19–§22 er eit kort vedlegg med dei fire avgjerdene som vart tekne undervegs, alle innarbeidde i §1–§18. §23 (konfigurerbart nøkkeloppsett), §24 (obligatoriske val, fjerning av BIP327/SLIP39, ny skjemastruktur og skjemaversjon 9) og §25 (nøkkelidentitet, rotering, varselkvittering og innstillingar) er implementerte og verifiserte. §18 steg 9–12 står att. Den fulle grunngjevinga for kvar avgjerd ligg i git-historikken.
+**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. §19–§22 er eit kort vedlegg med dei fire avgjerdene som vart tekne undervegs, alle innarbeidde i §1–§18. §23 (konfigurerbart nøkkeloppsett) og §24 (obligatoriske val, fjerning av BIP327/SLIP39, ny skjemastruktur og skjemaversjon 9) er implementerte og verifiserte. §25 (nøkkelidentitet, rotering, varselkvittering og innstillingar) er avtalt, men **ikkje implementert**, og skal gjerast før steg 9–12 i §18. Den fulle grunngjevinga for kvar avgjerd ligg i git-historikken.
 
 ## Språkkrav
 
@@ -72,9 +72,9 @@ Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 
 # 3. Nøkkeloppsettet appen er bygd for
 
-Appen er bygd for eitt 2-av-3 multisig-oppsett. Tabellen under viser standardoppsettet:
+Appen er bygd for eitt 2-av-3 multisig-oppsett. Tabellen under viser standardoppsettet, med ein døme-adressesti:
 
-| Nøkkel | Type | Einheit | Adressesti |
+| Nøkkel | Type | Einheit | Adressesti (døme) |
 |---|---|---|---|
 | 1 | Hardware | SeedSigner | m/48'/0'/0'/2' |
 | 2 | Hardware | Blockstream Jade | m/48'/0'/0'/2' |
@@ -83,9 +83,9 @@ Appen er bygd for eitt 2-av-3 multisig-oppsett. Tabellen under viser standardopp
 - [x] Vis 2-av-3 som oppsettet i dashboardet.
 - [x] Ha tre nøkkelprofilar, éin for kvar nøkkel.
 - [x] Ikkje bygg generell støtte for mange oppsett enno.
-- [x] La brukaren gi nøklane namn, type og adressesti ved første oppstart (§23.2, §25.1).
+- [ ] La brukaren gi nøklane namn, type og adressesti ved første oppstart (§23.2, §25.1).
 
-**Merk:** §23.2 og §25.1 erstattar det faste oppsettet i denne seksjonen: kvar nøkkel blir konfigurert ved første oppstart, og namnet brukaren skriv, blir produktnamnet. Tabellen over viser standardoppsettet appen vart bygd for; adressestien er eit døme.
+**Merk:** §23.2 erstattar det faste oppsettet i denne seksjonen: kvar nøkkel blir konfigurert ved første oppstart, og namnet brukaren skriv, blir produktnamnet. §25.1 legg adressestien til. Tabellen over viser standardoppsettet appen vart bygd for.
 
 ---
 
@@ -94,7 +94,7 @@ Appen er bygd for eitt 2-av-3 multisig-oppsett. Tabellen under viser standardopp
 SQLite med så få tabellar som mogleg. Kvar tabell har éi rad per kolonne her; kolonnar merkte `*` er legacy-kolonnar som berre finst for gamle rader og aldri blir skrivne på nytt.
 
 **`keys`** — dei tre nøkkelplassane.
-`id`, `key_number` (1–3), `name`, `type` (`hardware`/`cloud`), `address_path`, `created_at`.
+`id`, `key_number` (1–3), `name`, `type` (`hardware`/`cloud`), `address_path` (§25.1), `created_at`.
 
 **`health_checks`** — éi rad per innsending, som gjeld éin vald nøkkel (§19).
 `id`, `checked_at`, `next_check_due`, `wallet_software`, `software_version`, `software_compatibility_status`, `sparrow_version*`, `nunchuk_version*`, `software_comments`, `contact_info_verified`, `comments`.
@@ -126,16 +126,16 @@ Reglar:
 - [x] `hardware_works` er obligatorisk (`0` eller `1`) for ein tilgjengeleg hardware-nøkkel (§24.1).
 - [x] `contact_info_verified` er obligatorisk og har ingen «not assessed»-verdi (§24.1).
 - [x] `tool_checks`-tabellen er fjerna (§24.2, §24.4).
-- [x] `name` i `keys` kan endrast i innstillingane, medan `type` og `address_path` er identiteten til nøkkelen (§25.1, §25.2).
-- [x] `cloud_health_status` og `cloud_provider_operational` er fjerna. Ein cloud-nøkkel registrerer berre `available` (§25.3, §25.6).
-- [x] `address_path_verified` blir sett av serveren ut frå ei samanlikning med `keys.address_path`, og blir ikkje sendt inn av brukaren (§25.1).
-- [x] `wallet_software` i `health_checks` held fram som fri tekst, slik at eldre rader og fjerna listeelement held fram å visast rett (§25.4).
+- [ ] `name` i `keys` kan endrast i innstillingane, medan `type` og `address_path` er identiteten til nøkkelen (§25.1, §25.2).
+- [ ] `cloud_health_status` og `cloud_provider_operational` er fjerna. Ein cloud-nøkkel registrerer berre `available` (§25.3, §25.6).
+- [ ] `address_path_verified` blir sett av serveren ut frå ei samanlikning med `keys.address_path`, og blir ikkje sendt inn av brukaren (§25.1).
+- [ ] `wallet_software` i `health_checks` held fram som fri tekst, slik at eldre rader og fjerna listeelement held fram å visast rett (§25.4).
 
 ---
 
 # 5. Statusverdiar
 
-- [x] Generelle kontrollar brukar `OK` eller `PROBLEM`. `NOT_ASSESSED` finst berre som den utleidde verdien for `software_compatibility_status` når nøkkelen er utilgjengeleg eller adressestien ikkje stemmer, og ingen andre felt tilbyr eller godtar han (§24.1, §25.1).
+- [x] Generelle kontrollar brukar `OK` eller `PROBLEM`. `NOT_ASSESSED` finst berre som den utleidde verdien for `software_compatibility_status` når nøkkelen er utilgjengeleg, og ingen andre felt tilbyr eller godtar han (§24.1).
 - [x] `seed_backup_verified` og `address_path_verified` brukar berre `OK` eller `PROBLEM`.
 - [x] KI-sikkerheitsstatus brukar nøyaktig `SECURE`, `PATCHED`, `VULNERABLE` og `COMPROMISED`. Ingen andre.
 - [x] Same statuslogikk i database, validering, varsel, CSV-eksport og UI.
@@ -145,7 +145,8 @@ Reglar:
 - [x] `Hardware works` krev eit aktivt val (`Yes` / `No`) for ein tilgjengeleg hardware-nøkkel (§24.1).
 - [x] Kontaktstadfesting er obligatorisk og har ingen «not assessed»-verdi (§24.1).
 - [x] BIP327- og SLIP39-statusane er fjerna saman med funksjonen sin (§24.2).
-- [x] `address_path_verified` blir utleidd av serveren og er ikkje eit val i skjemaet (§25.1).
+- [ ] `NOT_ASSESSED` blir òg den utleidde verdien når adressestien ikkje stemmer (§25.1).
+- [ ] `address_path_verified` blir utleidd av serveren og er ikkje eit val i skjemaet (§25.1).
 
 ---
 
@@ -180,10 +181,11 @@ Stega følgjer seksjonane i skjemaet.
 
 ### Adressesti (alle nøklar)
 
-- [x] Brukaren registrerer berre `Address path`. Feltet er førehandsutfylt med nøkkelen sin lagra sti (§23.1, §25.1).
-- [ ] `Address path verified` er ikkje eit felt i skjemaet lenger. Serveren samanliknar den innsende stien med `keys.address_path`: lik → `OK`, ulik → `PROBLEM` (§25.1).
+- [ ] Brukaren registrerer berre `Address path`, førehandsutfylt med nøkkelen sin lagra sti (§25.1).
+- [ ] `Address path verified` er ikkje lenger eit felt i skjemaet. Serveren samanliknar den innsende stien med `keys.address_path`: lik → `OK`, ulik → `PROBLEM` (§25.1).
 - [ ] Stemmer ikkje stien, viser nettlesaren eit påminningsvarsel før innsending, og kontrollen blir lagra som ein nøkkel som ikkje kunne kontrollerast (§25.1).
-- [x] Når nøkkelen ikkje er tilgjengeleg, blir adressestien ikkje spurt om.
+- [x] I dag: `Address path verified` (`OK` / `PROBLEM`) er eit eige val, og `address_path` blir berre lagra når verifiseringa er `OK`.
+- [x] I dag: når nøkkelen ikkje er tilgjengeleg, blir adressestien ikkje spurt om.
 
 ## Steg 3 — Compatibility (03 / Compatibility)
 
@@ -228,6 +230,8 @@ Alle lagra kontrollar blir lesne (§21). Kva som kan lukke eit varsel, står i �
 - [x] Nøkkel ikkje tilgjengeleg → kritisk varsel om at nøkkelen må bytast ut før ein går vidare, og at resten av nøkkelfelta ikkje kan registrerast. For ein cloud-nøkkel eitt samanslått varsel som òg nemner at leverandøren er registrert som nede (§20).
 - [x] Hardware fungerer ikkje → seed-backupen bør testast på annan kompatibel hardware.
 - [x] Seed-backup manglar eller er øydelagd → PROTOKOLL 3: Nøkkeltap skal aktiverast. Skal ikkje utløysast når nøkkelen er utilgjengeleg.
+- [x] Cloud-helse `PROBLEM` eller leverandøren ute av drift → leverandørstatusen bør kontrollerast før ein går vidare. Skal ikkje utløysast når nøkkelen er utilgjengeleg.
+- [x] Adresseverifisering feilar → adressa bør kontrollerast mot BSMS og testast på nytt. Skal ikkje utløysast når nøkkelen er utilgjengeleg.
 - [x] Programvare støttar ikkje lenger hardware → alternativ programvare eller løysing bør vurderast.
 - [x] KI-status `VULNERABLE` → firmware- eller sikkerheitsproblemet må følgjast opp.
 - [x] KI-status `COMPROMISED` → nøkkeltapsprosedyren må følgjast.
@@ -268,7 +272,7 @@ Alle lagra kontrollar blir lesne (§21). Kva som kan lukke eit varsel, står i �
 
 - [x] `GET /api/export` gjev rein CSV (UTF-8, komma, CRLF, header). Ingen XLSX, og appen lovar ikkje Excel-kompatibilitet.
 - [x] Éi rad per nøkkelsjekk. Kolonnen `Check id` knyter saman rader frå same innsending.
-- [x] Inneheld dato, neste sjekk, nøkkelstatus, hardware/firmware, seed-resultat, adresse-sti, programvare og kompatibilitet, KI-status, kontaktstadfesting og kommentarar.
+- [x] Inneheld dato, neste sjekk, nøkkelstatus, hardware/firmware, seed/cloud-resultat, adresse-sti, programvare og kompatibilitet, KI-status, kontaktstadfesting og kommentarar.
 - [x] Resultat med meir enn éin verdi per innsending ligg i éi celle som `SeedSigner: VULNERABLE; Sparrow Wallet: SECURE`.
 - [x] Statusverdiane blir skrivne slik dei er lagra (§21).
 - [x] Nøkkelnamnet og nøkkeltypen kjem frå oppsettet (§23.3).
@@ -382,7 +386,7 @@ Unngå:
 - [x] Bruk parameteriserte SQL-spørringar.
 - [x] Ikkje implementer eigen kryptografi.
 - [x] Ikkje send data til eksterne tenester i MVP.
-- [x] Adressestien er ein offentleg derivasjonssti og inneheld ingen hemmelegheit (§25.1).
+- [x] Adressestien er ein offentleg derivasjonssti og inneheld inga hemmelegheit.
 
 ---
 
@@ -403,15 +407,16 @@ Unngå:
 - [ ] Test nøkkel utilgjengeleg.
 - [ ] Test hardware-feil.
 - [ ] Test seed-backup-feil.
-- [ ] Test adressestifeil (mismatch), både påminninga før innsending og varselet etterpå.
+- [ ] Test adresseverifiseringsfeil.
+- [ ] Test adressestifeil (mismatch), både påminninga før innsending og varselet etterpå (§25.1).
 - [ ] Test programvare-inkompatibilitet.
 - [ ] Test at `Hardware works` krev eit val.
 - [ ] Test at kontaktstadfesting krev eit val.
 - [ ] Test KI-status `VULNERABLE`.
 - [ ] Test KI-status `COMPROMISED`.
 - [ ] Test kontaktinfo `Needs external update`.
-- [ ] Test rotering av ein nøkkel, med og utan nytt namn.
-- [ ] Test kvittering av eit varsel, og at eit nyare varsel kjem tilbake.
+- [ ] Test rotering av ein nøkkel, med og utan nytt namn (§25.2).
+- [ ] Test kvittering av eit varsel, og at eit nyare varsel kjem tilbake (§25.3).
 
 ## StartOS-test
 
@@ -467,7 +472,7 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 
 **Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken, og gjorde på nytt etterpå. Steg 4 og 6 vart kryssa av då §22 var verifisert.
 
-**Merk:** §23, §24 og §25 er implementerte og verifiserte. Steg 9–12 er ikkje starta.
+**Merk:** §23 og §24 er implementerte og verifiserte. §25 er avtalt, men **ikkje implementert**, og skal gjerast før steg 9–12. Steg 9–12 er ikkje starta.
 
 **Testar:** 178 grøne testar etter §24. Talet blir oppdatert når §25 er verifisert. Køyr `python3 -m unittest discover -s tests`.
 
@@ -477,15 +482,15 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 
 # 19–22. Vedtekne avgjerder (implementerte og verifiserte)
 
-Desse fire vart tekne undervegs og er no innarbeidde i §1–§18. Kvar referanse i §1–§18 peikar på avsnittet nedanfor. Den fulle grunngjevinga ligg i git-historikken. §23, §24 og §25 endra enkelte av detaljane etterpå; det står i så fall i parentes.
+Desse fire vart tekne undervegs og er no innarbeidde i §1–§18. Kvar referanse i §1–§18 peikar på avsnittet nedanfor. Den fulle grunngjevinga ligg i git-historikken. §23 og §24 endra enkelte av detaljane etterpå; det står i så fall i parentes. §25 er avtalt og endrar detaljane nedanfor når han er implementert.
 
 **§19 — registrering per nøkkel.** Ei innsending gjeld **éin vald nøkkel**, ikkje alle tre. Brukaren vel éi wallet-programvare med eitt versjonsfelt. `seed_backup_status`, `address_verified` og `derivation_height` er fjerna. Migreringa er bakoverkompatibel, og eldre historikk blir framleis vist. (§23.3 endra vala: `Sparrow Wallet` pluss namnet på kvar cloud-nøkkel, og ein cloud-nøkkel er låst til sitt eige namn.)
 
-**§20 — skjulte felt som blir utleidde.** Ein cloud-nøkkel samlar berre `Availability`; kompatibilitet blir utleidd. Førre lagra verdi blir fylt inn i feltet. Alt utleidd blir lista i Review-oppsummeringa, merkt som nettopp det. (§23.1 gjorde den førre verdien til ein vanleg input-verdi i staden for ein placeholder, §23.3 fjerna vidareføringa av ein tredje leverandør, og §25.3 fjerna dei to utleidde cloud-felta.)
+**§20 — skjulte felt som blir utleidde.** Ein cloud-nøkkel samlar berre `Availability`; cloud-helse, «leverandøren er i drift» og kompatibilitet blir utleidde. Førre lagra verdi blir fylt inn i feltet. Alt utleidd blir lista i Review-oppsummeringa, merkt som nettopp det. (§23.1 gjorde den førre verdien til ein vanleg input-verdi i staden for ein placeholder, §23.3 fjerna vidareføringa av ein tredje leverandør, og §25.3 fjernar dei to utleidde cloud-felta.)
 
-**§21 — engelske statusverdiar, adressesti og alle varsel.** `IKKJE_VURDERT` → `NOT_ASSESSED`. Skjema versjon 6 (no versjon 10, §23.4, §24.4 og §25.6): kvar råka tabell blir bygd opp att med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit. `GET /api/alerts` summerer alle lagra kontrollar, med `check_id` og `checked_at`, slår saman like varsel og listar kritiske først. «Helsesjekk» og `data/helsesjekk.sqlite3` er dokumenterte unntak frå engelskregelen. (§25.1 erstatta kravet om at `Address path` berre blir lagra når verifiseringa er `OK`, og §25.3 legg kvittering til.)
+**§21 — engelske statusverdiar, adressesti og alle varsel.** `IKKJE_VURDERT` → `NOT_ASSESSED`. Skjema versjon 6 (no versjon 9, §23.4 og §24.4; versjon 10 når §25.6 er implementert): kvar råka tabell blir bygd opp att med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit. `Address path` blir berre vist og lagra når verifiseringa er `OK`. `GET /api/alerts` summerer alle lagra kontrollar, med `check_id` og `checked_at`, slår saman like varsel og listar kritiske først. «Helsesjekk» og `data/helsesjekk.sqlite3` er dokumenterte unntak frå engelskregelen. (§25.1 erstattar kravet om at `Address path` berre blir lagra når verifiseringa er `OK`, og §25.3 legg kvittering til.)
 
-**§22 — utilgjengeleg nøkkel gjer resten valfritt.** `Availability` er obligatorisk med berre Ja/Nei. Når han er Nei, blir programvare og KI-status skjulte og ikkje kravde, og dei må vere tomme i POST — elles svarar serveren `400`. Det blir ikkje lagra nokon slike rader, `wallet_software` er `NULL`, og `software_compatibility_status` blir `NOT_ASSESSED`. Databasen kravde inga endring. (§25.1 brukar same mønsteret for ein adressestifeil.)
+**§22 — utilgjengeleg nøkkel gjer resten valfritt.** `Availability` er obligatorisk med berre Ja/Nei. Når han er Nei, blir programvare og KI-status skjulte og ikkje kravde, og dei må vere tomme i POST — elles svarar serveren `400`. Det blir ikkje lagra nokon slike rader, `wallet_software` er `NULL`, og `software_compatibility_status` blir `NOT_ASSESSED`. Ein cloud-nøkkel held fram med dei utleidde cloud-verdiane sine og gir det samanslåtte varselet. Databasen kravde inga endring. (§25.1 brukar same mønsteret for ein adressestifeil.)
 
 ---
 
@@ -493,13 +498,13 @@ Desse fire vart tekne undervegs og er no innarbeidde i §1–§18. Kvar referans
 
 Avtalt 02.10.2026, implementert og verifisert før steg 9–12 i §18. Reglane står i §3–§6; dette er berre eit kort samandrag, så fila er lett å lese.
 
-- Kvar nøkkel blir konfigurert éin gong ved første oppstart: namn og type (`hardware`/`cloud`). (§25.1 legg adressestien til, og §25.2 gjer namnet endreleg.)
+- Kvar nøkkel blir konfigurert éin gong ved første oppstart: namn og type (`hardware`/`cloud`). (§25.1 legg adressestien til og §25.2 gjer namnet endreleg, når §25 er implementert.)
 - Namnet brukaren skriv er produktetiketten overalt: skjema, varsel, historikk og CSV-eksport. Nøkkelnummeret blir vist saman med namnet der det trengst, t.d. `Key 1: ColdCard`.
 - Nøkkeltypen styrer kontrollane, aldri nøkkelnummeret. Ein cloud-nøkkel følgjer Nunchuk-modellen med det konfigurerte namnet.
 - `Wallet software`-vala er `Sparrow Wallet` pluss namnet på kvar konfigurert cloud-nøkkel. Namn på hardware-nøklar er aldri eit software-val.
 - Oppsettet blir lagra i SQLite saman med historikken. Nye databasar får eit oppsettsteg; eksisterande databasar blir migrerte frå nøkkelradene sine. Ei uleseleg database gir ein feil og blir ikkje behandla som ny.
 - Skjemafiksar: `Firmware version`, `Address path` og `Software version` blir fylte med førre lagra verdi som ein vanleg input-verdi; `Software compatibility` krev eit aktivt val; kontaktspørsmålet gjeld berre nøkkelhaldaren til den valde nøkkelen, med verdiane `Confirmed current` / `Needs external update`.
-- Skjemaversjon 8 då §23 vart ferdig (§24.4 tok han til 9, §25.6 til 10), og 178 grøne testar. Nye endepunkt: `GET /api/setup` og `POST /api/setup`.
+- Skjemaversjon 8 då §23 vart ferdig (§24.4 tok han til 9), og 178 grøne testar. Nye endepunkt: `GET /api/setup` og `POST /api/setup`.
 - Verifisert med testsuiten. Nettlesarflytane og migreringa av ein verkeleg eldre database står att som manuelle testar i §16.
 
 ## Framtidig arbeid, ikke no
@@ -524,9 +529,9 @@ Avtalt 03.10.2026, implementert og verifisert før steg 9–12 i §18. Der §24 
 
 ---
 
-# 25. Nøkkelidentitet, rotering, varselkvittering og innstillingar (implementert og verifisert)
+# 25. Nøkkelidentitet, rotering, varselkvittering og innstillingar (AVTALT, IKKJE IMPLEMENTERT)
 
-Avtalt 04.10.2026, implementert og verifisert før steg 9–12 i §18. Der §25 seier noko anna enn §3–§12, gjeld §25. Fram til då gjeld §3–§12 som dei står.
+Avtalt 04.10.2026. Ingenting i §25 er implementert, og alle punkta står opne til testane er grøne. Arbeidet skal gjerast **før** steg 9–12 i §18. Der §25 seier noko anna enn §3–§12, gjeld §25 når han er implementert; fram til då gjeld §3–§12 som dei står.
 
 ## 25.1 Adressestien er nøkkelens identitet
 
@@ -536,7 +541,7 @@ Avtalt 04.10.2026, implementert og verifisert før steg 9–12 i §18. Der §25 
 - [ ] Ved ulik sti viser nettlesaren eit påminningsvarsel før innsending, t.d. «The address path does not match the one stored for this key. Check it against your BSMS and try again, or confirm that you want to record this check anyway.»
 - [ ] Innsending likevel blir behandla som ein nøkkel som ikkje kunne kontrollerast: `address_path`, nøkkelnotatet, kontaktstadfestinga og den overordna kommentaren blir lagra, medan hardware, programvare og KI-status blir tomme, `wallet_software` blir `NULL`, og `software_compatibility_status` blir `NOT_ASSESSED`. Eit kritisk varsel blir utløyst.
 - [ ] Serveren krev det same minimale innhaldet og svarar `400` om programvare eller KI-status følgjer med, slik §22 alt gjer for ein utilgjengeleg nøkkel. Nettlesaren byggjer difor eit minimalt innhald når stien ikkje stemmer.
-- [ ] `address_path_verified` er elles `OK` eller `PROBLEM` berre sett av serveren, aldri sendt inn.
+- [ ] `address_path_verified` blir elles berre sett av serveren, aldri sendt inn.
 - [ ] Adressestien kan berre endrast i innstillingane så lenge nøkkelen ikkje har nokon lagra kontroll. Etter det er han låst, fordi han er identiteten til nøkkelen.
 - [ ] Adressestien er ein offentleg derivasjonssti og inneheld inga hemmelegheit.
 
