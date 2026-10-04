@@ -8,12 +8,11 @@ Short working handover for the next model. Keep it short.
 
 ## Status
 
-- **Done and verified:** sections 19–22, section 18 steps 1–8, sections 23 and 24.
-- **Done, waiting for verification:** the whole of section 25. It is implemented and the test files are updated, but the user has not run the suite yet, so the section 25 boxes in `TODO.md` are still unticked and the test count in section 18 still says 178.
-- **Agreed, not implemented:** section 26 — a key with an open alert cannot get a new check. More small items may be added to section 26 after the user's browser testing.
-- **Verified how:** the automated suite only. The browser flows and the migration of a real older database have not been run by hand yet; they are the manual tests in section 16 of `TODO.md`.
-- **Tests:** the user runs them: `python3 -m unittest discover -s tests`. They run on a Windows copy at `C:\Users\Driftsleiar\Downloads\helsesjekk`, so they must pass there as well as on Linux.
-- **Next work:** section 26 first, then section 18 steps 9–12 — the StartOS package, the persistent volume, backup/restore, and `.s9pk`. Covered by sections 13, 14, 16 and 17 of `TODO.md`. Do not start the StartOS part before the user says so.
+- **Done and verified:** sections 19–22, section 18 steps 1–8, and sections 23, 24 and 25.
+- **Verified how:** the automated suite — 283 green tests — and the user's manual browser testing, which is also where section 26 came from. The remaining manual tests are the ones in section 16 of `TODO.md`; the StartOS test there is still open.
+- **Tests:** 283 green after section 25. The user runs them: `python3 -m unittest discover -s tests`. They run on a Windows copy at `C:\Users\Driftsleiar\Downloads\helsesjekk`, so they must pass there as well as on Linux.
+- **Next work:** section 26 — agreed, not implemented, and it comes before section 18 steps 9–12. More small items may be added to section 26 after the user's browser testing.
+- **After that:** section 18 steps 9–12 — the StartOS package, the persistent volume, backup/restore, and `.s9pk`. Covered by sections 13, 14, 16 and 17 of `TODO.md`. Do not start the StartOS part before the user says so.
 - **Future work, deliberately not built:** more than three keys, and another threshold than 2-of-3 (section 23).
 
 ## Section 26 — agreed, not implemented
@@ -25,9 +24,9 @@ Read section 26 of `TODO.md` for the list. The parts that are easy to get wrong:
 - **Every alert must stay closable.** An alert must always carry at least one action (`actions`), or the key would be locked with no way out. An alert without an action is a bug, not a state the user can reach.
 - **The merge rule of section 21 stays as it is.** An alert from an older check is not cleared by a newer check that raises nothing, which is exactly why closing (acknowledgement or rotation) is the way out and why the blocking rule is needed.
 
-## Section 25 — implemented, waiting for verification
+## Section 25 — implemented and verified
 
-Read section 25 of `TODO.md` for the full list. What was built, and the parts that are easy to get wrong:
+Section 25 of `TODO.md` is the short summary; what follows are the parts that are easy to get wrong.
 
 - **The address path is the identity of a key, together with its type.** `keys.address_path` was added (a non-empty value in the setup, `TEXT NOT NULL DEFAULT ''` in the table), `/setup` asks for it, and the form records only `Address path`, pre-filled from `key.address_path`. The name is a label that the settings may change.
 - **The server derives `address_path_verified`.** It compares the recorded path with `keys.address_path` after stripping both: equal gives `OK`, different gives `PROBLEM`. A submitted `address_path_verified` is **ignored** (the user chose alternative A): the server always writes its own value, so a stale client that claims `OK` is overruled and an alert can never be lost. The comparison only happens when `available` is `1`, so an unavailable key never reports a mismatch and never raises the mismatch alert.
