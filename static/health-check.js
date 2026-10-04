@@ -4,7 +4,7 @@ const form = document.querySelector("#health-check-form");
 const keySelect = document.querySelector("#key-select");
 const keyCheck = document.querySelector("#key-check");
 const softwareSection = document.querySelector("#software-section");
-const softwareGrid = document.querySelector("#software-section .field-grid");
+const softwareGrid = document.querySelector("#software-grid");
 const walletSoftwareSelect = document.querySelector("#wallet-software");
 const softwareCompatibilitySelect = document.querySelector("#software-compatibility");
 const softwareVersionInput = document.querySelector("#software-version");
@@ -12,6 +12,8 @@ const softwareHelp = document.querySelector("#software-help");
 const contactSelect = document.querySelector("#contact-info-verified");
 const contactReminder = document.querySelector("#contact-reminder");
 const securityChecks = document.querySelector("#security-checks");
+const addressPathWarning = document.querySelector("#address-path-warning");
+const addressPathConfirmed = document.querySelector("#address-path-confirmed");
 const nextCheckPreview = document.querySelector("#next-check-preview");
 const reviewPanel = document.querySelector("#review-panel");
 const reviewSummary = document.querySelector("#review-summary");
@@ -19,9 +21,6 @@ const saveButton = document.querySelector("#save-check");
 const saveStatus = document.querySelector("#save-status");
 const securityChecksSection = securityChecks.closest(".form-section");
 
-// Sparrow is always a wallet software choice; a cloud key contributes its own
-// name as well (section 23.3).
-const SPARROW_SOFTWARE = "Sparrow Wallet";
 const SECURITY_STATUSES = ["SECURE", "PATCHED", "VULNERABLE", "COMPROMISED"];
 const UNAVAILABLE_MESSAGE = "The remaining checks for this key cannot be recorded.";
 // The contact result that reminds the user to update their own records (section 23.1).
@@ -37,6 +36,8 @@ const availabilityOptions = [["", "Select availability"], ["1", "Yes"], ["0", "N
 const hardwareWorksOptions = [["", "Select status"], ["1", "Yes"], ["0", "No"]];
 let keyProfiles = [];
 let previousValues = { keys: [] };
+// The wallet software list the user maintains in the settings (section 25.4).
+let walletSoftwareList = [];
 // True while the compatibility control carries the value derived for a cloud key.
 let compatibilityDerived = false;
 
@@ -126,13 +127,22 @@ function previousText(previous, field) {
   return (previous && previous[field]) || "";
 }
 
+function addressPathInput() {
+  return form.querySelector('[name="address_path"]');
+}
+
+function availabilityValue() {
+  const availability = form.querySelector('[name="available"]');
+  return availability === null ? null : availability.value;
+}
+
 function walletSoftwareChoices() {
-  // Sparrow plus the name of every configured cloud key. A hardware key name is
-  // never a software choice (section 23.3).
+  // The settings list plus the name of every configured cloud key. A hardware key
+  // name is never a software choice (sections 23.3 and 25.4).
   const cloudNames = keyProfiles
     .filter((key) => key.type === "cloud")
     .map((key) => key.name);
-  return [...new Set([SPARROW_SOFTWARE, ...cloudNames])];
+  return [...new Set([...walletSoftwareList, ...cloudNames])];
 }
 
 function renderWalletSoftwareOptions() {
@@ -153,8 +163,24 @@ function renderWalletSoftwareOptions() {
 }
 
 function keyIsUnavailable() {
-  const availability = form.querySelector('[name="available"]');
-  return Boolean(selectedKey()) && availability !== null && availability.value === "0";
+  return Boolean(selectedKey()) && availabilityValue() === "0";
+}
+
+function addressPathMismatch() {
+  const key = selectedKey();
+  const input = addressPathInput();
+  if (!key || !input || keyIsUnavailable()) {
+    // A key that was not available records no path at all, so no mismatch is
+    // reported for it (sections 22 and 25.1).
+    return false;
+  }
+  // The server compares the recorded path with the path stored for the key,
+  // after stripping both (section 25.1).
+  return input.value.trim() !== (key.address_path || "").trim();
+}
+
+function keyIsUncheckable() {
+  return keyIsUnavailable() || addressPathMismatch();
 }
 
 function expectedLabels(key) {
@@ -196,6 +222,7 @@ function renderKeyCheck() {
   card.append(makeField("Availability", "available", available));
 
   const details = document.createElement("div");
+  details.id = "key-details";
   details.className = "form-stack";
   if (key.type === "hardware") {
     // Hardware works requires an active Yes or No (section 24.1).
@@ -215,36 +242,48 @@ function renderKeyCheck() {
       makeSelect(verificationStatuses, "seed_backup_verified", "Select a status"),
     ));
   }
-  const addressVerified = makeSelect(verificationStatuses, "address_path_verified", "Select a status");
-  details.append(makeField("Address path verified", "address_path_verified", addressVerified));
-  details.append(makeField(
+  card.append(details);
+
+  // The user records the address path only; the server compares it with the path
+  // stored for the key and derives the verification result (section 25.1).
+  card.append(makeField(
     "Address path",
     "address_path",
-    makeTextInput("address_path", 200, previousText(previous, "address_path")),
+    makeTextInput("address_path", 200, key.address_path || ""),
   ));
-  card.append(details);
   card.append(makeField("Key notes", "key_comments", makeTextarea("key_comments")));
   keyCheck.append(card);
 
   available.addEventListener("change", () => {
-    details.hidden = available.value === "0";
-    syncRequiredFields();
+    syncKeyDetails();
+    syncAddressPathState();
     refreshKeySections();
   });
-  addressVerified.addEventListener("change", syncAddressPathField);
-  syncAddressPathField();
+  addressPathInput().addEventListener("input", syncAddressPathState);
+  syncKeyDetails();
+  syncAddressPathState();
+}
+
+function syncKeyDetails() {
+  // Nothing else about the key is recorded when it was not available or when the
+  // recorded address path does not match, so those fields are hidden
+  // (sections 22 and 25.1).
+  const details = form.querySelector("#key-details");
+  if (details) {
+    details.hidden = keyIsUncheckable();
+  }
   syncRequiredFields();
 }
 
 function syncRequiredFields() {
-  // Hardware works and the two verification results all require an active choice
-  // for a key that was available (sections 23.1 and 24.1). The required flag is
-  // cleared when the key was not available, because a hidden required control
-  // would block the submission.
-  const key = selectedKey();
-  const availability = form.querySelector('[name="available"]');
-  const required = Boolean(key) && availability !== null && availability.value === "1";
-  for (const name of ["hardware_works", "seed_backup_verified", "address_path_verified"]) {
+  // Hardware works and the seed backup result require an active choice for a key
+  // that was available and could be checked (sections 23.1 and 24.1). The
+  // required flag is cleared otherwise, because a hidden required control would
+  // block the submission.
+  const required = Boolean(selectedKey())
+    && availabilityValue() === "1"
+    && !addressPathMismatch();
+  for (const name of ["hardware_works", "seed_backup_verified"]) {
     const select = form.querySelector(`[name="${name}"]`);
     if (select) {
       select.required = required;
@@ -252,49 +291,53 @@ function syncRequiredFields() {
   }
 }
 
-function syncAddressPathField() {
-  // The path is only recorded when it was verified as OK, so an unverified or
-  // failed result never stores a path (section 21). The control is disabled
-  // while it is hidden instead of cleared, so a pre-filled path is kept for the
-  // user and still cannot be submitted with an unverified result.
-  const field = form.querySelector('[name="address_path"]')?.closest(".field");
-  const verified = form.querySelector('[name="address_path_verified"]');
-  if (!field || verified === null) {
-    return;
+function syncAddressPathState() {
+  const field = addressPathInput()?.closest(".field");
+  if (field) {
+    // The path is not asked for when the key was not available, because nothing
+    // else about that key is recorded (section 22).
+    field.hidden = keyIsUnavailable();
   }
-  const input = form.querySelector('[name="address_path"]');
-  const show = Boolean(selectedKey()) && verified.value === "OK";
-  field.hidden = !show;
-  input.disabled = !show;
+  const mismatch = addressPathMismatch();
+  addressPathWarning.hidden = !mismatch;
+  // The confirmation is required while the warning is shown, so the browser
+  // itself stops the submission. The flag follows the warning, so a required
+  // control is never hidden.
+  addressPathConfirmed.required = mismatch;
+  if (!mismatch) {
+    addressPathConfirmed.checked = false;
+  }
+  syncUncheckableState();
 }
 
-function syncUnavailableState() {
-  // A key that was not available records nothing else, so those parts of the
-  // form are hidden and never required (section 22).
-  const unavailable = keyIsUnavailable();
-  softwareSection.hidden = unavailable;
-  securityChecksSection.hidden = unavailable;
-  walletSoftwareSelect.required = !unavailable;
-  // A hidden required control blocks the submission, so the compatibility
-  // result is not required for a key that was not available either.
-  softwareCompatibilitySelect.required = !unavailable;
+function syncUncheckableState() {
+  // A key that was not available and a key whose recorded address path does not
+  // match record nothing else, so the compatibility and the security sections are
+  // hidden and never required (sections 22 and 25.1).
+  const uncheckable = keyIsUncheckable();
+  softwareSection.hidden = uncheckable;
+  securityChecksSection.hidden = uncheckable;
+  // A hidden required control blocks the submission, so the two controls inside
+  // the hidden grid are not required for a cloud key either (sections 20 and 25.5).
+  const key = selectedKey();
+  const isCloud = Boolean(key) && key.type === "cloud";
+  const required = !uncheckable && !isCloud;
+  walletSoftwareSelect.required = required;
+  softwareCompatibilitySelect.required = required;
 }
 
 function lockSoftwareFields() {
   const key = selectedKey();
   const isCloud = Boolean(key) && key.type === "cloud";
-  const sparrow = walletSoftwareSelect.querySelector(`option[value="${SPARROW_SOFTWARE}"]`);
-  if (sparrow) {
-    sparrow.disabled = isCloud;
-  }
+  // The grid holds the wallet software and the compatibility result, which are
+  // both derived for a cloud key. The software version stays visible for every
+  // key (sections 20 and 25.5).
   softwareGrid.hidden = isCloud;
   if (isCloud) {
-    // A cloud key records its own name as the wallet software, and its
-    // compatibility is derived from availability (sections 20 and 23.3).
     walletSoftwareSelect.value = key.name;
     softwareCompatibilitySelect.value = "OK";
     compatibilityDerived = true;
-    softwareHelp.textContent = "Compatibility is derived from availability for a cloud key: available gives OK, not available gives not assessed.";
+    softwareHelp.textContent = "Compatibility is derived from availability for a cloud key: available gives OK, not checked gives not assessed. Record the version of the software you use for that key.";
   } else {
     if (compatibilityDerived) {
       // The derived value is not an answer for another key, so it is cleared.
@@ -309,11 +352,10 @@ function lockSoftwareFields() {
 function updateSoftwareVersionValue() {
   const key = selectedKey();
   const previous = key ? previousForKey(key.id) : null;
-  // The saved version belongs to the saved software choice, so it is only
-  // reused for the same key and the same software (section 23.1). A cloud key
-  // has no version field of its own.
+  // The saved version belongs to the saved software choice, so it is only reused
+  // for the same key and the same software. A cloud key records its own name as
+  // its software, so the same rule applies to it (sections 23.1 and 25.5).
   const reusable = Boolean(key)
-    && key.type === "hardware"
     && previous
     && previous.wallet_software === walletSoftwareSelect.value
     && previous.software_version;
@@ -333,7 +375,7 @@ function renderSecurityChecks() {
     securityChecks.append(emptyState("Select a key to see the providers to check."));
     return;
   }
-  if (keyIsUnavailable()) {
+  if (keyIsUncheckable()) {
     securityChecks.append(emptyState(UNAVAILABLE_MESSAGE));
     return;
   }
@@ -356,7 +398,7 @@ function refreshKeySections() {
   renderWalletSoftwareOptions();
   lockSoftwareFields();
   renderSecurityChecks();
-  syncUnavailableState();
+  syncUncheckableState();
 }
 
 function formatLocalDate(date) {
@@ -412,22 +454,21 @@ function appendSummaryList(parent, title, items) {
   parent.append(heading, list);
 }
 
-function derivedSummary(key, available) {
+function derivedSummary(key, available, mismatch) {
+  // The address path comparison and the compatibility of a key that could not be
+  // checked are both derived by the server (sections 22 and 25.1).
+  if (mismatch) {
+    return [
+      "Address path verified: PROBLEM",
+      "Software compatibility: not assessed",
+    ];
+  }
   if (!key || key.type !== "cloud" || available === null) {
     return [];
   }
-  if (available === 1) {
-    return [
-      "Cloud health check: OK",
-      "Provider operational: Yes",
-      "Compatibility status: OK",
-    ];
-  }
-  return [
-    "Cloud health check: PROBLEM",
-    "Provider operational: No",
-    "Compatibility status: not assessed",
-  ];
+  return available === 1
+    ? ["Compatibility status: OK"]
+    : ["Compatibility status: not assessed"];
 }
 
 function buildReview() {
@@ -457,13 +498,22 @@ function buildReview() {
 
   const key = selectedKey();
   const available = key ? flagValue(data, "available") : null;
+  const mismatch = addressPathMismatch();
   const fragment = document.createDocumentFragment();
+  if (mismatch) {
+    // The choice to save anyway is clearly marked in the summary (section 25.1).
+    appendSummaryList(fragment, "Recorded as a key that could not be checked", [
+      "The address path does not match the path stored for this key.",
+      "Only the address path, the key note, the contact confirmation, and the overall comment are recorded.",
+      "The hardware, the software, and the security results are not recorded, and this check raises a critical alert.",
+    ]);
+  }
   appendSummaryList(fragment, "Needs assessment", missing.length ? missing : ["None"]);
   appendSummaryList(fragment, "Results requiring follow-up", problems.length ? problems : ["None"]);
 
-  const derived = derivedSummary(key, available);
+  const derived = derivedSummary(key, available, mismatch);
   if (derived.length) {
-    appendSummaryList(fragment, "Derived from availability", derived);
+    appendSummaryList(fragment, "Derived from availability and the address path", derived);
   }
 
   const checkedAt = data.get("checked_at");
@@ -493,57 +543,31 @@ function statusValue(data, name) {
   return typeof value === "string" && value !== "" ? value : null;
 }
 
-function derivedValues(key, available) {
-  // The cloud key records these from availability alone (section 20).
-  if (!key || key.type !== "cloud") {
-    return {};
-  }
-  if (available === 1) {
-    return {
-      cloud_health_status: "OK",
-      cloud_provider_operational: 1,
-      software_compatibility_status: "OK",
-    };
-  }
-  if (available === 0) {
-    return {
-      cloud_health_status: "PROBLEM",
-      cloud_provider_operational: 0,
-      software_compatibility_status: "NOT_ASSESSED",
-    };
-  }
-  return {
-    cloud_health_status: null,
-    cloud_provider_operational: null,
-    software_compatibility_status: "NOT_ASSESSED",
-  };
-}
-
-function collectKeyCheck(data, key, derived) {
+function collectKeyCheck(data, key) {
   const available = flagValue(data, "available");
-  const isCloud = key.type === "cloud";
   const entry = {
     key_id: key.id,
     available: available,
     hardware_works: null,
     firmware_version: "",
     seed_backup_verified: null,
-    cloud_health_status: isCloud ? derived.cloud_health_status : null,
-    cloud_provider_operational: isCloud ? derived.cloud_provider_operational : null,
-    address_path_verified: null,
     address_path: "",
     comments: textValue(data, "key_comments"),
   };
   if (available === 0) {
     return entry;
   }
-  if (!isCloud) {
+  entry.address_path = textValue(data, "address_path");
+  if (addressPathMismatch()) {
+    // The key could not be checked, so only the recorded path, the key note, the
+    // contact confirmation, and the overall comment are sent (section 25.1).
+    return entry;
+  }
+  if (key.type === "hardware") {
     entry.hardware_works = flagValue(data, "hardware_works");
     entry.firmware_version = textValue(data, "firmware_version");
     entry.seed_backup_verified = statusValue(data, "seed_backup_verified");
   }
-  entry.address_path_verified = statusValue(data, "address_path_verified");
-  entry.address_path = textValue(data, "address_path");
   return entry;
 }
 
@@ -551,21 +575,22 @@ function collectPayload() {
   const data = new FormData(form);
   const key = selectedKey();
   const available = key ? flagValue(data, "available") : null;
-  // A key that was not available records nothing else, so the payload leaves
-  // those parts out entirely (section 22).
-  const unavailable = available === 0;
-  const derived = derivedValues(key, available);
+  // A key that was not available and a key whose address path does not match
+  // record nothing else, so the payload leaves those parts out entirely
+  // (sections 22 and 25.1).
+  const uncheckable = available === 0 || addressPathMismatch();
   return {
     checked_at: textValue(data, "checked_at"),
-    wallet_software: unavailable ? null : data.get("wallet_software"),
-    software_version: unavailable ? "" : textValue(data, "software_version"),
-    software_compatibility_status: derived.software_compatibility_status
-      || (unavailable ? "NOT_ASSESSED" : statusValue(data, "software_compatibility_status")),
-    software_comments: unavailable ? "" : textValue(data, "software_comments"),
+    wallet_software: uncheckable ? null : data.get("wallet_software"),
+    software_version: uncheckable ? "" : textValue(data, "software_version"),
+    software_compatibility_status: uncheckable
+      ? "NOT_ASSESSED"
+      : statusValue(data, "software_compatibility_status"),
+    software_comments: uncheckable ? "" : textValue(data, "software_comments"),
     contact_info_verified: statusValue(data, "contact_info_verified"),
     comments: textValue(data, "comments"),
-    key_check: collectKeyCheck(data, key, derived),
-    ai_security_checks: unavailable ? [] : expectedLabels(key).map((provider) => {
+    key_check: collectKeyCheck(data, key),
+    ai_security_checks: uncheckable ? [] : expectedLabels(key).map((provider) => {
       const slug = productSlug(provider);
       const statusName = `security_${slug}_status`;
       const commentName = `security_${slug}_comments`;
@@ -603,9 +628,10 @@ async function saveHealthCheck() {
 
 async function loadFormData() {
   try {
-    const [keysResponse, previousResponse] = await Promise.all([
+    const [keysResponse, previousResponse, settingsResponse] = await Promise.all([
       fetch("/api/keys", { headers: { Accept: "application/json" } }),
       fetch("/api/previous-values", { headers: { Accept: "application/json" } }),
+      fetch("/api/settings", { headers: { Accept: "application/json" } }),
     ]);
     if (!keysResponse.ok) {
       throw new Error("Key profiles are unavailable.");
@@ -619,6 +645,12 @@ async function loadFormData() {
     if (previousResponse.ok) {
       const values = await previousResponse.json();
       previousValues = { keys: values.keys || [] };
+    }
+    if (settingsResponse.ok) {
+      const settings = await settingsResponse.json();
+      // The wallet software choices come from the settings list and the
+      // configured cloud keys (section 25.4).
+      walletSoftwareList = settings.wallet_software || [];
     }
     renderKeySelect();
   } catch {
