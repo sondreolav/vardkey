@@ -49,7 +49,15 @@
           </div>
           <label class="field"><span>Key being checked</span><select id="key-select" name="key_id" required><option value="">Select a key</option></select></label>
           <p class="field-help">One submission records one key. The other keys keep their own next check date.</p>
+          <p class="field-help">The recorded address path is compared with the path stored for the key, and the result is recorded automatically.</p>
           <div id="key-check" class="form-stack"><p class="empty-state">Loading key profiles…</p></div>
+          <!-- The warning appears when the recorded address path does not match the
+               path stored for the key (section 25.1). -->
+          <div class="warning-note" id="address-path-warning" role="alert" hidden>
+            <p>The address path does not match the one stored for this key. Check it against your BSMS and try again, or confirm that you want to record this check anyway.</p>
+            <p class="field-help">A check recorded anyway keeps the address path, the key note, the contact confirmation, and the overall comment. The hardware, the software, and the security results cannot be recorded, and the check raises a critical alert.</p>
+            <label class="field checkbox-field"><input id="address-path-confirmed" type="checkbox"><span>Record this check anyway, as a key that could not be checked</span></label>
+          </div>
         </section>
 
         <section class="form-section" id="software-section" aria-labelledby="software-title">
@@ -57,11 +65,17 @@
             <p class="eyebrow">03 / Compatibility</p>
             <h2 id="software-title">Software compatibility</h2>
           </div>
-          <div class="field-grid">
-            <!-- The software choices are built from the key setup (section 23.3). -->
+          <!-- The software choices are built from the settings and the configured
+               cloud keys (section 25.4). A cloud key hides this grid, because its
+               software and its compatibility are derived. -->
+          <div class="field-grid" id="software-grid">
             <label class="field"><span>Wallet software</span><select id="wallet-software" name="wallet_software" required><option value="">Select software</option></select></label>
             <label class="field"><span>Compatibility status</span><select id="software-compatibility" name="software_compatibility_status" required><option value="">Select status</option><option value="OK">OK</option><option value="PROBLEM">Problem</option></select></label>
-            <label class="field"><span>Software version <span class="optional">(if used)</span></span><input id="software-version" name="software_version" type="text" maxlength="100" autocomplete="off"></label>
+          </div>
+          <!-- The version belongs to every key, including a cloud key, so it stays
+               visible while the grid above is hidden (section 25.5). -->
+          <div class="field-grid">
+            <label class="field"><span>Software version</span><input id="software-version" name="software_version" type="text" maxlength="100" autocomplete="off"></label>
           </div>
           <p class="field-help" id="software-help">Record the version of the software you selected for this key.</p>
           <label class="field"><span>Compatibility notes</span><textarea name="software_comments" rows="3" maxlength="2000"></textarea></label>
