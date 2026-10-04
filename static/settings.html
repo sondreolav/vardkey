@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f4f6f2">
+    <title>Settings — Helsesjekk</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/settings.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Helsesjekk dashboard">
+        <span class="brand-mark" aria-hidden="true">H</span>
+        <span>Helsesjekk</span>
+      </a>
+      <a class="back-link" href="/">Back to dashboard</a>
+    </header>
+
+    <main class="page-shell form-shell">
+      <div class="page-heading form-heading">
+        <div>
+          <p class="eyebrow">Settings</p>
+          <h1>Settings</h1>
+          <p class="intro">The key names, the wallet software list, and the key rotation. Each section saves on its own.</p>
+        </div>
+      </div>
+
+      <div class="privacy-notice" role="note">
+        Never enter seed phrases, private keys, PINs, passwords, wallet secrets, or contact details.
+      </div>
+
+      <p class="workflow-note" id="settings-status" role="status"></p>
+
+      <section class="form-section" aria-labelledby="settings-keys-title">
+        <div class="form-section-heading">
+          <p class="eyebrow">01 / Keys</p>
+          <h2 id="settings-keys-title">Keys</h2>
+        </div>
+        <p class="field-help">The name is only a label, so it can be changed at any time. The type and the address path are the identity of the key: the type is locked, and the address path can only be changed while the key has no saved check.</p>
+        <div id="keys-list" class="form-stack"><p class="empty-state">Loading keys…</p></div>
+      </section>
+
+      <section class="form-section" aria-labelledby="settings-software-title">
+        <div class="form-section-heading">
+          <p class="eyebrow">02 / Wallet software</p>
+          <h2 id="settings-software-title">Wallet software</h2>
+        </div>
+        <p class="field-help">Every entry is a wallet software choice for the keys you check. The list is saved as a whole, so add an entry before you remove the last one. A name that already comes from a cloud key is not needed here, and names must be unique.</p>
+        <p class="field-help">Removing an entry never changes a saved check: the software selected in an earlier check stays as it was recorded.</p>
+        <div id="wallet-software-list" class="form-stack"></div>
+        <div class="form-actions">
+          <button class="secondary-button" id="add-software" type="button">Add entry</button>
+          <button class="primary-button active-button" id="save-software" type="button">Save wallet software</button>
+        </div>
+        <p class="workflow-note" id="software-status" role="status"></p>
+      </section>
+
+      <section class="form-section" aria-labelledby="settings-rotation-title">
+        <div class="form-section-heading">
+          <p class="eyebrow">03 / Key rotation</p>
+          <h2 id="settings-rotation-title">Key rotation</h2>
+        </div>
+        <p class="field-help">A rotation records that a key has been replaced by a new one, keeps or changes its name, and closes the alerts that the key raised. The type and the address path are locked, and no earlier check is changed.</p>
+        <div class="warning-note" role="note">
+          <p><strong>Rotating a key creates a new wallet.</strong> Move your funds from the old multisig setup to the new one, and verify that the new setup works, before you rely on it.</p>
+          <p>Do not discard the old keys or the old seed backups until the funds have been moved and confirmed. Losing access to the old setup before the move can mean losing the bitcoin.</p>
+        </div>
+        <div id="rotation-list" class="form-stack"><p class="empty-state">Loading keys…</p></div>
+        <label class="field checkbox-field"><input id="rotation-replaced" type="checkbox"><span>I confirm that each selected key has been replaced by a new key or hardware wallet</span></label>
+        <label class="field checkbox-field"><input id="rotation-path-unchanged" type="checkbox"><span>I confirm that the address path of each selected key is unchanged</span></label>
+        <div class="form-actions">
+          <button class="primary-button active-button" id="rotate-keys" type="button">Rotate selected keys</button>
+        </div>
+        <p class="workflow-note" id="rotation-status" role="status"></p>
+      </section>
+    </main>
+    <footer class="footer"><span>Helsesjekk</span><span>Your data stays local.</span></footer>
+  </body>
+</html>
