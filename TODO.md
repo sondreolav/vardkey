@@ -14,7 +14,7 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 
 Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 
-**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. §19–§22 er eit kort vedlegg med dei fire avgjerdene som vart tekne undervegs, alle innarbeidde i §1–§18. §23 (konfigurerbart nøkkeloppsett) og §24 (obligatoriske val, fjerning av BIP327/SLIP39, ny skjemastruktur og skjemaversjon 9) er implementerte og verifiserte. §25 (nøkkelidentitet, rotering, varselkvittering og innstillingar) er **implementert og ventar på verifisering**, og kjem før steg 9–12 i §18. Den fulle grunngjevinga for kvar avgjerd ligg i git-historikken.
+**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. §19–§22 er eit kort vedlegg med dei fire avgjerdene som vart tekne undervegs, alle innarbeidde i §1–§18. §23 (konfigurerbart nøkkeloppsett) og §24 (obligatoriske val, fjerning av BIP327/SLIP39, ny skjemastruktur og skjemaversjon 9) er implementerte og verifiserte. §25 (nøkkelidentitet, rotering, varselkvittering og innstillingar) er **implementert og ventar på verifisering**, og kjem før steg 9–12 i §18. §26 (sperring av ein nøkkel med ope varsel) er **avtalt, men ikkje implementert**, og kjem etter §25. Den fulle grunngjevinga for kvar avgjerd ligg i git-historikken.
 
 ## Språkkrav
 
@@ -242,6 +242,7 @@ Alle lagra kontrollar blir lesne (§21). Kva som kan lukke eit varsel, står i �
 - [ ] Varselet om cloud-helse er fjerna: det kunne ikkje utløysast frå skjemaet (§25.3).
 - [ ] Varselet om feila adresseverifisering er erstatta av varselet om adressestifeil (§25.3).
 - [ ] Eit kvittert varsel er skjult til ein nyare kontroll for same `code` og `source` utløyser det igjen (§25.3).
+- [ ] Ein nøkkel med eit ope varsel kan ikkje få ein ny kontroll før varselet er lukka (§26).
 
 ---
 
@@ -309,6 +310,7 @@ Minimumsendepunkt:
 - [ ] `POST /api/keys/<id>/rotate` roterer ein nøkkel og kvitterer ut varsla hans (§25.2).
 - [ ] `POST /api/alerts/acknowledge` kvitterer ut eit varsel med `code`, `source` og ein årsak (§25.3).
 - [ ] `POST /api/health-checks` samanliknar adressestien og krev eit minimalt innhald når han ikkje stemmer, elles `400` (§25.1).
+- [ ] `POST /api/health-checks` avviser ein nøkkel som har eit ope varsel (§26).
 
 ---
 
@@ -328,6 +330,7 @@ Minimumsendepunkt:
 - [ ] Eit påminningsvarsel før innsending når adressestien ikkje stemmer (§25.1).
 - [ ] `Wallet software`-vala kjem frå nøkkeloppsettet, cloud-nøklane og innstillingslista (§25.4).
 - [ ] Sørg for at appen fungerer godt i vanleg StartOS-browser.
+- [ ] Skjemaet viser kva nøklar som er sperra av eit ope varsel, og kva handling som lukkar det (§26).
 
 ---
 
@@ -417,6 +420,7 @@ Unngå:
 - [ ] Test kontaktinfo `Needs external update`.
 - [ ] Test rotering av ein nøkkel, med og utan nytt namn (§25.2).
 - [ ] Test kvittering av eit varsel, og at eit nyare varsel kjem tilbake (§25.3).
+- [ ] Test at ein nøkkel med eit ope varsel ikkje kan få ein ny kontroll, og at nøkkelen blir ledig igjen når varselet er lukka (§26).
 
 ## StartOS-test
 
@@ -472,7 +476,7 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 
 **Merk:** steg 4, 5 og 6 vart først fullførte før §19 vart vedteken, og gjorde på nytt etterpå. Steg 4 og 6 vart kryssa av då §22 var verifisert.
 
-**Merk:** §23 og §24 er implementerte og verifiserte. §25 er implementert og ventar på verifisering, og kjem før steg 9–12. Steg 9–12 er ikkje starta.
+**Merk:** §23 og §24 er implementerte og verifiserte. §25 er implementert og ventar på verifisering. §26 er avtalt, men ikkje implementert. Begge kjem før steg 9–12. Steg 9–12 er ikkje starta.
 
 **Testar:** 178 grøne testar etter §24. Talet blir oppdatert når §25 er verifisert. Køyr `python3 -m unittest discover -s tests`.
 
@@ -622,3 +626,19 @@ Eit kvittert varsel held seg skjult til ein nyare kontroll for same `code` og `s
 - [ ] `README.md`, `TODO.md` og `ai-note.md` skal oppdaterast.
 
 **Gjort:** alle seks testfilene er oppdaterte og utvida med testar for punkta over, og `README.md`, `TODO.md` og `ai-note.md` er oppdaterte. Testane er ikkje køyrde av brukaren enno, så talet i §18 står framleis på 178.
+
+---
+
+# 26. Sperring: ein nøkkel med ope varsel kan ikkje få ein ny kontroll (AVTALT, IKKJE IMPLEMENTERT)
+
+Avtalt 04.10.2026, etter manuell testing i nettlesaren. Ingenting av dette er implementert, og punkta står opne til testane er grøne. Arbeidet kjem etter §25 og før steg 9–12 i §18. Fleire småting kan kome til etter kvart som brukaren testar vidare; dei blir lagde til her.
+
+Bakgrunnen: samanslåinga i §21 held fram, så eit varsel frå ein gammal kontroll blir ikkje borte av at ein nyare kontroll for same nøkkel er frisk. Eit varsel blir difor lukka av brukaren (kvittering eller rotering), og eit ope varsel må ikkje kunne forsvinnast ved å registrere ein ny kontroll.
+
+- [ ] Ein ny health check kan ikkje startast for ein nøkkel som har eit ope varsel. Skjemaet skal seie tydeleg kva varsel som står i vegen, kva handling som lukkar det, og kva nøklar som er ledige.
+- [ ] Varselet må kunne lukkast, elles låser det nøkkelen: kvart varsel må ha minst éi lukkehandling (`actions` i §25.3). Eit varsel utan handling er ein feil, ikkje noko brukaren kan hamne i.
+- [ ] Serveren handhevar regelen, ikkje berre skjemaet: `POST /api/health-checks` svarar `409` når den valde nøkkelen har eit ope varsel, slik at eit direkte API-kall ikkje kan omgå han.
+- [ ] Skjemaet viser kva nøklar som er sperra, og lenker til varsla på dashboardet, slik at brukaren kan lukke dei først.
+- [ ] Sperringa gjeld berre den nøkkelen som har varselet. Dei andre nøklane kan framleis få sin kontroll.
+- [ ] Testar for sperringa: ein nøkkel med eit ope varsel gir `409` på serveren og ei tydeleg melding i skjemaet, medan ein nøkkel utan varsel fungerer som før. Testane skal òg dekkje at eit varsel alltid har minst éi lukkehandling.
+- [ ] `README.md`, `TODO.md` og `ai-note.md` skal oppdaterast når dette er implementert.
