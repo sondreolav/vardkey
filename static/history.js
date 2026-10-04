@@ -82,6 +82,8 @@ function card(title, content) {
 }
 
 function keyLabel(record) {
+  // The key name is read from the key row, so a saved check shows the name the
+  // key has now, which the settings may change (section 25.2).
   const labels = (record.key_checks || []).map(
     (entry) => `Key ${entry.key_number}: ${entry.name}`,
   );
@@ -117,12 +119,11 @@ function keyEntries(keyCheck) {
     entries.push(["Hardware works", displayFlag(keyCheck.hardware_works)]);
     entries.push(["Firmware version", keyCheck.firmware_version]);
     entries.push(["Seed backup verified", keyCheck.seed_backup_verified]);
-  } else {
-    entries.push(["Cloud health check", keyCheck.cloud_health_status]);
-    entries.push(["Provider operational", displayFlag(keyCheck.cloud_provider_operational)]);
   }
-  entries.push(["Address path verified", keyCheck.address_path_verified]);
+  // The user records the address path only; the verification result is derived
+  // by the server, so it is shown as a derived value (sections 9 and 25.1).
   entries.push(["Address path", keyCheck.address_path]);
+  entries.push(["Address path verified (derived)", keyCheck.address_path_verified]);
   entries.push(["Comments", keyCheck.comments]);
   return entries;
 }
