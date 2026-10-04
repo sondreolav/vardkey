@@ -121,8 +121,110 @@ function createAlertItem(alert) {
   origin.className = "alert-origin";
   origin.textContent = `From check ${alert.check_id} · ${alert.checked_at}`;
 
-  item.append(source, message, origin);
+  item.append(source, message, origin, createAlertActions(alert));
   return item;
+}
+
+function createAlertActions(alert) {
+  // Every alert names the actions that close it, and each action requires a
+  // confirmation from the user (section 25.3).
+  const actions = document.createElement("div");
+  actions.className = "alert-actions";
+  for (const action of alert.actions || []) {
+    if (action === "rotate" && alert.key_id) {
+      const link = document.createElement("a");
+      link.className = "secondary-button";
+      link.href = `/settings?rotate=${encodeURIComponent(alert.key_id)}`;
+      link.textContent = "Rotate key";
+      actions.append(link);
+    }
+    if (action === "acknowledge") {
+      actions.append(createCloseControl(alert));
+    }
+  }
+  return actions;
+}
+
+function createCloseControl(alert) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "alert-close";
+
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "secondary-button";
+  open.textContent = "Close alert";
+
+  const panel = document.createElement("div");
+  panel.className = "form-stack";
+  panel.hidden = true;
+
+  const label = document.createElement("label");
+  label.className = "field";
+  const labelText = document.createElement("span");
+  labelText.textContent = "Reason for closing this alert";
+  const reason = document.createElement("textarea");
+  reason.rows = 2;
+  reason.maxLength = 2000;
+  label.append(labelText, reason);
+
+  const confirmButton = document.createElement("button");
+  confirmButton.type = "button";
+  confirmButton.className = "primary-button active-button";
+  confirmButton.textContent = "Confirm close";
+
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "secondary-button";
+  cancelButton.textContent = "Cancel";
+
+  const buttons = document.createElement("div");
+  buttons.className = "form-actions";
+  buttons.append(confirmButton, cancelButton);
+
+  const status = document.createElement("p");
+  status.className = "workflow-note";
+  status.setAttribute("role", "status");
+
+  panel.append(label, buttons, status);
+  wrapper.append(open, panel);
+
+  open.addEventListener("click", () => {
+    open.hidden = true;
+    panel.hidden = false;
+    reason.focus();
+  });
+  cancelButton.addEventListener("click", () => {
+    panel.hidden = true;
+    open.hidden = false;
+    status.textContent = "";
+  });
+  confirmButton.addEventListener("click", () => acknowledgeAlert(alert, reason, status, confirmButton));
+  return wrapper;
+}
+
+async function acknowledgeAlert(alert, reason, status, button) {
+  const text = reason.value.trim();
+  if (!text) {
+    status.textContent = "Write a short reason before you close the alert.";
+    return;
+  }
+  button.disabled = true;
+  status.textContent = "Closing…";
+  try {
+    const response = await fetch("/api/alerts/acknowledge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ code: alert.code, source: alert.source, reason: text }),
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || "The alert could not be closed.");
+    }
+    await loadAlerts();
+  } catch (error) {
+    status.textContent = error.message;
+    button.disabled = false;
+  }
 }
 
 async function redirectWhenSetupIsMissing() {
