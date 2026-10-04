@@ -2,7 +2,14 @@
 
 import unittest
 
-from alerts import build_alerts, collect_alerts
+from alerts import (
+    ACKNOWLEDGE,
+    ALERT_CODES,
+    ROTATE,
+    build_alerts,
+    collect_alerts,
+    rotation_alert_targets,
+)
 
 
 def clean_record(key_number=1, name="SeedSigner", key_type="hardware"):
@@ -12,6 +19,7 @@ def clean_record(key_number=1, name="SeedSigner", key_type="hardware"):
     replace one of the entries itself.
     """
     entry = {
+        "key_id": key_number,
         "key_number": key_number,
         "name": name,
         "type": key_type,
@@ -21,12 +29,7 @@ def clean_record(key_number=1, name="SeedSigner", key_type="hardware"):
         "address_path_verified": "OK",
     }
     if key_type == "cloud":
-        entry.update({
-            "hardware_works": None,
-            "seed_backup_verified": None,
-            "cloud_health_status": "OK",
-            "cloud_provider_operational": 1,
-        })
+        entry.update({"hardware_works": None, "seed_backup_verified": None})
     return {
         "checked_at": "2026-10-01",
         "next_check_due": "2027-10-01",
@@ -47,6 +50,11 @@ def dated_record(check_id, checked_at, **overrides):
     record["id"] = check_id
     record["checked_at"] = checked_at
     return record
+
+
+def key_profile(key_number=1, name="SeedSigner"):
+    """Return the configured key profile a record belongs to."""
+    return {"id": key_number, "key_number": key_number, "name": name}
 
 
 class AlertTests(unittest.TestCase):
@@ -80,21 +88,20 @@ class AlertTests(unittest.TestCase):
 
         self.assertEqual(self.codes(record), ["key_unavailable"])
 
-    def test_an_unavailable_cloud_key_gets_one_merged_alert(self):
-        record = clean_record(key_number=3, name="Nunchuk", key_type="cloud")
-        record["key_checks"][0].update({
-            "available": 0,
-            "cloud_health_status": "PROBLEM",
-            "cloud_provider_operational": 0,
-        })
+    def test_an_unavailable_cloud_key_gets_the_same_alert(self):
+        # The cloud results are gone, so one message covers every key
+        # (sections 25.3 and 25.6).
+        cloud = clean_record(key_number=3, name="Nunchuk", key_type="cloud")
+        cloud["key_checks"][0]["available"] = 0
+        hardware = clean_record()
+        hardware["key_checks"][0]["available"] = 0
 
-        alerts = build_alerts(record)
+        alerts = build_alerts(cloud)
 
-        self.assertEqual(self.codes(record), ["key_unavailable"])
+        self.assertEqual(self.codes(cloud), ["key_unavailable"])
         self.assertEqual(alerts[0]["severity"], "critical")
         self.assertEqual(alerts[0]["source"], "Key 3: Nunchuk")
-        self.assertIn("cloud provider", alerts[0]["message"])
-        self.assertIn("replace the key", alerts[0]["message"])
+        self.assertEqual(alerts[0]["message"], build_alerts(hardware)[0]["message"])
 
     def test_a_hardware_failure_points_at_testing_the_backup_elsewhere(self):
         record = clean_record()
@@ -115,31 +122,33 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(alerts[0]["severity"], "critical")
         self.assertIn("PROTOCOL 3", alerts[0]["message"])
 
-    def test_a_cloud_health_problem_must_be_followed_up(self):
-        record = clean_record(key_number=3, name="Nunchuk", key_type="cloud")
-        record["key_checks"][0]["cloud_health_status"] = "PROBLEM"
-
-        alerts = build_alerts(record)
-
-        self.assertEqual(self.codes(record), ["cloud_provider_problem"])
-        self.assertEqual(alerts[0]["severity"], "critical")
-        self.assertEqual(alerts[0]["source"], "Key 3: Nunchuk")
-        self.assertIn("cloud provider", alerts[0]["message"])
-
-    def test_a_cloud_provider_outage_must_be_followed_up(self):
-        record = clean_record(key_number=3, name="Nunchuk", key_type="cloud")
-        record["key_checks"][0]["cloud_provider_operational"] = 0
-
-        self.assertEqual(self.codes(record), ["cloud_provider_problem"])
-
-    def test_a_failed_address_path_verification_points_at_bsms(self):
+    def test_a_mismatched_address_path_asks_for_a_replacement(self):
+        # The recorded path does not match the key, so the key could not be
+        # checked (section 25.1).
         record = clean_record()
         record["key_checks"][0]["address_path_verified"] = "PROBLEM"
 
         alerts = build_alerts(record)
 
-        self.assertEqual(self.codes(record), ["address_verification_failed"])
-        self.assertIn("BSMS", alerts[0]["message"])
+        self.assertEqual(self.codes(record), ["address_path_mismatch"])
+        self.assertEqual(alerts[0]["severity"], "critical")
+        self.assertEqual(alerts[0]["source"], "Key 1: SeedSigner")
+        self.assertIn("does not match this key", alerts[0]["message"])
+        self.assertIn("Replace the key", alerts[0]["message"])
+        self.assertEqual(alerts[0]["actions"], [ROTATE])
+
+    def test_a_mismatch_is_not_merged_with_a_real_unavailable_alert(self):
+        # The mismatch has its own code, so the two are never merged even though
+        # they share a source (section 25.1).
+        mismatch = dated_record(1, "2026-10-01")
+        mismatch["key_checks"][0]["address_path_verified"] = "PROBLEM"
+        unavailable = dated_record(2, "2026-10-01")
+        unavailable["key_checks"][0]["available"] = 0
+
+        alerts = collect_alerts([mismatch, unavailable])
+
+        self.assertEqual(self.codes(alerts), ["address_path_mismatch", "key_unavailable"])
+        self.assertEqual({alert["source"] for alert in alerts}, {"Key 1: SeedSigner"})
 
     def test_incompatible_software_suggests_an_alternative(self):
         record = clean_record()
@@ -203,12 +212,40 @@ class AlertTests(unittest.TestCase):
             "available": None,
             "hardware_works": None,
             "seed_backup_verified": None,
-            "cloud_health_status": None,
-            "cloud_provider_operational": None,
             "address_path_verified": None,
         })
 
         self.assertEqual(build_alerts(record), [])
+
+    def test_the_removed_alert_rules_cannot_be_triggered(self):
+        # The two cloud fields and the old address verification rule are gone
+        # (sections 25.1 and 25.3), so a legacy record that carries them raises
+        # nothing.
+        record = clean_record()
+        record["key_checks"][0].update({
+            "cloud_health_status": "PROBLEM",
+            "cloud_provider_operational": 0,
+            "address_verified": 0,
+        })
+
+        self.assertEqual(build_alerts(record), [])
+        self.assertNotIn("cloud_provider_problem", ALERT_CODES)
+        self.assertNotIn("address_verification_failed", ALERT_CODES)
+
+    def test_the_alert_codes_are_the_current_ones(self):
+        self.assertEqual(
+            ALERT_CODES,
+            frozenset({
+                "key_unavailable",
+                "address_path_mismatch",
+                "hardware_failure",
+                "seed_backup_problem",
+                "software_incompatible",
+                "security_vulnerable",
+                "security_compromised",
+                "contact_info_unconfirmed",
+            }),
+        )
 
     def test_critical_alerts_are_listed_before_informational_ones(self):
         record = clean_record(key_number=3, name="Nunchuk", key_type="cloud")
@@ -223,6 +260,63 @@ class AlertTests(unittest.TestCase):
             self.codes(record),
             ["key_unavailable", "security_vulnerable", "contact_info_unconfirmed"],
         )
+
+    def test_every_alert_names_the_actions_that_close_it(self):
+        record = clean_record()
+        record["key_checks"][0]["available"] = 0
+        record["software_compatibility_status"] = "PROBLEM"
+        record["contact_info_verified"] = "Needs external update"
+
+        alerts = build_alerts(record)
+
+        self.assertEqual(
+            {alert["code"]: alert["actions"] for alert in alerts},
+            {
+                "key_unavailable": [ROTATE],
+                "software_incompatible": [ACKNOWLEDGE],
+                "contact_info_unconfirmed": [ACKNOWLEDGE],
+            },
+        )
+
+    def test_a_hardware_failure_may_be_rotated_or_closed(self):
+        record = clean_record()
+        record["key_checks"][0]["hardware_works"] = 0
+
+        alerts = build_alerts(record)
+
+        self.assertEqual(alerts[0]["actions"], [ROTATE, ACKNOWLEDGE])
+
+    def test_a_key_alert_names_the_key_it_came_from(self):
+        record = clean_record(key_number=2, name="Blockstream Jade")
+        record["key_checks"][0]["available"] = 0
+
+        alerts = build_alerts(record)
+
+        self.assertEqual(alerts[0]["key_id"], 2)
+
+    def test_a_security_alert_names_the_key_only_when_the_key_is_the_source(self):
+        record = clean_record()
+        # The provider "SeedSigner" is the key's own name, while "Sparrow Wallet"
+        # is the software the key runs with (section 25.3).
+        record["ai_security_checks"][0]["status"] = "COMPROMISED"
+        record["ai_security_checks"][1]["status"] = "VULNERABLE"
+
+        alerts = {alert["source"]: alert for alert in build_alerts(record)}
+
+        # A compromised key must be replaced, so closing is not enough there.
+        self.assertEqual(alerts["SeedSigner"]["key_id"], 1)
+        self.assertEqual(alerts["SeedSigner"]["actions"], [ROTATE])
+        # A problem in the software is not resolved by replacing the key.
+        self.assertIsNone(alerts["Sparrow Wallet"]["key_id"])
+        self.assertEqual(alerts["Sparrow Wallet"]["actions"], [ACKNOWLEDGE])
+
+    def test_a_key_named_vulnerable_security_status_may_be_rotated_or_closed(self):
+        record = clean_record()
+        record["ai_security_checks"][0]["status"] = "VULNERABLE"
+
+        alerts = build_alerts(record)
+
+        self.assertEqual(alerts[0]["actions"], [ROTATE, ACKNOWLEDGE])
 
 
 class CollectAlertsTests(unittest.TestCase):
@@ -322,6 +416,149 @@ class CollectAlertsTests(unittest.TestCase):
 
         self.assertEqual(self.codes(alerts), ["key_unavailable"])
         self.assertEqual(alerts[0]["check_id"], 2)
+
+    def test_an_acknowledged_alert_is_hidden(self):
+        record = dated_record(1, "2026-10-01")
+        record["key_checks"][0]["available"] = 0
+
+        acknowledgements = [{
+            "code": "key_unavailable",
+            "source": "Key 1: SeedSigner",
+            "check_id": 1,
+            "acknowledged_at": "2026-10-02T09:00:00",
+        }]
+
+        self.assertEqual(collect_alerts([record], acknowledgements), [])
+
+    def test_a_newer_check_raises_an_acknowledged_alert_again(self):
+        # The acknowledgement stores the check it closed, so a newer check, which
+        # always has a higher id, raises the alert again (section 25.3).
+        older = dated_record(1, "2026-10-01")
+        older["key_checks"][0]["available"] = 0
+        newer = dated_record(2, "2027-10-01")
+        newer["key_checks"][0]["available"] = 0
+        acknowledged = [{
+            "code": "key_unavailable",
+            "source": "Key 1: SeedSigner",
+            "check_id": 1,
+            "acknowledged_at": "2026-10-02T09:00:00",
+        }]
+
+        alerts = collect_alerts([newer, older], acknowledged)
+
+        self.assertEqual(self.codes(alerts), ["key_unavailable"])
+        self.assertEqual(alerts[0]["check_id"], 2)
+
+        acknowledged.append({
+            "code": "key_unavailable",
+            "source": "Key 1: SeedSigner",
+            "check_id": 2,
+            "acknowledged_at": "2027-10-02T09:00:00",
+        })
+        self.assertEqual(collect_alerts([newer, older], acknowledged), [])
+
+    def test_an_acknowledgement_covers_one_code_and_source_only(self):
+        record = dated_record(1, "2026-10-01")
+        record["key_checks"][0]["available"] = 0
+        record["contact_info_verified"] = "Needs external update"
+        acknowledgements = [
+            {
+                "code": "key_unavailable",
+                "source": "Key 2: Blockstream Jade",
+                "check_id": 1,
+                "acknowledged_at": "2026-10-02T09:00:00",
+            },
+            {
+                "code": "contact_info_unconfirmed",
+                "source": "Contact information",
+                "check_id": 1,
+                "acknowledged_at": "2026-10-02T09:00:00",
+            },
+        ]
+
+        alerts = collect_alerts([record], acknowledgements)
+
+        # The key alert has another source, so only the contact alert is hidden.
+        self.assertEqual(self.codes(alerts), ["key_unavailable"])
+
+    def test_an_acknowledgement_without_a_check_id_hides_nothing(self):
+        record = dated_record(1, "2026-10-01")
+        record["key_checks"][0]["available"] = 0
+        acknowledgements = [{
+            "code": "key_unavailable",
+            "source": "Key 1: SeedSigner",
+            "check_id": None,
+            "acknowledged_at": "2026-10-02T09:00:00",
+        }]
+
+        self.assertEqual(self.codes(collect_alerts([record], acknowledgements)), ["key_unavailable"])
+
+    def test_an_acknowledged_alert_stays_hidden_for_a_quiet_newer_check(self):
+        older = dated_record(1, "2026-10-01")
+        older["key_checks"][0]["available"] = 0
+        # A newer check that resolves the problem raises nothing, so the alert
+        # disappears on its own as well.
+        newer = dated_record(2, "2027-10-01")
+
+        self.assertEqual(collect_alerts([newer, older]), [])
+
+
+class RotationAlertTargetsTests(unittest.TestCase):
+    """A rotation closes the alerts its own key raised (section 25.3)."""
+
+    def test_a_rotation_closes_the_key_alerts(self):
+        record = dated_record(1, "2026-10-01")
+        record["key_checks"][0]["available"] = 0
+
+        targets = rotation_alert_targets([record], key_profile())
+
+        self.assertEqual(targets, [("key_unavailable", "Key 1: SeedSigner")])
+
+    def test_a_rotation_ignores_software_and_contact_alerts(self):
+        record = dated_record(1, "2026-10-01")
+        record["software_compatibility_status"] = "PROBLEM"
+        record["contact_info_verified"] = "Needs external update"
+
+        self.assertEqual(rotation_alert_targets([record], key_profile()), [])
+
+    def test_a_rotation_closes_a_key_named_security_alert(self):
+        record = dated_record(1, "2026-10-01")
+        record["ai_security_checks"][0]["status"] = "COMPROMISED"
+
+        targets = rotation_alert_targets([record], key_profile())
+
+        self.assertEqual(targets, [("security_compromised", "SeedSigner")])
+
+    def test_a_rotation_does_not_close_a_software_named_security_alert(self):
+        # A problem in the software the key runs with is not resolved by
+        # replacing the key (section 25.3).
+        record = dated_record(1, "2026-10-01")
+        record["ai_security_checks"][1]["status"] = "VULNERABLE"
+
+        self.assertEqual(rotation_alert_targets([record], key_profile()), [])
+
+    def test_a_rotation_ignores_the_checks_of_another_key(self):
+        record = dated_record(1, "2026-10-01", key_number=2, name="Blockstream Jade")
+        record["key_checks"][0]["available"] = 0
+
+        self.assertEqual(rotation_alert_targets([record], key_profile()), [])
+
+    def test_a_rotation_closes_every_alert_of_its_own_key_once(self):
+        record = dated_record(1, "2026-10-01")
+        record["key_checks"][0]["seed_backup_verified"] = "PROBLEM"
+        record["key_checks"][0]["hardware_works"] = 0
+        second = dated_record(2, "2026-10-01")
+        second["key_checks"][0]["seed_backup_verified"] = "PROBLEM"
+
+        targets = rotation_alert_targets([record, second], key_profile())
+
+        self.assertEqual(
+            targets,
+            [
+                ("hardware_failure", "Key 1: SeedSigner"),
+                ("seed_backup_problem", "Key 1: SeedSigner"),
+            ],
+        )
 
 
 if __name__ == "__main__":
