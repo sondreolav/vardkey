@@ -529,14 +529,17 @@ class ValidationTests(unittest.TestCase):
                 validate(payload)
 
     def test_the_path_of_another_key_does_not_match(self):
-        # The comparison uses the selected key's own path (section 25.1).
-        with self.assertRaises(ValidationError):
-            validate(mismatch_payload(2, ADDRESS_PATH, RENAMED_KEYS), RENAMED_KEYS)
+        # The comparison uses the selected key's own path (section 25.1), so the
+        # path of another key is a mismatch for this one.
+        result = validate(mismatch_payload(2, ADDRESS_PATH, RENAMED_KEYS), RENAMED_KEYS)
 
-        result = validate(
+        self.assertEqual(result["key_check"]["address_path"], ADDRESS_PATH)
+        self.assertEqual(result["key_check"]["address_path_verified"], "PROBLEM")
+
+        own_path = validate(
             mismatch_payload(2, "m/48'/1'/0'/2'", RENAMED_KEYS), RENAMED_KEYS
         )
-        self.assertEqual(result["key_check"]["address_path_verified"], "OK")
+        self.assertEqual(own_path["key_check"]["address_path_verified"], "OK")
 
     def test_a_submitted_verification_result_is_ignored(self):
         # The client never sends the result, and the server overrules it anyway
