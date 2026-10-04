@@ -530,14 +530,16 @@ class ValidationTests(unittest.TestCase):
 
     def test_the_path_of_another_key_does_not_match(self):
         # The comparison uses the selected key's own path (section 25.1), so the
-        # path of another key is a mismatch for this one.
+        # path of another key is a mismatch for this one, while the key's own
+        # path is accepted.
         result = validate(mismatch_payload(2, ADDRESS_PATH, RENAMED_KEYS), RENAMED_KEYS)
 
         self.assertEqual(result["key_check"]["address_path"], ADDRESS_PATH)
         self.assertEqual(result["key_check"]["address_path_verified"], "PROBLEM")
 
-        own_path = validate(
-            mismatch_payload(2, "m/48'/1'/0'/2'", RENAMED_KEYS), RENAMED_KEYS
+        own_path = validate(sample_payload(key_number=2, keys=RENAMED_KEYS), RENAMED_KEYS)
+        self.assertEqual(
+            own_path["key_check"]["address_path"], "m/48'/1'/0'/2'"
         )
         self.assertEqual(own_path["key_check"]["address_path_verified"], "OK")
 
