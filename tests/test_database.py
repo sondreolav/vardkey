@@ -31,6 +31,9 @@ from validation import validate_health_check
 # The address path the keys are configured with, and the path a submission
 # records (section 25.1).
 DEFAULT_ADDRESS_PATH = "m/48'/0'/0'/2'"
+# The wallet software list the settings hold, and that the app passes to the
+# validator (section 25.4).
+SOFTWARE_NAMES = (DEFAULT_WALLET_SOFTWARE,)
 # The key setup every test starts from, unless it tests the setup itself.
 DEFAULT_SETUP = (
     {"key_number": 1, "name": "SeedSigner", "type": "hardware", "address_path": DEFAULT_ADDRESS_PATH},
@@ -99,6 +102,15 @@ def mismatch_payload(key, address_path):
             "comments": "Path read from the device",
         },
     }
+
+
+def validate(payload, keys):
+    """Return a validated payload, with the wallet software list the app passes.
+
+    The wallet software choices are the settings list and the configured cloud
+    key names, so the list must be passed in (section 25.4).
+    """
+    return validate_health_check(payload, keys, SOFTWARE_NAMES)
 
 
 LEGACY_SCHEMA = """
@@ -630,7 +642,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         # The existing installation keeps its keys, and can record new checks.
         keys = list_keys(self.database_path)
         self.assertEqual([key["name"] for key in keys], ["SeedSigner", "Blockstream Jade", "Nunchuk"])
-        new_id = save_health_check(validate_health_check(sample_payload(keys[2]), keys), self.database_path)
+        new_id = save_health_check(validate(sample_payload(keys[2]), keys), self.database_path)
         new_record = get_health_check(new_id, self.database_path)
         self.assertEqual(new_record["wallet_software"], "Nunchuk")
         self.assertEqual(len(new_record["key_checks"]), 1)
@@ -676,7 +688,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         # The migrated database still records new checks.
         keys = list_keys(self.database_path)
         new_id = save_health_check(
-            validate_health_check(sample_payload(keys[0]), keys), self.database_path
+            validate(sample_payload(keys[0]), keys), self.database_path
         )
         self.assertEqual(get_health_check(new_id, self.database_path)["wallet_software"],
                          "Sparrow Wallet")
@@ -842,7 +854,7 @@ class DatabaseInitializationTests(unittest.TestCase):
 
     def test_saved_health_checks_are_stored_and_never_overwritten(self):
         keys = self.prepare()
-        data = validate_health_check(sample_payload(keys[0]), keys)
+        data = validate(sample_payload(keys[0]), keys)
 
         first_id = save_health_check(data, self.database_path)
         second_id = save_health_check(data, self.database_path)
@@ -873,7 +885,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         keys = self.prepare()
 
         saved_id = save_health_check(
-            validate_health_check(mismatch_payload(keys[0], "m/48'/9'/0'/2'"), keys),
+            validate(mismatch_payload(keys[0], "m/48'/9'/0'/2'"), keys),
             self.database_path,
         )
         record = get_health_check(saved_id, self.database_path)
@@ -897,7 +909,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         cloud_key = keys[0]
 
         saved_id = save_health_check(
-            validate_health_check(sample_payload(cloud_key), keys), self.database_path
+            validate(sample_payload(cloud_key), keys), self.database_path
         )
         record = get_health_check(saved_id, self.database_path)
 
@@ -927,7 +939,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertFalse(key_has_check(keys[0]["id"], self.database_path))
 
         save_health_check(
-            validate_health_check(sample_payload(keys[0]), keys), self.database_path
+            validate(sample_payload(keys[0]), keys), self.database_path
         )
 
         self.assertTrue(key_has_check(keys[0]["id"], self.database_path))
@@ -942,7 +954,7 @@ class DatabaseInitializationTests(unittest.TestCase):
     def test_an_acknowledgement_is_stored_with_the_check_it_closed(self):
         keys = self.prepare()
         saved_id = save_health_check(
-            validate_health_check(sample_payload(keys[0]), keys), self.database_path
+            validate(sample_payload(keys[0]), keys), self.database_path
         )
 
         acknowledgement_id = save_alert_acknowledgement(
@@ -966,7 +978,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         keys = self.prepare()
 
         for key in keys:
-            data = validate_health_check(sample_payload(key), keys)
+            data = validate(sample_payload(key), keys)
             saved_id = save_health_check(data, self.database_path)
             record = get_health_check(saved_id, self.database_path)
             self.assertEqual(record["key_checks"][0]["key_number"], key["key_number"])
@@ -990,15 +1002,15 @@ class DatabaseInitializationTests(unittest.TestCase):
 
         older = sample_payload(keys[0])
         older["checked_at"] = "2025-10-01"
-        save_health_check(validate_health_check(older, keys), self.database_path)
+        save_health_check(validate(older, keys), self.database_path)
 
         newer = sample_payload(keys[0])
         newer["checked_at"] = "2026-10-01"
-        save_health_check(validate_health_check(newer, keys), self.database_path)
+        save_health_check(validate(newer, keys), self.database_path)
 
         cloud = sample_payload(keys[2])
         cloud["checked_at"] = "2026-05-01"
-        save_health_check(validate_health_check(cloud, keys), self.database_path)
+        save_health_check(validate(cloud, keys), self.database_path)
 
         status = {entry["key_number"]: entry for entry in list_key_status(self.database_path)}
 
@@ -1027,18 +1039,18 @@ class DatabaseInitializationTests(unittest.TestCase):
         older["checked_at"] = "2025-10-01"
         older["software_version"] = "1.7.0"
         older["key_check"]["firmware_version"] = "0.9.0"
-        save_health_check(validate_health_check(older, keys), self.database_path)
+        save_health_check(validate(older, keys), self.database_path)
 
         newer = sample_payload(keys[0])
         newer["checked_at"] = "2026-10-01"
         newer["software_version"] = "1.8.0"
         newer["key_check"]["firmware_version"] = "1.0.0"
-        save_health_check(validate_health_check(newer, keys), self.database_path)
+        save_health_check(validate(newer, keys), self.database_path)
 
         cloud = sample_payload(keys[2])
         cloud["checked_at"] = "2026-05-01"
         cloud["software_version"] = "1.9.0"
-        save_health_check(validate_health_check(cloud, keys), self.database_path)
+        save_health_check(validate(cloud, keys), self.database_path)
 
         values = list_previous_values(self.database_path)
         by_key = {entry["key_id"]: entry for entry in values["keys"]}
@@ -1060,10 +1072,10 @@ class DatabaseInitializationTests(unittest.TestCase):
         keys = self.prepare()
 
         saved_id = save_health_check(
-            validate_health_check(sample_payload(keys[0]), keys), self.database_path
+            validate(sample_payload(keys[0]), keys), self.database_path
         )
         save_health_check(
-            validate_health_check(sample_payload(keys[2]), keys), self.database_path
+            validate(sample_payload(keys[2]), keys), self.database_path
         )
 
         rows = list_export_rows(self.database_path)
