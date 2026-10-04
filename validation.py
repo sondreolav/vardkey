@@ -5,19 +5,29 @@ requirements. The next check date is derived on the server and never taken from
 the client.
 
 The stored status values are English (sections 19 and 21). ``NOT_ASSESSED``
-survives only as the derived ``software_compatibility_status`` of a key that was
-not available; no other field offers or accepts it (section 24.1). The software
-compatibility result is an explicit ``OK`` or ``PROBLEM`` for a hardware key
-(section 23.1), and the contact confirmation is ``Confirmed current`` or
-``Needs external update``.
+survives only as the derived ``software_compatibility_status`` of a key that
+could not be checked; no other field offers or accepts it (section 24.1). The
+software compatibility result is an explicit ``OK`` or ``PROBLEM`` for an
+available hardware key (section 23.1), and the contact confirmation is
+``Confirmed current`` or ``Needs external update``.
 
 The key setup is configured once and stored in the database (section 23.2). The
 configured name is the product label of a key, and the key's type decides which
-checks apply, never the key number (section 23.3).
+checks apply, never the key number (section 23.3). The address path is part of
+the key's identity (section 25.1).
 
 ``available`` is always recorded (section 22). When the key was not available,
 the wallet software and the security statuses are not recorded either, so they
 may be left out of the payload.
+
+The address path is recorded by the user and compared with the stored one by the
+server, which sets ``address_path_verified`` and never takes it from the client
+(section 25.1). A path that does not match makes the key uncheckable, which is
+treated exactly like an unavailable key.
+
+The wallet software choices are the settings list and the name of every
+configured cloud key (section 25.4), and the settings, the key rotation and the
+alert acknowledgements have their own payloads (sections 25.2, 25.3 and 25.4).
 
 The BIP327/SLIP39 results are gone, together with the rest of that function
 (section 24.2).
@@ -25,12 +35,9 @@ The BIP327/SLIP39 results are gone, together with the rest of that function
 
 from datetime import date
 
+from alerts import ALERT_CODES
 from database import KEY_COUNT
 
-# The cloud health result is derived from availability, so it is only ever OK or
-# PROBLEM. "Not assessed" is not offered or accepted for it either (section
-# 24.1).
-CLOUD_HEALTH_STATUSES = ("OK", "PROBLEM")
 # Software compatibility requires an active choice, so "not assessed" is not
 # submittable for a new registration (section 23.1).
 COMPATIBILITY_STATUSES = ("OK", "PROBLEM")
@@ -38,14 +45,12 @@ VERIFICATION_STATUSES = ("OK", "PROBLEM")
 SECURITY_STATUSES = ("SECURE", "PATCHED", "VULNERABLE", "COMPROMISED")
 CONTACT_STATUSES = ("Confirmed current", "Needs external update")
 KEY_TYPES = ("hardware", "cloud")
-# The wallet software that is always available, whatever the key setup is
-# (section 23.3).
-SPARROW_SOFTWARE = "Sparrow Wallet"
 MAX_KEY_NAME_LENGTH = 60
 MAX_VERSION_LENGTH = 100
 MAX_PATH_LENGTH = 200
 MAX_NOTES_LENGTH = 2000
 MAX_COMMENTS_LENGTH = 4000
+MAX_SOURCE_LENGTH = 200
 
 
 class ValidationError(ValueError):
@@ -64,9 +69,11 @@ def next_check_due(checked_at):
 def validate_key_setup(payload):
     """Return the normalized key setup for the three key slots.
 
-    The user names each key and picks its type once, and both are locked after
-    the setup is saved (section 23.2). The names must be non-empty and unique,
-    compared without regard to case.
+    The user names each key, picks its type, and records its address path once,
+    and all three are locked after the setup is saved (sections 23.2 and 25.1).
+    The names must be non-empty and unique, compared without regard to case. The
+    same address path may be configured for more than one key, because the three
+    keys of one multisig setup normally share their derivation path.
     """
     if not isinstance(payload, dict):
         raise ValidationError("payload must be a JSON object")
@@ -98,13 +105,23 @@ def validate_key_setup(payload):
         key_type = entry.get("type")
         if key_type not in KEY_TYPES:
             raise ValidationError("key type must be hardware or cloud")
-        normalized.append({"key_number": number, "name": name, "type": key_type})
+        normalized.append({
+            "key_number": number,
+            "name": name,
+            "type": key_type,
+            "address_path": _required_path(entry.get("address_path"), "address_path"),
+        })
 
     return sorted(normalized, key=lambda entry: entry["key_number"])
 
 
-def validate_health_check(payload, keys):
-    """Return a normalized single-key health check ready for storage."""
+def validate_health_check(payload, keys, software_names=()):
+    """Return a normalized single-key health check ready for storage.
+
+    ``software_names`` is the wallet software list from the settings, which
+    completes the choices together with the configured cloud key names
+    (section 25.4).
+    """
     if not isinstance(payload, dict):
         raise ValidationError("payload must be a JSON object")
 
@@ -115,11 +132,15 @@ def validate_health_check(payload, keys):
     key = _select_key(entry.get("key_id"), keys)
     checked_at = _date(payload.get("checked_at"), "checked_at")
     available = _availability(entry.get("available"))
-    # A key that was not available cannot be checked any further, so the wallet
-    # software and the security statuses stay empty (section 22).
-    unavailable = available == 0
+    # The server compares the recorded path with the stored one and derives the
+    # verification result from that (section 25.1).
+    address_path, mismatch = _address_path(entry.get("address_path"), key, available)
+    # A key that was not available and a key whose address path does not match
+    # are both uncheckable: nothing else about them can be recorded
+    # (sections 22 and 25.1).
+    uncheckable = available == 0 or mismatch
     wallet_software = _wallet_software(
-        payload.get("wallet_software"), key, keys, unavailable
+        payload.get("wallet_software"), key, keys, software_names, uncheckable
     )
 
     return {
@@ -130,22 +151,133 @@ def validate_health_check(payload, keys):
             payload.get("software_version"), "software_version", MAX_VERSION_LENGTH
         ),
         "software_compatibility_status": _compatibility_status(
-            payload.get("software_compatibility_status"), key, unavailable
+            payload.get("software_compatibility_status"), key, uncheckable
         ),
         "software_comments": _text(
             payload.get("software_comments"), "software_comments", MAX_NOTES_LENGTH
         ),
         "contact_info_verified": _contact_status(payload.get("contact_info_verified")),
         "comments": _text(payload.get("comments"), "comments", MAX_COMMENTS_LENGTH),
-        "key_check": _key_check(entry, key, available),
+        "key_check": _key_check(entry, key, available, address_path, mismatch),
         "ai_security_checks": _ai_security_checks(
-            payload.get("ai_security_checks"), key, wallet_software, unavailable
+            payload.get("ai_security_checks"), key, wallet_software, uncheckable
         ),
     }
 
 
+def validate_key_settings(payload, keys):
+    """Return the normalized settings of one key.
+
+    The name is only a label and may be changed at any time; the address path is
+    part of the key's identity and may only be changed while the key has no saved
+    check, which the caller decides (sections 25.1 and 25.2).
+    """
+    if not isinstance(payload, dict):
+        raise ValidationError("payload must be a JSON object")
+
+    key = _select_key(payload.get("key_id"), keys)
+    name = _key_name(payload.get("name"))
+    if any(
+        other["id"] != key["id"] and other["name"].casefold() == name.casefold()
+        for other in keys
+    ):
+        raise ValidationError("key names must be unique")
+    return {
+        "key_id": key["id"],
+        "name": name,
+        "address_path": _required_path(payload.get("address_path"), "address_path"),
+    }
+
+
+def validate_wallet_software(payload, keys):
+    """Return the normalized wallet software list from the settings.
+
+    The list is stored whole, so it is validated as a whole: at least one name,
+    every name non-empty, no repeated name, and no name that already comes from
+    a configured cloud key (section 25.4).
+    """
+    if not isinstance(payload, dict):
+        raise ValidationError("payload must be a JSON object")
+
+    entries = payload.get("wallet_software")
+    if not isinstance(entries, list):
+        raise ValidationError("wallet_software must be a list")
+    if not entries:
+        raise ValidationError("at least one wallet software name is required")
+
+    cloud_names = {
+        key["name"].casefold() for key in keys if key["type"] == "cloud"
+    }
+    names = []
+    seen = set()
+    for entry in entries:
+        name = _key_name(entry)
+        folded = name.casefold()
+        if folded in seen:
+            raise ValidationError("wallet software names must be unique")
+        if folded in cloud_names:
+            raise ValidationError(
+                "a configured cloud key already provides this wallet software name"
+            )
+        seen.add(folded)
+        names.append(name)
+    return names
+
+
+def validate_rotation(payload, keys, key_id):
+    """Return the confirmed rotation of one key.
+
+    The user confirms that the hardware wallet has been replaced, chooses whether
+    the name stays or changes, and confirms that the address path is unchanged.
+    The type is locked and is never part of the payload (section 25.2).
+    """
+    if not isinstance(payload, dict):
+        raise ValidationError("payload must be a JSON object")
+
+    key = _select_key(key_id, keys)
+    if payload.get("replaced") is not True:
+        raise ValidationError("the replacement of the key must be confirmed")
+    if payload.get("address_path_unchanged") is not True:
+        raise ValidationError("an unchanged address path must be confirmed")
+
+    keep_name = payload.get("keep_name")
+    if not isinstance(keep_name, bool):
+        raise ValidationError("keep_name must be true or false")
+
+    name = None
+    if not keep_name:
+        name = _key_name(payload.get("name"))
+        if any(
+            other["id"] != key["id"] and other["name"].casefold() == name.casefold()
+            for other in keys
+        ):
+            raise ValidationError("key names must be unique")
+    return {"key_id": key["id"], "keep_name": keep_name, "name": name}
+
+
+def validate_acknowledgement(payload):
+    """Return the normalized acknowledgement of one alert.
+
+    An acknowledgement closes a single alert, identified by its code and its
+    source, and records why it was closed (section 25.3).
+    """
+    if not isinstance(payload, dict):
+        raise ValidationError("payload must be a JSON object")
+
+    code = payload.get("code")
+    if code not in ALERT_CODES:
+        raise ValidationError("code is not a known alert")
+    source = _text(payload.get("source"), "source", MAX_SOURCE_LENGTH)
+    if source is None:
+        raise ValidationError("source is required")
+    reason = _text(payload.get("reason"), "reason", MAX_NOTES_LENGTH)
+    if reason is None:
+        raise ValidationError("reason is required")
+    return {"code": code, "source": source, "reason": reason}
+
+
 def _key_name(value):
-    """Return the configured key name, which must be non-empty text."""
+    """Return a configured key name, which must be non-empty text."""
     if not isinstance(value, str):
         raise ValidationError("key name must be text")
     name = value.strip()
@@ -154,6 +286,21 @@ def _key_name(value):
     if len(name) > MAX_KEY_NAME_LENGTH:
         raise ValidationError("key name is too long")
     return name
+
+
+def _required_path(value, field):
+    """Return a non-empty address path.
+
+    The path is a public derivation path and holds no secret (section 25.1).
+    """
+    if not isinstance(value, str):
+        raise ValidationError(f"{field} must be text")
+    path = value.strip()
+    if not path:
+        raise ValidationError(f"{field} must not be empty")
+    if len(path) > MAX_PATH_LENGTH:
+        raise ValidationError(f"{field} is too long")
+    return path
 
 
 def _select_key(key_id, keys):
@@ -174,73 +321,85 @@ def _availability(value):
     return available
 
 
-def _wallet_software_choices(keys):
+def _address_path(value, key, available):
+    """Return the recorded address path and whether it matches the key.
+
+    The recorded path is compared with the path stored for the key, after
+    stripping both: equal gives ``OK``, different gives ``PROBLEM``
+    (section 25.1). A key that was not available records no path at all, so no
+    mismatch is reported for it.
+    """
+    if available == 0:
+        return None, False
+    submitted = _text(value, "address_path", MAX_PATH_LENGTH)
+    stored = (key.get("address_path") or "").strip()
+    return submitted, (submitted or "") != stored
+
+
+def _wallet_software_choices(keys, software_names):
     """Return the wallet software choices.
 
-    Sparrow is always available, and every configured cloud key contributes its
-    own name. A hardware key name is never a software choice (section 23.3).
+    The settings list and the name of every configured cloud key. A hardware key
+    name is never a software choice (sections 23.3 and 25.4).
     """
-    names = (key["name"] for key in keys if key["type"] == "cloud")
-    return tuple(dict.fromkeys((SPARROW_SOFTWARE, *names)))
+    cloud_names = (key["name"] for key in keys if key["type"] == "cloud")
+    return tuple(dict.fromkeys((*software_names, *cloud_names)))
 
 
-def _wallet_software(value, key, keys, unavailable):
+def _wallet_software(value, key, keys, software_names, uncheckable):
     """Return the selected wallet software.
 
     A cloud key records its own name, because the provider is the software for
-    that key (section 23.3). A key that was not available records no software,
-    so the field must be left out then (section 22).
+    that key (section 23.3). A key that could not be checked records no software,
+    so the field must be left out then (sections 22 and 25.1).
     """
     if value is None or value == "":
-        if unavailable:
+        if uncheckable:
             return None
         raise ValidationError("wallet_software is required when the key is available")
-    if unavailable:
+    if uncheckable:
         raise ValidationError(
-            "wallet_software cannot be recorded when the key was not available"
+            "wallet_software cannot be recorded when the key could not be checked"
         )
     if key["type"] == "cloud":
         if value != key["name"]:
             raise ValidationError("a cloud key records its own name as the wallet software")
         return value
-    if value not in _wallet_software_choices(keys):
+    if value not in _wallet_software_choices(keys, software_names):
         raise ValidationError(
-            f"wallet_software must be {SPARROW_SOFTWARE} or the name of a cloud key"
+            "wallet_software must be one of the configured wallet software names"
         )
     return value
 
 
-def _compatibility_status(value, key, unavailable):
+def _compatibility_status(value, key, uncheckable):
     """Return the software compatibility result.
 
-    The cloud key derives it from availability (section 20), so only the derived
-    value is accepted there. A hardware key requires an active ``OK`` or
-    ``PROBLEM``, and a missing value is a ``400`` (section 23.1).
+    A key that could not be checked keeps the derived ``NOT_ASSESSED`` value,
+    which is the only place it is allowed (sections 22, 24.1 and 25.1). A cloud
+    key derives its result from availability (section 20), and an available
+    hardware key requires an active ``OK`` or ``PROBLEM`` (section 23.1).
     """
-    if key["type"] == "cloud":
-        derived = "NOT_ASSESSED" if unavailable else "OK"
-        if value not in (None, "", derived):
-            raise ValidationError(
-                "software_compatibility_status is derived for the cloud key"
-            )
-        return derived
-    if unavailable:
-        # The remaining checks could not be performed, so the result stays not
-        # assessed and no other value may accompany it (section 22). This derived
-        # value is the only place NOT_ASSESSED is still allowed (section 24.1).
+    if uncheckable:
         if value not in (None, "", "NOT_ASSESSED"):
             raise ValidationError(
                 "software_compatibility_status cannot be recorded "
-                "when the key was not available"
+                "when the key could not be checked"
             )
         return "NOT_ASSESSED"
+    if key["type"] == "cloud":
+        if value not in (None, "", "OK"):
+            raise ValidationError(
+                "software_compatibility_status is derived for the cloud key"
+            )
+        return "OK"
     return _status(value, "software_compatibility_status", COMPATIBILITY_STATUSES)
 
 
 def _contact_status(value):
     """Return the contact confirmation for the selected key's holder.
 
-    The confirmation is required, also when the key was not available, because
+    The confirmation is required, also when the key could not be checked, because
     the question is still asked (section 24.1). Only the status is recorded,
     never names, addresses, phone numbers, or credentials (section 23.1).
     """
@@ -250,10 +409,10 @@ def _contact_status(value):
 
 
 def _require_nothing_recorded(entries, field):
-    """Reject results for a key that was not available (section 22)."""
+    """Reject results for a key that could not be checked (sections 22 and 25.1)."""
     if entries is None or entries == []:
         return
-    raise ValidationError(f"{field} cannot be recorded when the key was not available")
+    raise ValidationError(f"{field} cannot be recorded when the key could not be checked")
 
 
 def _expected_labels(key, wallet_software):
@@ -266,7 +425,7 @@ def _expected_labels(key, wallet_software):
     return tuple(dict.fromkeys((key["name"], wallet_software)))
 
 
-def _key_check(entry, key, available):
+def _key_check(entry, key, available, address_path, mismatch):
     """Return the normalized check for the selected key."""
     check = {
         "key_id": key["id"],
@@ -274,26 +433,23 @@ def _key_check(entry, key, available):
         "hardware_works": None,
         "firmware_version": None,
         "seed_backup_verified": None,
-        "cloud_health_status": None,
-        "cloud_provider_operational": None,
         "address_path_verified": None,
         "address_path": None,
         "comments": _text(entry.get("comments"), "comments", MAX_NOTES_LENGTH),
     }
     if available == 0:
-        # The remaining checks could not be performed, so nothing is recorded.
-        # The cloud key keeps its derived cloud results, because those describe
-        # the provider rather than a check that could not be run (section 20).
-        if key["type"] == "cloud":
-            check["cloud_health_status"] = _cloud_health_status(
-                entry.get("cloud_health_status"), "cloud_health_status"
-            )
-            check["cloud_provider_operational"] = _flag(
-                entry.get("cloud_provider_operational"), "cloud_provider_operational"
-            )
+        # The remaining checks could not be performed, so nothing is recorded
+        # (section 22).
+        return check
+    if mismatch:
+        # The recorded path does not match the key, so the key could not be
+        # checked: the path itself, the key note, the contact confirmation and
+        # the overall comment are kept, while everything else stays empty
+        # (section 25.1).
+        check["address_path"] = address_path
+        check["address_path_verified"] = "PROBLEM"
         return check
 
-    required = available == 1
     if key["type"] == "hardware":
         # Hardware works requires an active Yes or No, so leaving it out is a
         # 400 (section 24.1).
@@ -304,19 +460,11 @@ def _key_check(entry, key, available):
             entry.get("firmware_version"), "firmware_version", MAX_VERSION_LENGTH
         )
         check["seed_backup_verified"] = _verification(
-            entry.get("seed_backup_verified"), "seed_backup_verified", required
+            entry.get("seed_backup_verified"), "seed_backup_verified"
         )
-    else:
-        check["cloud_health_status"] = _cloud_health_status(
-            entry.get("cloud_health_status"), "cloud_health_status"
-        )
-        check["cloud_provider_operational"] = _flag(
-            entry.get("cloud_provider_operational"), "cloud_provider_operational"
-        )
-    check["address_path_verified"] = _verification(
-        entry.get("address_path_verified"), "address_path_verified", required
-    )
-    check["address_path"] = _text(entry.get("address_path"), "address_path", MAX_PATH_LENGTH)
+    check["address_path"] = address_path
+    # The comparison matched, so the verification result is OK (section 25.1).
+    check["address_path_verified"] = "OK"
     return check
 
 
@@ -336,23 +484,10 @@ def _status(value, field, allowed):
     return value
 
 
-def _cloud_health_status(value, field):
-    """Return a derived cloud result, which is OK or PROBLEM, or None.
-
-    The cloud result is derived from availability, so "not assessed" is never
-    offered or accepted for it (section 24.1).
-    """
+def _verification(value, field):
+    """Return OK/PROBLEM, requiring an active choice."""
     if value is None or value == "":
-        return None
-    return _status(value, field, CLOUD_HEALTH_STATUSES)
-
-
-def _verification(value, field, required):
-    """Return OK/PROBLEM, requiring a value when the key was available."""
-    if value is None or value == "":
-        if required:
-            raise ValidationError(f"{field} is required when the key is available")
-        return None
+        raise ValidationError(f"{field} is required when the key is available")
     return _status(value, field, VERIFICATION_STATUSES)
 
 
@@ -387,9 +522,9 @@ def _text(value, field, max_length):
     return text or None
 
 
-def _ai_security_checks(entries, key, wallet_software, unavailable):
+def _ai_security_checks(entries, key, wallet_software, uncheckable):
     """Return the security status rows for the selected key and wallet software."""
-    if unavailable:
+    if uncheckable:
         _require_nothing_recorded(entries, "ai_security_checks")
         return []
     if not isinstance(entries, list):
