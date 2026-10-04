@@ -7,44 +7,58 @@ import unittest
 from pathlib import Path
 
 from database import (
+    DEFAULT_WALLET_SOFTWARE,
     SCHEMA_VERSION,
     get_health_check,
     initialize_database,
+    key_has_check,
+    list_alert_acknowledgements,
     list_export_rows,
     list_health_checks,
     list_key_status,
     list_keys,
     list_previous_values,
+    list_wallet_software,
+    save_alert_acknowledgement,
     save_health_check,
+    save_key_settings,
     save_key_setup,
+    save_wallet_software,
 )
 from validation import validate_health_check
 
 
+# The address path the keys are configured with, and the path a submission
+# records (section 25.1).
+DEFAULT_ADDRESS_PATH = "m/48'/0'/0'/2'"
 # The key setup every test starts from, unless it tests the setup itself.
 DEFAULT_SETUP = (
-    {"key_number": 1, "name": "SeedSigner", "type": "hardware"},
-    {"key_number": 2, "name": "Blockstream Jade", "type": "hardware"},
-    {"key_number": 3, "name": "Nunchuk", "type": "cloud"},
+    {"key_number": 1, "name": "SeedSigner", "type": "hardware", "address_path": DEFAULT_ADDRESS_PATH},
+    {"key_number": 2, "name": "Blockstream Jade", "type": "hardware", "address_path": DEFAULT_ADDRESS_PATH},
+    {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": DEFAULT_ADDRESS_PATH},
 )
-# A setup with the cloud key in the first slot and renamed hardware keys.
+# A setup with the cloud key in the first slot, renamed hardware keys, and two
+# different address paths, so the comparison is proven to be per key.
 RENAMED_SETUP = (
-    {"key_number": 1, "name": "Coinbase", "type": "cloud"},
-    {"key_number": 2, "name": "ColdCard", "type": "hardware"},
-    {"key_number": 3, "name": "Jade", "type": "hardware"},
+    {"key_number": 1, "name": "Coinbase", "type": "cloud", "address_path": DEFAULT_ADDRESS_PATH},
+    {"key_number": 2, "name": "ColdCard", "type": "hardware", "address_path": "m/48'/1'/0'/2'"},
+    {"key_number": 3, "name": "Jade", "type": "hardware", "address_path": "m/48'/2'/0'/2'"},
 )
 
 
-def sample_payload(key, wallet_software=None):
-    """Return a valid single-key payload for the given key profile."""
+def sample_payload(key, wallet_software=None, address_path=None):
+    """Return a valid single-key payload for the given key profile.
+
+    The recorded address path matches the stored one unless a test asks for
+    another one (section 25.1).
+    """
     if wallet_software is None:
         wallet_software = key["name"] if key["type"] == "cloud" else "Sparrow Wallet"
     labels = list(dict.fromkeys((key["name"], wallet_software)))
     entry = {
         "key_id": key["id"],
         "available": 1,
-        "address_path_verified": "OK",
-        "address_path": "m/48'/0'/0'/2'/0/0",
+        "address_path": address_path if address_path is not None else key["address_path"],
         "comments": "",
     }
     if key["type"] == "hardware":
@@ -53,8 +67,6 @@ def sample_payload(key, wallet_software=None):
             "firmware_version": "1.0.0",
             "seed_backup_verified": "OK",
         })
-    else:
-        entry.update({"cloud_health_status": "OK", "cloud_provider_operational": 1})
     return {
         "checked_at": "2026-10-01",
         "wallet_software": wallet_software,
@@ -67,6 +79,25 @@ def sample_payload(key, wallet_software=None):
         "ai_security_checks": [
             {"provider": label, "status": "SECURE", "comments": ""} for label in labels
         ],
+    }
+
+
+def mismatch_payload(key, address_path):
+    """Return the minimal payload the form sends when the path does not match.
+
+    Everything else about the key is left out, because the key could not be
+    checked (section 25.1).
+    """
+    return {
+        "checked_at": "2026-10-01",
+        "contact_info_verified": "Confirmed current",
+        "comments": "Annual review",
+        "key_check": {
+            "key_id": key["id"],
+            "available": 1,
+            "address_path": address_path,
+            "comments": "Path read from the device",
+        },
     }
 
 
@@ -153,7 +184,8 @@ LEGACY_SCHEMA = """
 # The layout introduced by section 19, before the status values became English,
 # before the contact flag became a stored status, and before the fixed device,
 # product, provider, and wallet-software lists were dropped. It still holds the
-# tool_checks table, which the migration drops (sections 24.2 and 24.4).
+# tool_checks table, which the migration drops (sections 24.2 and 24.4), and the
+# two derived cloud results, which section 25.6 drops.
 SCHEMA_VERSION_5 = """
     CREATE TABLE keys (
         id INTEGER PRIMARY KEY,
@@ -233,8 +265,8 @@ SCHEMA_VERSION_5 = """
 """
 
 # The schema version 8 layout, which is the current one except that it still
-# holds the tool_checks table and its rows. The migration to version 9 drops
-# that table and nothing else (sections 24.2 and 24.4).
+# holds the tool_checks table and its rows. The migration drops that table and
+# nothing else (sections 24.2 and 24.4).
 SCHEMA_VERSION_8 = """
     CREATE TABLE keys (
         id INTEGER PRIMARY KEY,
@@ -315,6 +347,74 @@ SCHEMA_VERSION_8 = """
     PRAGMA user_version = 8;
 """
 
+# The schema version 9 layout, which is the current one except that it still
+# holds the two derived cloud results in key_checks and has no key address path,
+# no wallet software list, and no alert acknowledgements (section 25.6).
+SCHEMA_VERSION_9 = """
+    CREATE TABLE keys (
+        id INTEGER PRIMARY KEY,
+        key_number INTEGER NOT NULL UNIQUE CHECK (key_number BETWEEN 1 AND 3),
+        name TEXT NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('hardware', 'cloud')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE health_checks (
+        id INTEGER PRIMARY KEY,
+        checked_at TEXT NOT NULL,
+        next_check_due TEXT NOT NULL,
+        wallet_software TEXT,
+        software_version TEXT,
+        software_compatibility_status TEXT NOT NULL DEFAULT 'NOT_ASSESSED'
+            CHECK (software_compatibility_status IN ('OK', 'PROBLEM', 'NOT_ASSESSED')),
+        sparrow_version TEXT,
+        nunchuk_version TEXT,
+        software_comments TEXT,
+        contact_info_verified TEXT
+            CHECK (contact_info_verified IN ('Confirmed current', 'Needs external update')),
+        comments TEXT
+    );
+    CREATE TABLE key_checks (
+        id INTEGER PRIMARY KEY,
+        health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
+        key_id INTEGER NOT NULL REFERENCES keys(id) ON DELETE RESTRICT,
+        available INTEGER CHECK (available IN (0, 1)),
+        hardware_works INTEGER CHECK (hardware_works IN (0, 1)),
+        firmware_version TEXT,
+        seed_backup_verified TEXT CHECK (seed_backup_verified IN ('OK', 'PROBLEM')),
+        cloud_health_status TEXT CHECK (cloud_health_status IN ('OK', 'PROBLEM', 'NOT_ASSESSED')),
+        cloud_provider_operational INTEGER CHECK (cloud_provider_operational IN (0, 1)),
+        address_path_verified TEXT CHECK (address_path_verified IN ('OK', 'PROBLEM')),
+        address_path TEXT,
+        comments TEXT,
+        UNIQUE (health_check_id, key_id)
+    );
+    CREATE TABLE ai_security_checks (
+        id INTEGER PRIMARY KEY,
+        health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('SECURE', 'PATCHED', 'VULNERABLE', 'COMPROMISED')),
+        comments TEXT,
+        UNIQUE (health_check_id, provider)
+    );
+    INSERT INTO keys (id, key_number, name, type) VALUES
+        (1, 1, 'SeedSigner', 'hardware'),
+        (2, 2, 'Blockstream Jade', 'hardware'),
+        (3, 3, 'Nunchuk', 'cloud');
+    INSERT INTO health_checks (
+        id, checked_at, next_check_due, wallet_software, software_version,
+        software_compatibility_status, contact_info_verified, comments
+    ) VALUES (1, '2026-01-01', '2027-01-01', 'Sparrow Wallet', '1.8.0', 'OK', 'Confirmed current', 'Annual review');
+    INSERT INTO key_checks (
+        health_check_id, key_id, available, hardware_works, firmware_version,
+        seed_backup_verified, cloud_health_status, cloud_provider_operational,
+        address_path_verified, address_path
+    ) VALUES (1, 1, 1, 1, '1.0.0', 'OK', 'OK', 1, 'OK', 'm/48''/0''/0''/2''');
+    INSERT INTO ai_security_checks (health_check_id, provider, status) VALUES
+        (1, 'SeedSigner', 'SECURE'),
+        (1, 'Sparrow Wallet', 'SECURE');
+    PRAGMA user_version = 9;
+"""
+
 
 class DatabaseInitializationTests(unittest.TestCase):
     def setUp(self):
@@ -365,6 +465,11 @@ class DatabaseInitializationTests(unittest.TestCase):
                 )
             }
 
+    def columns_of(self, table):
+        """Return the column names of one table in the migrated database."""
+        with self.connect() as connection:
+            return {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+
     def test_initialization_creates_versioned_schema_and_is_idempotent(self):
         initialize_database(self.database_path)
         initialize_database(self.database_path)
@@ -379,8 +484,16 @@ class DatabaseInitializationTests(unittest.TestCase):
             }
 
         self.assertEqual(version, SCHEMA_VERSION)
+        self.assertEqual(version, 10)
         self.assertTrue(
-            {"keys", "health_checks", "key_checks", "ai_security_checks"} <= tables
+            {
+                "keys",
+                "health_checks",
+                "key_checks",
+                "ai_security_checks",
+                "wallet_software",
+                "alert_acknowledgements",
+            } <= tables
         )
         # The BIP327/SLIP39 table is not part of the schema any more
         # (sections 24.2 and 24.4).
@@ -391,12 +504,42 @@ class DatabaseInitializationTests(unittest.TestCase):
 
         self.assertEqual(list_keys(self.database_path), [])
 
+    def test_a_new_database_starts_with_one_wallet_software_entry(self):
+        initialize_database(self.database_path)
+
+        # The list is stored whole and the user may replace the entry once
+        # another one has been added (section 25.4).
+        self.assertEqual(list_wallet_software(self.database_path), [DEFAULT_WALLET_SOFTWARE])
+
+    def test_the_wallet_software_list_is_stored_whole(self):
+        initialize_database(self.database_path)
+
+        save_wallet_software(["Sparrow Wallet", "BlueWallet"], self.database_path)
+        self.assertEqual(
+            list_wallet_software(self.database_path), ["Sparrow Wallet", "BlueWallet"]
+        )
+
+        # Replacing the list removes the entries that are not sent again.
+        save_wallet_software(["BlueWallet"], self.database_path)
+        self.assertEqual(list_wallet_software(self.database_path), ["BlueWallet"])
+
+        # A database whose list is not empty is never seeded again.
+        initialize_database(self.database_path)
+        self.assertEqual(list_wallet_software(self.database_path), ["BlueWallet"])
+
     def test_the_key_setup_is_stored_once_and_locked(self):
         keys = self.prepare(RENAMED_SETUP)
 
         self.assertEqual(
-            [(key["key_number"], key["name"], key["type"]) for key in keys],
-            [(1, "Coinbase", "cloud"), (2, "ColdCard", "hardware"), (3, "Jade", "hardware")],
+            [
+                (key["key_number"], key["name"], key["type"], key["address_path"])
+                for key in keys
+            ],
+            [
+                (1, "Coinbase", "cloud", DEFAULT_ADDRESS_PATH),
+                (2, "ColdCard", "hardware", "m/48'/1'/0'/2'"),
+                (3, "Jade", "hardware", "m/48'/2'/0'/2'"),
+            ],
         )
 
         with self.assertRaises(RuntimeError):
@@ -465,7 +608,9 @@ class DatabaseInitializationTests(unittest.TestCase):
 
         self.assertEqual(version, SCHEMA_VERSION)
         self.assertFalse({"seed_backup_status", "address_verified", "derivation_height"} & columns)
-        self.assertFalse("device" in key_columns)
+        self.assertFalse({"cloud_health_status", "cloud_provider_operational"} & columns)
+        self.assertNotIn("device", key_columns)
+        self.assertIn("address_path", key_columns)
         self.assertEqual(rows, [(1, "OK", "OK"), (2, "PROBLEM", "PROBLEM")])
         self.assertEqual(statuses, [("Nunchuk", "VULNERABLE"), ("SeedSigner", "SECURE")])
         # The BIP327/SLIP39 rows are dropped with their table, and the rest of
@@ -492,7 +637,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(new_record["key_checks"][0]["key_number"], 3)
         self.assertEqual([entry["provider"] for entry in new_record["ai_security_checks"]], ["Nunchuk"])
 
-    def test_a_version_8_database_drops_only_the_tool_checks_table(self):
+    def test_a_version_8_database_drops_the_tool_checks_table_and_the_cloud_columns(self):
         self.write_schema(SCHEMA_VERSION_8)
         # The old database really holds the table and its rows before the
         # migration runs (sections 24.2 and 24.4).
@@ -508,9 +653,11 @@ class DatabaseInitializationTests(unittest.TestCase):
                 "SELECT provider, status FROM ai_security_checks ORDER BY provider"
             ).fetchall()
 
-        self.assertEqual(version, 9)
         self.assertEqual(version, SCHEMA_VERSION)
         self.assertNotIn("tool_checks", self.table_names())
+        self.assertFalse(
+            {"cloud_health_status", "cloud_provider_operational"} & self.columns_of("key_checks")
+        )
         # Everything else survives the drop.
         self.assertEqual((checks, key_checks), (1, 1))
         self.assertEqual(security, [("SeedSigner", "SECURE"), ("Sparrow Wallet", "SECURE")])
@@ -520,6 +667,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(record["wallet_software"], "Sparrow Wallet")
         self.assertEqual(record["contact_info_verified"], "Confirmed current")
         self.assertEqual(record["key_checks"][0]["seed_backup_verified"], "OK")
+        self.assertEqual(record["key_checks"][0]["address_path"], "m/48'/0'/0'/2'/0/0")
         self.assertEqual(
             [entry["provider"] for entry in record["ai_security_checks"]],
             ["SeedSigner", "Sparrow Wallet"],
@@ -533,6 +681,42 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(get_health_check(new_id, self.database_path)["wallet_software"],
                          "Sparrow Wallet")
 
+    def test_a_version_9_database_gains_the_address_path_and_the_new_tables(self):
+        self.write_schema(SCHEMA_VERSION_9)
+        self.assertNotIn("wallet_software", self.table_names())
+        self.assertIn("cloud_health_status", self.columns_of("key_checks"))
+
+        initialize_database(self.database_path)
+
+        with self.connect() as connection:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            checks = connection.execute("SELECT COUNT(*) FROM health_checks").fetchone()[0]
+            key_checks = connection.execute("SELECT COUNT(*) FROM key_checks").fetchone()[0]
+            address_paths = connection.execute(
+                "SELECT address_path FROM keys ORDER BY key_number"
+            ).fetchall()
+
+        self.assertEqual(version, SCHEMA_VERSION)
+        self.assertEqual(version, 10)
+        self.assertIn("wallet_software", self.table_names())
+        self.assertIn("alert_acknowledgements", self.table_names())
+        # The two derived cloud results are gone, and the rest of the history is
+        # kept (section 25.6).
+        self.assertFalse(
+            {"cloud_health_status", "cloud_provider_operational"} & self.columns_of("key_checks")
+        )
+        self.assertEqual((checks, key_checks), (1, 1))
+        # The address path of a migrated key starts empty, because the old
+        # database never recorded one (section 25.1).
+        self.assertEqual(address_paths, [("",), ("",), ("",)])
+        self.assertEqual(list_wallet_software(self.database_path), [DEFAULT_WALLET_SOFTWARE])
+
+        record = get_health_check(1, self.database_path)
+        self.assertEqual(record["checked_at"], "2026-01-01")
+        self.assertEqual(record["wallet_software"], "Sparrow Wallet")
+        self.assertEqual(record["key_checks"][0]["address_path_verified"], "OK")
+        self.assertEqual(record["key_checks"][0]["address_path"], "m/48'/0'/0'/2'")
+
     def test_status_values_migrate_to_english(self):
         self.write_schema(SCHEMA_VERSION_5)
 
@@ -543,12 +727,13 @@ class DatabaseInitializationTests(unittest.TestCase):
             compatibility = connection.execute(
                 "SELECT software_compatibility_status FROM health_checks"
             ).fetchone()[0]
-            cloud = connection.execute("SELECT cloud_health_status FROM key_checks").fetchone()[0]
 
         self.assertEqual(version, SCHEMA_VERSION)
         self.assertEqual(compatibility, "NOT_ASSESSED")
-        self.assertEqual(cloud, "NOT_ASSESSED")
         self.assertNotIn("tool_checks", self.table_names())
+        self.assertFalse(
+            {"cloud_health_status", "cloud_provider_operational"} & self.columns_of("key_checks")
+        )
 
         record = get_health_check(1, self.database_path)
         self.assertEqual(record["software_compatibility_status"], "NOT_ASSESSED")
@@ -675,12 +860,37 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(len(record["key_checks"]), 1)
         self.assertEqual(record["key_checks"][0]["key_number"], 1)
         self.assertEqual(record["key_checks"][0]["seed_backup_verified"], "OK")
+        self.assertEqual(record["key_checks"][0]["address_path"], DEFAULT_ADDRESS_PATH)
+        self.assertEqual(record["key_checks"][0]["address_path_verified"], "OK")
         self.assertEqual(
             [entry["provider"] for entry in record["ai_security_checks"]],
             ["SeedSigner", "Sparrow Wallet"],
         )
         self.assertEqual(record["ai_security_checks"][0]["status"], "SECURE")
         self.assertIsNone(get_health_check(9999, self.database_path))
+
+    def test_a_mismatched_address_path_is_stored_as_an_uncheckable_key(self):
+        keys = self.prepare()
+
+        saved_id = save_health_check(
+            validate_health_check(mismatch_payload(keys[0], "m/48'/9'/0'/2'"), keys),
+            self.database_path,
+        )
+        record = get_health_check(saved_id, self.database_path)
+        key_check = record["key_checks"][0]
+
+        # The recorded path and the key note are kept, while everything else
+        # stays empty (section 25.1).
+        self.assertEqual(key_check["address_path"], "m/48'/9'/0'/2'")
+        self.assertEqual(key_check["address_path_verified"], "PROBLEM")
+        self.assertEqual(key_check["comments"], "Path read from the device")
+        self.assertIsNone(key_check["hardware_works"])
+        self.assertIsNone(key_check["firmware_version"])
+        self.assertIsNone(key_check["seed_backup_verified"])
+        self.assertIsNone(record["wallet_software"])
+        self.assertEqual(record["software_compatibility_status"], "NOT_ASSESSED")
+        self.assertEqual(record["ai_security_checks"], [])
+        self.assertEqual(record["comments"], "Annual review")
 
     def test_the_stored_name_is_recorded_as_the_provider_label(self):
         keys = self.prepare(RENAMED_SETUP)
@@ -697,6 +907,60 @@ class DatabaseInitializationTests(unittest.TestCase):
         )
         self.assertEqual(record["key_checks"][0]["name"], "Coinbase")
         self.assertEqual(record["key_checks"][0]["type"], "cloud")
+
+    def test_the_settings_rename_a_key_and_change_its_path(self):
+        keys = self.prepare()
+        first = keys[0]
+
+        save_key_settings(first["id"], "ColdCard", "m/48'/3'/0'/2'", self.database_path)
+        stored = list_keys(self.database_path)[0]
+
+        # The name is only a label, so it can be changed at any time
+        # (sections 25.1 and 25.2).
+        self.assertEqual(stored["name"], "ColdCard")
+        self.assertEqual(stored["address_path"], "m/48'/3'/0'/2'")
+        self.assertEqual(stored["type"], "hardware")
+
+    def test_key_has_check_reports_a_saved_check(self):
+        keys = self.prepare()
+
+        self.assertFalse(key_has_check(keys[0]["id"], self.database_path))
+
+        save_health_check(
+            validate_health_check(sample_payload(keys[0]), keys), self.database_path
+        )
+
+        self.assertTrue(key_has_check(keys[0]["id"], self.database_path))
+        self.assertFalse(key_has_check(keys[1]["id"], self.database_path))
+
+    def test_saving_the_settings_of_an_unknown_key_is_an_error(self):
+        self.prepare()
+
+        with self.assertRaises(ValueError):
+            save_key_settings(999, "ColdCard", DEFAULT_ADDRESS_PATH, self.database_path)
+
+    def test_an_acknowledgement_is_stored_with_the_check_it_closed(self):
+        keys = self.prepare()
+        saved_id = save_health_check(
+            validate_health_check(sample_payload(keys[0]), keys), self.database_path
+        )
+
+        acknowledgement_id = save_alert_acknowledgement(
+            "address_path_mismatch",
+            "Key 1: SeedSigner",
+            saved_id,
+            "The key was replaced",
+            self.database_path,
+        )
+
+        self.assertIsNotNone(acknowledgement_id)
+        stored = list_alert_acknowledgements(self.database_path)
+        self.assertEqual(len(stored), 1)
+        self.assertEqual(stored[0]["code"], "address_path_mismatch")
+        self.assertEqual(stored[0]["source"], "Key 1: SeedSigner")
+        self.assertEqual(stored[0]["check_id"], saved_id)
+        self.assertEqual(stored[0]["reason"], "The key was replaced")
+        self.assertTrue(stored[0]["acknowledged_at"])
 
     def test_each_key_can_be_recorded_separately(self):
         keys = self.prepare()
@@ -780,7 +1044,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         by_key = {entry["key_id"]: entry for entry in values["keys"]}
 
         self.assertEqual(by_key[1]["firmware_version"], "1.0.0")
-        self.assertEqual(by_key[1]["address_path"], "m/48'/0'/0'/2'/0/0")
+        self.assertEqual(by_key[1]["address_path"], DEFAULT_ADDRESS_PATH)
         self.assertEqual(by_key[1]["wallet_software"], "Sparrow Wallet")
         self.assertEqual(by_key[1]["software_version"], "1.8.0")
         self.assertEqual(by_key[3]["wallet_software"], "Nunchuk")
@@ -814,7 +1078,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(first["key_type"], "hardware")
         self.assertEqual(first["seed_backup_verified"], "OK")
         self.assertEqual(first["address_path_verified"], "OK")
-        self.assertEqual(first["address_path"], "m/48'/0'/0'/2'/0/0")
+        self.assertEqual(first["address_path"], DEFAULT_ADDRESS_PATH)
         self.assertEqual(first["wallet_software"], "Sparrow Wallet")
         self.assertEqual(first["contact_info_verified"], "Confirmed current")
         self.assertEqual(
