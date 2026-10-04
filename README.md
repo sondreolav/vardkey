@@ -170,7 +170,9 @@ Stored `0`/`1` values are written as `No`/`Yes`, matching the history view. That
 {"code": "address_path_mismatch", "severity": "critical", "source": "Key 1: ColdCard", "message": "The recorded address path does not match this key. Replace the key before continuing; the remaining checks for this key cannot be recorded.", "actions": ["rotate"], "key_id": 1, "check_id": 12, "checked_at": "2026-10-01"}
 ```
 
-`check_id` and `checked_at` name the saved check an alert came from, so the dashboard can show where a warning originated. `actions` names the actions that close the alert, and `key_id` names the key when the source is a key. Identical alerts (same `code` and `source`) are merged, and only the newest one is listed, with its own date. Critical alerts come first, then the newest check first inside each severity. An alert from an older check therefore stays visible until a newer check for the same key and source resolves it.
+`check_id` and `checked_at` name the saved check an alert came from, so the dashboard can show where a warning originated. `actions` names the actions that close the alert, and `key_id` names the key when the source is a key. Identical alerts (same `code` and `source`) are merged, and only the newest one is listed, with its own date. Critical alerts come first, then the newest check first inside each severity.
+
+An alert is therefore not cleared by a newer check that raises nothing: it stays visible until the user acknowledges it or rotates the key, and an acknowledged alert comes back when a newer check raises the same code and source again.
 
 A key alert names the key by its number and its configured name, so an alert always matches the key it came from. The name in the alert is the name the key has now, which the settings may change.
 
