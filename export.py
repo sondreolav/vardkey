@@ -9,6 +9,9 @@ value``.
 Status values are written exactly as stored. The contact confirmation is one of
 the stored statuses (section 23.1), so it is written as text like every other
 status, while the yes/no columns keep their ``No``/``Yes`` wording.
+
+The two derived cloud columns are gone, together with the fields they described:
+a cloud key records only its availability (section 25.6).
 """
 
 import csv
@@ -27,8 +30,6 @@ COLUMNS = (
     ("hardware_works", "Hardware works"),
     ("firmware_version", "Firmware version"),
     ("seed_backup_verified", "Seed backup verified"),
-    ("cloud_health_status", "Cloud health status"),
-    ("cloud_provider_operational", "Cloud provider operational"),
     ("address_path_verified", "Address path verified"),
     ("address_path", "Address path"),
     ("key_comments", "Key comments"),
@@ -45,7 +46,6 @@ HEADERS = tuple(header for _, header in COLUMNS)
 FLAG_KEYS = frozenset({
     "available",
     "hardware_works",
-    "cloud_provider_operational",
 })
 
 
