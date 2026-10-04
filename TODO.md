@@ -14,7 +14,7 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 
 Denne `TODO.md` er det einaste kravgrunnlaget du treng for MVP.
 
-**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. §19–§22 er eit kort vedlegg med dei fire avgjerdene som vart tekne undervegs, alle innarbeidde i §1–§18. §23 (konfigurerbart nøkkeloppsett), §24 (obligatoriske val, fjerning av BIP327/SLIP39, ny skjemastruktur og skjemaversjon 9) og §25 (nøkkelidentitet, rotering, varselkvittering og innstillingar) er implementerte og verifiserte. §26 (sperring av ein nøkkel med ope varsel) er **avtalt, men ikkje implementert**, og kjem etter §25. Den fulle grunngjevinga for kvar avgjerd ligg i git-historikken.
+**Om dokumentet:** §1–§18 er kravspecen og gjeld som han står. §19–§22 er eit kort vedlegg med dei fire avgjerdene som vart tekne undervegs, alle innarbeidde i §1–§18. §23 (konfigurerbart nøkkeloppsett), §24 (obligatoriske val, fjerning av BIP327/SLIP39, ny skjemastruktur og skjemaversjon 9) og §25 (nøkkelidentitet, rotering, varselkvittering og innstillingar) er implementerte og verifiserte. §26 (sperring av ein nøkkel med ope varsel, unike adressestiar, rotering med ny adressesti og varselhandlingar) er **avtalt, men ikkje implementert**, og kjem etter §25. Den fulle grunngjevinga for kvar avgjerd ligg i git-historikken.
 
 ## Språkkrav
 
@@ -77,15 +77,15 @@ Appen er bygd for eitt 2-av-3 multisig-oppsett. Tabellen under viser standardopp
 | Nøkkel | Type | Einheit | Adressesti (døme) |
 |---|---|---|---|
 | 1 | Hardware | SeedSigner | m/48'/0'/0'/2' |
-| 2 | Hardware | Blockstream Jade | m/48'/0'/0'/2' |
-| 3 | Cloud | Nunchuk | m/48'/0'/0'/2' |
+| 2 | Hardware | Blockstream Jade | m/48'/1'/0'/2' |
+| 3 | Cloud | Nunchuk | m/48'/2'/0'/2' |
 
 - [x] Vis 2-av-3 som oppsettet i dashboardet.
 - [x] Ha tre nøkkelprofilar, éin for kvar nøkkel.
 - [x] Ikkje bygg generell støtte for mange oppsett enno.
 - [x] La brukaren gi nøklane namn, type og adressesti ved første oppstart (§23.2, §25.1).
 
-**Merk:** §23.2 erstattar det faste oppsettet i denne seksjonen: kvar nøkkel blir konfigurert ved første oppstart, og namnet brukaren skriv, blir produktnamnet. §25.1 legg adressestien til. Tabellen over viser standardoppsettet appen vart bygd for.
+**Merk:** §23.2 erstattar det faste oppsettet i denne seksjonen: kvar nøkkel blir konfigurert ved første oppstart, og namnet brukaren skriv, blir produktnamnet. §25.1 legg adressestien til, og §26.2 gjer han unik per nøkkel. Tabellen over viser standardoppsettet appen vart bygd for.
 
 ---
 
@@ -108,7 +108,7 @@ SQLite med så få tabellar som mogleg. Kvar tabell har éi rad per kolonne her;
 **`wallet_software`** — lista brukaren vedlikeheld i innstillingane (§25.4).
 `id`, `name`, `created_at`.
 
-**`alert_acknowledgements`** — kvitterte varsel (§25.3).
+**`alert_acknowledgements`** — kvitterte varsel (§25.3, §26.4).
 `id`, `code`, `source`, `check_id`, `reason`, `acknowledged_at`.
 
 Reglar:
@@ -130,6 +130,8 @@ Reglar:
 - [x] `cloud_health_status` og `cloud_provider_operational` er fjerna. Ein cloud-nøkkel registrerer berre `available` (§25.3, §25.6).
 - [x] `address_path_verified` blir sett av serveren ut frå ei samanlikning med `keys.address_path`, og blir ikkje sendt inn av brukaren (§25.1).
 - [x] `wallet_software` i `health_checks` held fram som fri tekst, slik at eldre rader og fjerna listeelement held fram å visast rett (§25.4).
+- [ ] `address_path` må vere unik på tvers av dei tre nøklane, både i oppsettet, i innstillingane og ved rotering (§26.2).
+- [ ] `reason` i `alert_acknowledgements` lagrar namnet på handlinga som lukka varselet, ikkje ein fri tekst (§26.4).
 
 ---
 
@@ -164,6 +166,7 @@ Stega følgjer seksjonane i skjemaet.
 
 - [x] Brukaren vel kva nøkkel innsendinga gjeld (§19). Ei innsending gjeld éin nøkkel.
 - [x] `Availability` er obligatorisk: Ja eller Nei (§22).
+- [ ] Ein nøkkel med eit ope varsel kan ikkje veljast, og skjemaet seier kva varsel som står i vegen (§26.1).
 
 ### Hardware-nøkkel
 
@@ -223,7 +226,7 @@ Stega følgjer seksjonane i skjemaet.
 
 # 7. Varsel og oppfølging
 
-Alle lagra kontrollar blir lesne (§21). Kva som kan lukke eit varsel, står i §25.3.
+Alle lagra kontrollar blir lesne (§21). Kva som kan lukke eit varsel, står i §25.3 og §26.4.
 
 - [x] Nøkkel ikkje tilgjengeleg → kritisk varsel om at nøkkelen må bytast ut før ein går vidare, og at resten av nøkkelfelta ikkje kan registrerast.
 - [x] Hardware fungerer ikkje → seed-backupen bør testast på annan kompatibel hardware.
@@ -238,7 +241,11 @@ Alle lagra kontrollar blir lesne (§21). Kva som kan lukke eit varsel, står i �
 - [x] Varselet om cloud-helse er fjerna: det kunne ikkje utløysast frå skjemaet (§25.3).
 - [x] Varselet om feila adresseverifisering er erstatta av varselet om adressestifeil (§25.3).
 - [x] Eit kvittert varsel er skjult til ein nyare kontroll for same `code` og `source` utløyser det igjen (§25.3).
-- [ ] Ein nøkkel med eit ope varsel kan ikkje få ein ny kontroll før varselet er lukka (§26).
+- [ ] Ein nøkkel med eit ope varsel kan ikkje få ein ny kontroll før varselet er lukka (§26.1).
+- [ ] Kvar varselkode har ei fast sett av handlingar, kvar med sin eigen knappetekst og eige stadfestingssteg. Den generiske kvitteringa er fjerna (§26.4).
+- [ ] `hardware_failure` har `rotate` og `replace_hardware`, og ingen generisk kvittering (§26.4).
+- [ ] `software_incompatible` blir lukka ved at den feilande programvara blir fjerna frå innstillingane (§26.4, §26.7).
+- [ ] `security_compromised` med nøkkel som kjelde kan berre lukkast med rotering (§26.4).
 
 ---
 
@@ -252,6 +259,9 @@ Alle lagra kontrollar blir lesne (§21). Kva som kan lukke eit varsel, står i �
 - [x] Vis oppsettsteget i staden for dashboardet når nøkkeloppsettet manglar (§23.2).
 - [x] Vis handlinga som høyrer til kvart varsel, slik at brukaren kan lukke det (§25.3).
 - [x] Lenke til innstillingane (§25.4).
+- [ ] Eit nøkkelkort viser ei tydeleg melding når nøkkelen har eit ope varsel, i staden for den vanlege statusen sin, og seier kor mange varsel som står ope (§26.5).
+- [ ] Nøkkelkortet peikar på handlinga som lukkar varselet, eller lenker til varsellista (§26.5).
+- [ ] Varselet om programvare-inkompatibilitet lenker til innstillingane, der brukaren legg til ny programvare eller fjernar den feilande (§26.7).
 
 ---
 
@@ -306,7 +316,11 @@ Minimumsendepunkt:
 - [x] `POST /api/keys/<id>/rotate` roterer ein nøkkel og kvitterer ut varsla hans (§25.2).
 - [x] `POST /api/alerts/acknowledge` kvitterer ut eit varsel med `code`, `source` og ein årsak (§25.3).
 - [x] `POST /api/health-checks` samanliknar adressestien og krev eit minimalt innhald når han ikkje stemmer, elles `400` (§25.1).
-- [ ] `POST /api/health-checks` avviser ein nøkkel som har eit ope varsel (§26).
+- [ ] `POST /api/health-checks` avviser ein nøkkel som har eit ope varsel, med `409` (§26.1).
+- [ ] `POST /api/setup`, `POST /api/settings/keys` og `POST /api/keys/<id>/rotate` avviser ein adressesti som ein annan nøkkel alt har (§26.2).
+- [ ] `POST /api/keys/<id>/rotate` tek ein ny `address_path` i staden for `address_path_unchanged`, og avviser den gamle stien og ein tom verdi (§26.3).
+- [ ] `POST /api/alerts/acknowledge` tek handlinga (`rotate`, `replace_hardware`, `remove_software`, `ignore`, `contact_updated`) i staden for ein fri årsak, og avviser ei handling som ikkje høyrer til varselet (§26.4).
+- [ ] Varselet oppgjev kva programvare som fekk resultatet, slik at fjerninga i innstillingane peikar på rett element (§26.7).
 
 ---
 
@@ -325,8 +339,12 @@ Minimumsendepunkt:
 - [x] Ny innstillingsside med seksjonar for nøklar og wallet-programvare, bygd for fleire tema seinare (§25.4).
 - [x] Eit påminningsvarsel før innsending når adressestien ikkje stemmer (§25.1).
 - [x] `Wallet software`-vala kjem frå nøkkeloppsettet, cloud-nøklane og innstillingslista (§25.4).
+- [ ] Skjemaet viser kva nøklar som er sperra av eit ope varsel, og kva handling som lukkar det (§26.1).
+- [ ] Roteringsfeltet har eit eige tekstfelt for den nye adressestien, og namnefeltet er førehandsfylt med namnet nøkkelen har no (§26.3).
+- [ ] Avstanden mellom `warning-note` og `rotation-list` i `03 / Key rotation` blir auka, utan at fargar eller innhald blir endra (§26.6).
+- [ ] Varselknappane har den teksten og det stadfestingssteget som høyrer til handlinga si (§26.4).
+- [ ] Varselet om programvare-inkompatibilitet lenker til innstillingane, og den feilande programvara kan fjernast derfrå (§26.7).
 - [ ] Sørg for at appen fungerer godt i vanleg StartOS-browser.
-- [ ] Skjemaet viser kva nøklar som er sperra av eit ope varsel, og kva handling som lukkar det (§26).
 
 ---
 
@@ -415,7 +433,12 @@ Unngå:
 - [ ] Test kontaktinfo `Needs external update`.
 - [ ] Test rotering av ein nøkkel, med og utan nytt namn (§25.2).
 - [ ] Test kvittering av eit varsel, og at eit nyare varsel kjem tilbake (§25.3).
-- [ ] Test at ein nøkkel med eit ope varsel ikkje kan få ein ny kontroll, og at nøkkelen blir ledig igjen når varselet er lukka (§26).
+- [ ] Test at ein nøkkel med eit ope varsel ikkje kan få ein ny kontroll, og at nøkkelen blir ledig igjen når varselet er lukka (§26.1).
+- [ ] Test at to nøklar ikkje kan ha same adressesti, korkje i oppsettet, i innstillingane eller ved rotering (§26.2).
+- [ ] Test at rotering krev ein ny adressesti, og at den gamle blir avvist (§26.3).
+- [ ] Test kvar varselhandling, og at eit varsel utan handlingar blir rekna som ein feil (§26.4).
+- [ ] Test at eit nøkkelkort viser ei varselmelding når nøkkelen har eit ope varsel (§26.5).
+- [ ] Test at fjerning av den feilande programvara lukkar `software_incompatible` (§26.7).
 
 ## StartOS-test
 
@@ -452,7 +475,7 @@ Før første release skal alle desse vere oppfylte:
 
 ---
 
-# 18. Arbeidsrekkjefølgje for AI-programmeraren
+# 18. Arbeidsrekkefølgje for AI-programmeraren
 
 Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjonar:
 
@@ -481,13 +504,13 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 
 # 19–22. Vedtekne avgjerder (implementerte og verifiserte)
 
-Desse fire vart tekne undervegs og er no innarbeidde i §1–§18. Kvar referanse i §1–§18 peikar på avsnittet nedanfor. Den fulle grunngjevinga ligg i git-historikken. §23–§25 endra enkelte av detaljane etterpå; det står i så fall i parentes.
+Desse fire vart tekne undervegs og er no innarbeidde i §1–§18. Kvar referanse i §1–§18 peikar på avsnittet nedanfor. Den fulle grunngjevinga ligg i git-historikken. §23–§26 endra enkelte av detaljane etterpå; det står i så fall i parentes.
 
 **§19 — registrering per nøkkel.** Ei innsending gjeld **éin vald nøkkel**, ikkje alle tre. Brukaren vel éi wallet-programvare med eitt versjonsfelt. `seed_backup_status`, `address_verified` og `derivation_height` er fjerna. Migreringa er bakoverkompatibel, og eldre historikk blir framleis vist. (§23.3 endra vala: `Sparrow Wallet` pluss namnet på kvar cloud-nøkkel, og ein cloud-nøkkel er låst til sitt eige namn.)
 
 **§20 — skjulte felt som blir utleidde.** Ein cloud-nøkkel samlar berre `Availability`; cloud-helse, «leverandøren er i drift» og kompatibilitet blir utleidde. Førre lagra verdi blir fylt inn i feltet. Alt utleidd blir lista i Review-oppsummeringa, merkt som nettopp det. (§23.1 gjorde den førre verdien til ein vanleg input-verdi i staden for ein placeholder, §23.3 fjerna vidareføringa av ein tredje leverandør, og §25.3 fjerna dei to utleidde cloud-felta.)
 
-**§21 — engelske statusverdiar, adressesti og alle varsel.** `IKKJE_VURDERT` → `NOT_ASSESSED`. Skjema versjon 6 (no versjon 10, §23.4, §24.4 og §25.6): kvar råka tabell blir bygd opp att med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit. `GET /api/alerts` summerer alle lagra kontrollar, med `check_id` og `checked_at`, slår saman like varsel og listar kritiske først. «Helsesjekk» og `data/helsesjekk.sqlite3` er dokumenterte unntak frå engelskregelen. (§25.1 erstatta kravet om at `Address path` berre blir lagra når verifiseringa er `OK`, og §25.3 la kvittering til.)
+**§21 — engelske statusverdiar, adressesti og alle varsel.** `IKKJE_VURDERT` → `NOT_ASSESSED`. Skjema versjon 6 (no versjon 10, §23.4, §24.4 og §25.6): kvar råka tabell blir bygd opp att med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit. `GET /api/alerts` summerer alle lagra kontrollar, med `check_id` og `checked_at`, slår saman like varsel og listar kritiske først. «Helsesjekk» og `data/helsesjekk.sqlite3` er dokumenterte unntak frå engelskregelen. (§25.1 erstatta kravet om at `Address path` berre blir lagra når verifiseringa er `OK`, og §25.3 la kvittering til. §26.1 gjer eit ope varsel til ei sperre for ein ny kontroll.)
 
 **§22 — utilgjengeleg nøkkel gjer resten valfritt.** `Availability` er obligatorisk med berre Ja/Nei. Når han er Nei, blir programvare og KI-status skjulte og ikkje kravde, og dei må vere tomme i POST — elles svarar serveren `400`. Det blir ikkje lagra nokon slike rader, `wallet_software` er `NULL`, og `software_compatibility_status` blir `NOT_ASSESSED`. Ein cloud-nøkkel held fram med dei utleidde cloud-verdiane sine og gir det samanslåtte varselet. Databasen kravde inga endring. (§25.1 brukar same mønsteret for ein adressestifeil.)
 
@@ -532,17 +555,17 @@ Avtalt 03.10.2026, implementert og verifisert før steg 9–12 i §18. Der §24 
 
 Avtalt 04.10.2026, implementert og verifisert før steg 9–12 i §18. Reglane står i §3–§12; dette er berre eit kort samandrag, så fila er lett å lese. 283 grøne testar.
 
-- **Adressestien er identiteten til nøkkelen, saman med typen.** `keys.address_path` blir lagra i oppsettet og er låst etter første lagra kontroll. Oppsettsteget spør om namn, type og adressesti, og skjemaet registrerer berre `Address path`, førehandsutfylt med nøkkelen sin lagra sti.
+- **Adressestien er identiteten til nøkkelen, saman med typen.** `keys.address_path` blir lagra i oppsettet og er låst etter første lagra kontroll. Oppsettsteget spør om namn, type og adressesti, og skjemaet registrerer berre `Address path`, førehandsutfylt med nøkkelen sin lagra sti. (§26.2 gjer stien unik på tvers av nøklane.)
 - **Serveren utleier `address_path_verified`.** Den innsende stien blir samanlikna med `keys.address_path` etter `strip`: lik → `OK`, ulik → `PROBLEM`. Eit innsend resultat blir ignorert. Ved ulik sti blir nøkkelen handsama som ein nøkkel som ikkje kunne kontrollerast (§22-mønsteret): berre stien, nøkkelnotatet, kontaktstadfestinga og den overordna kommentaren blir lagra, `wallet_software` blir `NULL`, `software_compatibility_status` blir `NOT_ASSESSED`, og eit kritisk varsel blir utløyst. Nettlesaren viser eit påminningsvarsel med ei avkryssing før innsending. Ein utilgjengeleg nøkkel registrerer ingen sti, og gir difor aldri eit slikt varsel.
 - **Namnet er ein etikett som kan endrast i innstillingane**, medan typen og adressestien er låste. Historikk, varsel og CSV viser namnet nøkkelen har no.
-- **Rotering** (`POST /api/keys/<id>/rotate`) stadfestar at nøkkelen er bytt ut, held eller endrar namnet, kvitterer ut nøkkelens eigne varsel, og gjer inga endring i tidlegare kontrollar. Sida varslar om at rotering gir ei ny lommebok, slik at midla må flyttast frå den gamle multisig-oppsetninga før dei gamle nøklane blir kasserte.
-- **Innstillingane** ligg på `/settings`, med `01 / Keys`, `02 / Wallet software` og `03 / Key rotation`, bygd for fleire seksjonar seinare. Software-lista blir lagra heilt, er sådd med `Sparrow Wallet`, må aldri bli tom, og kan ikkje innehalde eit namn som alt kjem frå ein cloud-nøkkel. Software-vala i skjemaet er lista pluss cloud-nøkkelnamna, og dashboardet lenkjer til innstillingane.
+- **Rotering** (`POST /api/keys/<id>/rotate`) stadfestar at nøkkelen er bytt ut, held eller endrar namnet, kvitterer ut nøkkelens eigne varsel, og gjer inga endring i tidlegare kontrollar. Sida varslar om at rotering gir ei ny lommebok, slik at midla må flyttast frå den gamle multisig-oppsetninga før dei gamle nøklane blir kasserte. (§26.3 erstattar stadfestinga av at adressestien er uendra med eit krav om ein ny, unik sti.)
+- **Innstillingane** ligg på `/settings`, med `01 / Keys`, `02 / Wallet software` og `03 / Key rotation`, bygd for fleire seksjonar seinare. Software-lista blir lagra heilt, er sådd med `Sparrow Wallet`, må aldri bli tom, og kan ikkje innehalde eit namn som alt kjem frå ein cloud-nøkkel. Software-vala i skjemaet er lista pluss cloud-nøkkelnamna, og dashboardet lenkjer til innstillingane. (§26.6 rettar avstanden mellom varselnotatet og roteringslista, og §26.7 legg til fjerning av ei programvare som feilar.)
 - **Skjemajusteringar:** feltet heiter `Software version`, gjeld òg ein cloud-nøkkel, og blir gjenbrukt frå førre lagra verdi for same nøkkel og programvare.
 - **Skjema versjon 10:** `keys.address_path`, `wallet_software` og `alert_acknowledgements` er lagde til, og `cloud_health_status` og `cloud_provider_operational` er fjerna frå `key_checks`. Ingen datamigrering for eldre testdatabasar: `data`-mappa blir sletta og oppsettet gjort på nytt. Migreringa køyrer framleis med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit.
 
 ## 25.3 Varselkvittering
 
-Eit kvittert varsel held seg skjult til ein nyare kontroll for same `code` og `source` utløyser det igjen. Kvitteringa blir lagra med `code`, `source`, `check_id` (den nyaste kontrollen som heva varselet), `acknowledged_at` og ein årsak.
+Eit kvittert varsel held seg skjult til ein nyare kontroll for same `code` og `source` utløyser det igjen. Kvitteringa blir lagra med `code`, `source`, `check_id` (den nyaste kontrollen som heva varselet), `acknowledged_at` og ein årsak. (§26.4 erstattar den generiske kvitteringa med faste handlingar per varselkode.)
 
 | `code` | Alvor | Utløyst av | Slik blir det lukka |
 |---|---|---|---|
@@ -559,16 +582,95 @@ Kvart varsel oppgjev kva handlingar som lukkar det (`rotate`/`acknowledge`) og k
 
 ---
 
-# 26. Sperring: ein nøkkel med ope varsel kan ikkje få ein ny kontroll (AVTALT, IKKJE IMPLEMENTERT)
+# 26. Sperring, unike adressestiar, rotering med ny sti og varselhandlingar (AVTALT, IKKJE IMPLEMENTERT)
 
-Avtalt 04.10.2026, etter manuell testing i nettlesaren. Ingenting av dette er implementert, og punkta står opne til testane er grøne. Arbeidet kjem etter §25 og før steg 9–12 i §18. Fleire småting kan kome til etter kvart som brukaren testar vidare; dei blir lagde til her.
+Avtalt 04.10.2026, etter manuell testing i nettlesaren. Ingenting av dette er implementert, og punkta står opne til testane er grøne. Arbeidet kjem etter §25 og før steg 9–12 i §18. Fleire småting kan kome til etter kvart som brukaren testar vidare; dei blir lagde til her. Der §26 seier noko anna enn §25, gjeld §26.
 
-Bakgrunnen: samanslåinga i §21 held fram, så eit varsel frå ein gammal kontroll blir ikkje borte av at ein nyare kontroll for same nøkkel er frisk. Eit varsel blir difor lukka av brukaren (kvittering eller rotering), og eit ope varsel må ikkje kunne forsvinnast ved å registrere ein ny kontroll.
+Bakgrunnen for 26.1: samanslåinga i §21 held fram, så eit varsel frå ein gammal kontroll blir ikkje borte av at ein nyare kontroll for same nøkkel er frisk. Eit varsel blir difor lukka av brukaren, og eit ope varsel må ikkje kunne forsvinnast ved å registrere ein ny kontroll.
+
+## 26.1 Sperring: ein nøkkel med ope varsel kan ikkje få ein ny kontroll
 
 - [ ] Ein ny health check kan ikkje startast for ein nøkkel som har eit ope varsel. Skjemaet skal seie tydeleg kva varsel som står i vegen, kva handling som lukkar det, og kva nøklar som er ledige.
-- [ ] Varselet må kunne lukkast, elles låser det nøkkelen: kvart varsel må ha minst éi lukkehandling (`actions` i §25.3). Eit varsel utan handling er ein feil, ikkje noko brukaren kan hamne i.
+- [ ] Varselet må kunne lukkast, elles låser det nøkkelen: kvart varsel må ha minst éi lukkehandling (`actions` i §25.3 og §26.4). Eit varsel utan handling er ein feil, ikkje noko brukaren kan hamne i.
 - [ ] Serveren handhevar regelen, ikkje berre skjemaet: `POST /api/health-checks` svarar `409` når den valde nøkkelen har eit ope varsel, slik at eit direkte API-kall ikkje kan omgå han.
 - [ ] Skjemaet viser kva nøklar som er sperra, og lenker til varsla på dashboardet, slik at brukaren kan lukke dei først.
 - [ ] Sperringa gjeld berre den nøkkelen som har varselet. Dei andre nøklane kan framleis få sin kontroll.
 - [ ] Testar for sperringa: ein nøkkel med eit ope varsel gir `409` på serveren og ei tydeleg melding i skjemaet, medan ein nøkkel utan varsel fungerer som før. Testane skal òg dekkje at eit varsel alltid har minst éi lukkehandling.
+
+## 26.2 Adressestien må vere unik
+
+- [ ] Kvar nøkkel må ha sin eigen adressesti. To nøklar kan ikkje ha same sti, korkje i oppsettet, i innstillingane eller ved rotering.
+- [ ] Oppsettsteget avviser ein sti som ein annan nøkkel alt har, med `400` og ei melding som nemner kva nøkkel som har han.
+- [ ] Innstillingane avviser det same, med `409`.
+- [ ] Rotering avviser det same, med `400` (§26.3).
+- [ ] Samanlikninga skjer etter `strip` og utan omsyn til store og små bokstavar, slik at to stiar som berre skil seg i bokstavstorleik tel som like.
+- [ ] Ei eldre testdatabase kan ha to nøklar med same sti, sidan §25 tillét det. Appen skal ikkje krasje: innstillingane viser kva nøklar som kolliderer, og ein ny kontroll for ein slik nøkkel blir avvist med ei melding om at stien må endrast først. Korleis dette skal handsamast må stadfestast med brukaren (§26.8).
+- [ ] `README.md`, `TODO.md` og `ai-note.md` skal oppdaterast.
+
+## 26.3 Rotering gir ein ny adressesti
+
+- [ ] Målet med rotering er å byte ut nøkkelen med ein annan. Nøkkelen held same nøkkelnummer.
+- [ ] Namnet kan haldast eller endrast. Tekstfeltet i innstillingane er førehandsfylt med namnet nøkkelen har no.
+- [ ] Adressestien **må** bytast. Brukaren skriv inn ein ny sti, som må vere unik (§26.2). Den gamle stien blir avvist, og ein tom verdi blir avvist.
+- [ ] `POST /api/keys/<id>/rotate` tek `replaced`, `keep_name`, `name` og den nye `address_path`. Stadfestinga `address_path_unchanged` er fjerna.
+- [ ] Rotering oppdaterer nøkkelraden, lukkar varsla nøkkelen sjølv har heva, og gjer inga endring i tidlegare kontrollar.
+- [ ] Sida held fram med å seie at rotering gir ei ny lommebok, slik at midla må flyttast frå den gamle multisig-oppsetninga før dei gamle nøklane blir kasserte.
+- [ ] Sida seier òg kvifor stien må bytast: nøkkelen er ein annan, og stien er identiteten hans.
+
+## 26.4 Kvar varselkode har sine eigne handlingar
+
+- [ ] Den generiske kvitteringa blir erstatta av faste handlingar per varselkode. Kvar handling har sin eigen knappetekst og eit eige stadfestingssteg i nettlesaren.
+- [ ] Handlingane er `rotate` (rotering i innstillingane), `replace_hardware` (ny hardware-wallet med same seed), `remove_software` (fjern den feilande programvara frå innstillingane), `ignore` (lukk eller ignorer varselet) og `contact_updated` (kontaktinformasjonen er oppdatert eksternt).
+- [ ] `POST /api/alerts/acknowledge` tek handlinga i staden for ein fri årsak, og lagrar handlingsnamnet som årsak. Ei handling som ikkje høyrer til varselet blir avvist.
+- [ ] Varsla får denne fordelinga:
+
+| `code` | Kjelde | Handlingar |
+|---|---|---|
+| `key_unavailable` | nøkkel | `rotate` |
+| `address_path_mismatch` | nøkkel | `rotate` |
+| `hardware_failure` | nøkkel | `rotate`, `replace_hardware` |
+| `seed_backup_problem` | nøkkel | `rotate` |
+| `software_incompatible` | programvare | `remove_software` |
+| `security_vulnerable` | nøkkel | `rotate`, `ignore` |
+| `security_vulnerable` | programvare | `remove_software`, `ignore` |
+| `security_compromised` | nøkkel | `rotate` |
+| `security_compromised` | programvare | `remove_software`, `ignore` |
+| `contact_info_unconfirmed` | kontaktinfo | `contact_updated` |
+
+- [ ] `hardware_failure` mistar den generiske kvitteringa, fordi `replace_hardware` gjer den same jobben: brukaren stadfestar at hardware-walleten er bytt ut med ein ny, med same seed lasta inn. Nøkkelen og adressestien er uendra.
+- [ ] Knappeteksten for `replace_hardware` blir til dømes `Replace hardware`, med stadfestinga «I have replaced the hardware wallet and restored the same seed on the new device.»
+- [ ] `software_incompatible` mistar den generiske kvitteringa, fordi `remove_software` lukkar varselet (§26.7).
+- [ ] `security_vulnerable` med nøkkel som kjelde kan roterast eller ignorerast, og ignoreringa krev eit stadfestingssteg.
+- [ ] `security_compromised` med nøkkel som kjelde kan berre roterast, og har inga ignorering.
+- [ ] `contact_info_unconfirmed` blir lukka med `contact_updated`, med stadfestinga «I have updated the contact details in my external documentation.»
+- [ ] Eit varsel utan handlingar er ein feil i koden, og ein test skal dekkje det.
+
+## 26.5 Nøkkelkortet viser eit ope varsel
+
+- [ ] Eit nøkkelkort på dashboardet viser i dag den vanlege statusen sin, t.d. `Up to date`. Når nøkkelen har eit ope varsel, skal kortet i staden vise ei tydeleg melding om at nøkkelen krev handling, og kor mange varsel som står ope.
+- [ ] Meldinga skal gjere det tydeleg at nøkkelen ikkje kan få ein ny kontroll før varselet er lukka (§26.1).
+- [ ] Nøkkelkortet peikar på kva handling som lukkar varselet, eller lenker til varsellista.
+
+## 26.6 Rotering: avstanden i innstillingane
+
+- [ ] I `03 / Key rotation` ligg `div.warning-note` for nær `div.rotation-list`. Avstanden blir auka, slik at notatet og lista ikkje flyt saman.
+- [ ] Endringa skal berre gjelde avstanden, ikkje fargar eller innhald.
+
+## 26.7 Varselet om programvare-inkompatibilitet
+
+- [ ] `software_incompatible` får ei melding som forklarer at den valde programvara ikkje lenger støttar hardwaren, og ei lenkje til innstillingane, der brukaren kan leggje til ei anna programvare.
+- [ ] Programvara som fekk varselet blir fjerna frå lista når brukaren har lagd til ei ny. Å fjerne ho lukkar varselet.
+- [ ] Er ho det einaste elementet i lista, må brukaren leggje til ei ny programvare først, sidan lista aldri kan bli tom (§25.4). Meldinga skal seie det.
+- [ ] Er det andre element i lista, får brukaren ein knapp som fjernar den feilande programvara, og varselet blir borte med ho.
+- [ ] Det same gjeld `security_vulnerable` og `security_compromised` når kjelda er programvara: same melding, same lenkje og same fjerning.
+- [ ] Varselet må oppgje kva programvare som fekk resultatet, slik at lenkja og fjerninga peikar på rett element.
+- [ ] Tilrådd mekanisme: varselet blir undertrykt medan den feilande programvara ikkje lenger står i lista, sidan det er tilstanden brukaren ser. Å lagre ei kvittering i staden er òg mogleg, men då må han haldast i samsvar med lista.
+- [ ] Å fjerne eit listeelement rører ikkje lagra kontrollar, sidan `wallet_software` i `health_checks` er fri tekst.
+
+## 26.8 Ope spørsmål, testar og dokumentasjon
+
+- [ ] Stadfest med brukaren korleis ein eldre database med to like adressestiar skal handsamast (§26.2).
+- [ ] Stadfest med brukaren om `ignore` òg skal gjelde for `security_compromised` med programvare som kjelde (§26.4).
+- [ ] Stadfest med brukaren kva mekanisme som skal lukke `software_incompatible` når programvara blir fjerna (§26.7).
+- [ ] Testar for alle punkta over, i tillegg til dei som alt står i §16.
 - [ ] `README.md`, `TODO.md` og `ai-note.md` skal oppdaterast når dette er implementert.
