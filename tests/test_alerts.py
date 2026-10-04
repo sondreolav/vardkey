@@ -139,7 +139,8 @@ class AlertTests(unittest.TestCase):
 
     def test_a_mismatch_is_not_merged_with_a_real_unavailable_alert(self):
         # The mismatch has its own code, so the two are never merged even though
-        # they share a source (section 25.1).
+        # they share a source (section 25.1). Both are critical and come from
+        # checks with the same date, so the newest check is listed first.
         mismatch = dated_record(1, "2026-10-01")
         mismatch["key_checks"][0]["address_path_verified"] = "PROBLEM"
         unavailable = dated_record(2, "2026-10-01")
@@ -148,7 +149,7 @@ class AlertTests(unittest.TestCase):
         alerts = collect_alerts([mismatch, unavailable])
 
         self.assertEqual(
-            [alert["code"] for alert in alerts],
+            sorted(alert["code"] for alert in alerts),
             ["address_path_mismatch", "key_unavailable"],
         )
         self.assertEqual({alert["source"] for alert in alerts}, {"Key 1: SeedSigner"})
