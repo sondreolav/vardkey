@@ -2,7 +2,7 @@
 
 Short working handover for the next model. Keep it short.
 
-- `TODO.md` (Norwegian) is the requirement specification: sections 1–18 are the spec, sections 19–22 a short appendix with the four decisions taken along the way, section 23 the configurable key setup, section 24 the required choices and the removal of BIP327/SLIP39, and section 25 the address path identity, the key rotation, the alert acknowledgement, and the settings page.
+- `TODO.md` (Norwegian) is the requirement specification: sections 1–18 are the spec, sections 19–22 a short appendix with the four decisions taken along the way, section 23 the configurable key setup, section 24 the required choices and the removal of BIP327/SLIP39, section 25 the address path identity, the key rotation, the alert acknowledgement, and the settings page, and section 26 the agreed blocking rule for a key that has an open alert.
 - The binding rules live in `TODO.md` and `README.md`. This note does **not** repeat them — it carries the handover, the rules that are easy to get wrong, and the traps that already cost time.
 - `HANDOVER.md` was deleted as outdated. Do not recreate it.
 
@@ -10,10 +10,20 @@ Short working handover for the next model. Keep it short.
 
 - **Done and verified:** sections 19–22, section 18 steps 1–8, sections 23 and 24.
 - **Done, waiting for verification:** the whole of section 25. It is implemented and the test files are updated, but the user has not run the suite yet, so the section 25 boxes in `TODO.md` are still unticked and the test count in section 18 still says 178.
+- **Agreed, not implemented:** section 26 — a key with an open alert cannot get a new check. More small items may be added to section 26 after the user's browser testing.
 - **Verified how:** the automated suite only. The browser flows and the migration of a real older database have not been run by hand yet; they are the manual tests in section 16 of `TODO.md`.
 - **Tests:** the user runs them: `python3 -m unittest discover -s tests`. They run on a Windows copy at `C:\Users\Driftsleiar\Downloads\helsesjekk`, so they must pass there as well as on Linux.
-- **Next work after section 25 is verified:** section 18 steps 9–12 — the StartOS package, the persistent volume, backup/restore, and `.s9pk`. Covered by sections 13, 14, 16 and 17 of `TODO.md`. Do not start it before the user says so.
+- **Next work:** section 26 first, then section 18 steps 9–12 — the StartOS package, the persistent volume, backup/restore, and `.s9pk`. Covered by sections 13, 14, 16 and 17 of `TODO.md`. Do not start the StartOS part before the user says so.
 - **Future work, deliberately not built:** more than three keys, and another threshold than 2-of-3 (section 23).
+
+## Section 26 — agreed, not implemented
+
+Read section 26 of `TODO.md` for the list. The parts that are easy to get wrong:
+
+- **A key with an open alert cannot get a new check.** The form must name the alert that blocks the key and the action that closes it, and must show which keys are free.
+- **The server enforces it, not only the form.** `POST /api/health-checks` answers `409` for a key with an open alert, so a direct API call cannot bypass the rule. The blocking applies to that key only.
+- **Every alert must stay closable.** An alert must always carry at least one action (`actions`), or the key would be locked with no way out. An alert without an action is a bug, not a state the user can reach.
+- **The merge rule of section 21 stays as it is.** An alert from an older check is not cleared by a newer check that raises nothing, which is exactly why closing (acknowledgement or rotation) is the way out and why the blocking rule is needed.
 
 ## Section 25 — implemented, waiting for verification
 
@@ -69,6 +79,7 @@ Read section 24 of `TODO.md` for the summary. 24.2 and 24.4 were delivered toget
 - **`Address path verified` is never a form field again.** The server derives it from the comparison (section 25.1). The stored column stays, so the history, the export and the alerts keep working.
 - **The address path is locked after the first saved check.** `POST /api/settings/keys` accepts the stored path again but answers `409` for a different one.
 - **`/api/alerts` covers every saved check**, not only the newest, merges identical alerts by `code` plus `source`, and leaves out the acknowledged ones. A security alert's `source` is the provider, which is the key's configured name or the software name.
+- **An alert is closed by the user, not by a newer check.** A newer check that raises nothing does not clear an older alert; the alert is acknowledged or the key is rotated. Section 26 adds that a key with an open alert cannot get a new check at all.
 - **The export is plain CSV only.** XLSX is not built and the app does not promise Excel compatibility.
 - **The prohibition lists** in sections 1 and 13 of `TODO.md` stay unticked. They are standing prohibitions, to be re-confirmed before release.
 - **Whether a date is overdue is decided in the browser**, so `/api/key-status` stays independent of the current date.
@@ -107,7 +118,7 @@ Five things that are easy to break:
 - **Do not assert on the quoting style of the JavaScript.** `static/health-check.js` uses single quotes for constant selectors and template literals where a `${...}` substitution is needed, and `static/settings.js` uses double quotes. Assert on the selector text, e.g. `[name="address_path"]`, and on quote-free substrings such as `/api/settings` and `/settings?rotate=`.
 - **`clean_record()` in `tests/test_alerts.py` has a fixed provider list and now carries `key_id`.** A test that needs another provider must replace the entry itself. The cloud fields are gone from it, so a test that wants to prove the removed rules cannot be triggered adds them to the record itself.
 - **`sample_payload()` / `unavailable_payload()` are duplicated in `tests/test_validation.py`, `tests/test_database.py` and `tests/test_app.py`.** They build the labels from the key's name and the selected software, they always send `contact_info_verified`, and for a hardware key `hardware_works`. They must send the key's **own** `address_path`, because the server compares it with the stored one; `tests/test_app.py` and `tests/test_database.py` also have a `mismatch_payload()` for the minimal mismatching submission.
-- **`validate_health_check()` takes a third argument.** The wallet software list from the settings must be passed in, or a hardware key that selects a settings name is refused. `tests/test_validation.py` wraps it in a small `validate()` helper for that reason.
+- **`validate_health_check()` takes a third argument.** The wallet software list from the settings must be passed in, or a hardware key that selects a settings name is refused. `tests/test_validation.py` and `tests/test_database.py` wrap it in a small `validate()` helper for that reason.
 - **`tests/test_app.py` has six test classes.** `ServerTestCase` starts the server, `AppHandlerTests` stores the default setup in `setUp`, `RenamedSetupTests` stores the renamed one, `SettingsApiTests`, `RotationApiTests` and `AcknowledgementApiTests` store the default one, and `KeySetupApiTests` leaves the database empty. A new test must go in the class whose setup it needs.
 - **Section 19 records one key per submission**, so a `Check id` in the export can cover up to three keys only for rows saved before section 19.
 
