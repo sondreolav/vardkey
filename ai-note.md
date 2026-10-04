@@ -2,7 +2,7 @@
 
 Short working handover for the next model. Keep it short.
 
-- `TODO.md` (Norwegian) is the requirement specification: sections 1–18 are the spec, sections 19–22 a short appendix with the four decisions taken along the way, section 23 the configurable key setup, and section 24 the work that came before steps 9–12.
+- `TODO.md` (Norwegian) is the requirement specification: sections 1–18 are the spec, sections 19–22 a short appendix with the four decisions taken along the way, section 23 the configurable key setup, section 24 the required choices and the removal of BIP327/SLIP39, and section 25 agreed work that is **not implemented yet** and comes before steps 9–12.
 - The binding rules live in `TODO.md` and `README.md`. This note does **not** repeat them — it carries the handover, the rules that are easy to get wrong, and the traps that already cost time.
 - `HANDOVER.md` was deleted as outdated. Do not recreate it.
 
@@ -11,8 +11,24 @@ Short working handover for the next model. Keep it short.
 - **Done and verified:** sections 19–22, section 18 steps 1–8, and the whole of sections 23 and 24. Ticked in `TODO.md`.
 - **Verified how:** the automated suite only. The browser flows and the migration of a real older database have not been run by hand yet; they are the manual tests in section 16 of `TODO.md`.
 - **Tests:** 178, all green. The user runs them: `python3 -m unittest discover -s tests`. They run on a Windows copy at `C:\Users\Driftsleiar\Downloads\helsesjekk`, so they must pass there as well as on Linux.
-- **Next work, not started:** section 18 steps 9–12 — the StartOS package, the persistent volume, backup/restore, and `.s9pk`. Covered by sections 13, 14, 16 and 17 of `TODO.md`. Do not start before the user says so; wait for an explicit go-ahead.
-- **Future work, deliberately not built:** more than three keys, another threshold than 2-of-3, a user-defined wallet-software list (section 23), and a way to acknowledge an alert (section 22).
+- **Next work, not started:** section 25 — the address path as the key identity, key rotation, alert acknowledgement, and the settings page. Nothing in section 25 is implemented.
+- **After that:** section 18 steps 9–12 — the StartOS package, the persistent volume, backup/restore, and `.s9pk`. Covered by sections 13, 14, 16 and 17 of `TODO.md`.
+- **Future work, deliberately not built:** more than three keys, and another threshold than 2-of-3 (section 23).
+
+## Section 25 — agreed, not implemented
+
+Read section 25 of `TODO.md` for the full list. The parts that are easy to get wrong:
+
+- **The address path becomes the identity of a key, together with its type.** `keys` gains an `address_path`, and `/setup` asks for it. The name becomes a label that can be changed in the settings.
+- **`Address path verified` stops being a form field.** The user records only `Address path`, and the server compares it with `keys.address_path` (after `strip`): equal gives `OK`, different gives `PROBLEM`. The stored column stays, so the history, the export, and the alerts keep working.
+- **A mismatch is treated like an unavailable key, but only after a warning.** The browser shows a reminder first. If the user still submits, the check is stored as a key that could not be checked: the address path, the key note, the contact confirmation and the overall comment are stored, while the hardware, the software, and the security results stay empty, `wallet_software` becomes `NULL`, and `software_compatibility_status` becomes `NOT_ASSESSED`. The server demands that same minimal payload and answers `400` otherwise, exactly as section 22 already does for an unavailable key.
+- **Two alert rules are dead code today and are removed by section 25.** `cloud_provider_problem` cannot be triggered from the form, because the two cloud fields are derived from availability and an unavailable cloud key returns early. `address_verification_failed` is replaced by the new `address_path_mismatch`.
+- **Alerts can be acknowledged.** An acknowledgement is stored with `code`, `source`, `acknowledged_at`, and a reason, and the alert stays hidden until a newer check for the same `code` and `source` raises it again. The action differs per alert: rotation for `key_unavailable`, `address_path_mismatch` and `seed_backup_problem`; rotation *or* plain closing for `hardware_failure`; closing for `software_incompatible`, `contact_info_unconfirmed`, and for the software-named `security_vulnerable` and `security_compromised`; rotation is required for a key-named `security_compromised`.
+- **Rotation replaces the hardware wallet.** The user confirms the replacement, chooses whether to keep or change the name, cannot change the type, and must confirm that the address path is unchanged. Rotation updates the key row and acknowledges the key's alerts, and it changes no earlier check.
+- **The address path can only be changed while a key has no saved check.** After that it is locked.
+- **A new `/settings` page** holds `01 / Keys` and `02 / Wallet software`, and is built so more sections can be added later. The wallet-software list is stored whole, and a name that already comes from a cloud key is refused.
+- **Schema version 10** adds `keys.address_path`, `wallet_software` and `alert_acknowledgements`, and drops `cloud_health_status` and `cloud_provider_operational`. There is no data migration for older test databases; the user can delete the `data` folder.
+- **The form label `Software version (if used)` becomes `Software version`,** and a cloud key gets that field too, while `Wallet software` and `Compatibility status` stay hidden and derived.
 
 ## Section 24 — implemented and verified
 
@@ -42,26 +58,27 @@ Sections 23.2 and 23.3 were delivered together on purpose: the type is free, so 
 ## Rules that are easy to get wrong — do not re-open
 
 - **One submission records one key.** There is no "round" grouping, and each key's next check is its own date plus one calendar year, computed on the server and not editable in the form.
-- **An unavailable key records nothing else.** When `available` is `0`, `wallet_software` and `ai_security_checks` must be empty; a non-empty value is a `400`, not something dropped silently. Nothing is stored for them, and `software_compatibility_status` becomes `NOT_ASSESSED` (only `NOT_ASSESSED`, `""` or `null` may accompany it).
+- **An unavailable key records nothing else.** When `available` is `0`, `wallet_software` and `ai_security_checks` must be empty; a non-empty value is a `400`, not something dropped silently. Nothing is stored for them, and `software_compatibility_status` becomes `NOT_ASSESSED` (only `NOT_ASSESSED`, `""` or `null` may accompany it). Section 25 reuses that rule for an address-path mismatch.
 - **`Availability` is required and offers only Yes/No.** There is no "not assessed" value for it, and the server rejects a payload without it.
-- **A cloud key collects only `Availability`.** Cloud health, "provider operational" and software compatibility are all derived from it, and its own name is the wallet software.
+- **A cloud key collects only `Availability`.** Cloud health, "provider operational" and software compatibility are all derived from it, and its own name is the wallet software. Section 25 removes the first two derived values and their columns.
 - **A hardware key needs an explicit compatibility status.** `OK` or `PROBLEM`; a missing value and `NOT_ASSESSED` are both a `400` (section 23.1).
 - **`Hardware works` needs an explicit `Yes` or `No`** for an available hardware key (section 24.1). A missing value, `""` and `NOT_ASSESSED` are all a `400`; only an unavailable key leaves it empty.
 - **The contact confirmation is required** for every submission, including one for an unavailable key, and it has no "not assessed" value (section 24.1).
 - **`NOT_ASSESSED` is not offered or accepted anywhere else** (section 24.1). `cloud_health_status` accepts only `OK` or `PROBLEM`; the database `CHECK` still allows the old value so legacy rows stay readable.
-- **`Address path` is only recorded when `Address path verified` is `OK`.** The form enforces this; the server does not.
-- **`/api/alerts` covers every saved check**, not only the newest, and merges identical alerts by `code` plus `source`. A security alert's `source` is the provider, which is the key's configured name or the software name.
+- **`Address path` is only recorded when `Address path verified` is `OK`.** The form enforces this today; section 25 replaces the rule with the server-side comparison against the key.
+- **`/api/alerts` covers every saved check**, not only the newest, and merges identical alerts by `code` plus `source`. A security alert's `source` is the provider, which is the key's configured name or the software name. Section 25 adds the acknowledgement filter on top of that merge.
 - **The export is plain CSV only.** XLSX is not built and the app does not promise Excel compatibility.
 - **The prohibition lists** in sections 1 and 13 of `TODO.md` stay unticked. They are standing prohibitions, to be re-confirmed before release.
 - **Whether a date is overdue is decided in the browser**, so `/api/key-status` stays independent of the current date.
 
-## Data model (schema version 9)
+## Data model (schema version 9; version 10 after section 25)
 
-- `keys`: `key_number` (1–3), `name`, `type` (`hardware`/`cloud`), `created_at`. The name is written once and there is no `device` column.
+- `keys`: `key_number` (1–3), `name`, `type` (`hardware`/`cloud`), `created_at`. There is no `device` column. Section 25 adds `address_path` and makes `name` editable.
 - `health_checks`: `checked_at`, `next_check_due`, `wallet_software`, `software_version`, `software_compatibility_status`, `software_comments`, `contact_info_verified`, `comments`, plus the legacy `sparrow_version` / `nunchuk_version`. `wallet_software` and `contact_info_verified` are free text.
-- `key_checks`: one row per submission — `available`, `hardware_works`, `firmware_version`, `seed_backup_verified`, `cloud_health_status`, `cloud_provider_operational`, `address_path_verified`, `address_path`, `comments`.
+- `key_checks`: one row per submission — `available`, `hardware_works`, `firmware_version`, `seed_backup_verified`, `cloud_health_status`, `cloud_provider_operational`, `address_path_verified`, `address_path`, `comments`. Section 25 drops the two cloud columns.
 - `ai_security_checks`: `provider` (free text), `status`, `comments`, with `UNIQUE (health_check_id, provider)`.
 - `tool_checks` no longer exists. Version 9 dropped it with its rows (sections 24.2 and 24.4).
+- Section 25 adds `wallet_software` and `alert_acknowledgements`.
 - Startup migration rebuilds `keys` when it still has `device`, `key_checks` and `ai_security_checks` when they use the old layout, and `health_checks` and `key_checks` when their `CHECK` constraints still allow the old values — `IKKJE_VURDERT`, `contact_info_verified IN (0, 1)`, or one of the fixed provider and wallet-software lists. It then drops `tool_checks` if it is there.
 - The table definitions are `{table}` templates, so a rebuild can create the same table under a temporary name. `health_checks` is a parent table, so the whole migration runs with `PRAGMA foreign_keys = OFF`, checks `PRAGMA foreign_key_check` before committing, and rolls back on any failure. Dropping a child table needs no rebuild.
 - `tests/test_database.py` carries `LEGACY_SCHEMA`, `SCHEMA_VERSION_5` and `SCHEMA_VERSION_8` as literal older schemas. Copy that pattern for a new migration test: write the old schema, run `initialize_database()`, then assert on the migrated rows.
@@ -70,23 +87,26 @@ Sections 23.2 and 23.3 were delivered together on purpose: the type is free, so 
 
 Pages: `/`, `/setup`, `/health-check`, `/history`. Endpoints: `GET /health`, `GET /api/setup`, `POST /api/setup`, `GET /api/keys`, `GET /api/key-status`, `GET /api/previous-values`, `GET /api/health-checks`, `GET /api/health-checks/<id>`, `GET /api/alerts`, `GET /api/export`, `POST /api/health-checks`. Field details are in `README.md`.
 
-Three things that are easy to break:
+Section 25 adds `GET /api/settings`, `POST /api/settings/keys`, `POST /api/settings/wallet-software`, `POST /api/keys/<id>/rotate`, and `POST /api/alerts/acknowledge`, and makes `POST /api/setup` require an address path.
 
-- New static files must be added to `STATIC_FILES` in `app.py`, or they return `404`.
+Four things that are easy to break:
+
+- New static files must be added to `STATIC_FILES` in `app.py`, or they return `404`. That includes the planned `/settings` page.
 - `/api/setup`, `/api/alerts`, `/api/key-status` and `/api/previous-values` are extra endpoints that are not in the minimum list in section 11. They are noted in section 11 but not in the specification itself.
 - `STORAGE_ERRORS` in `app.py` includes `RuntimeError`, because `list_keys()` raises it for a partial setup. Keep it there, or a broken database answers with a traceback instead of a `500`.
+- The settings and acknowledgement endpoints must keep using the same error handling as the existing ones, so a bad payload is a `400` and a broken database is a `500`.
 
 ## Traps that already cost time — do not repeat
 
 - **`with sqlite3.connect(...)` does not close the connection.** It only commits or rolls back the transaction. On Windows the database file stays locked and `TemporaryDirectory.cleanup()` fails with `WinError 32`. Always close explicitly with `try`/`finally`; see `write_schema()` in `tests/test_database.py`.
-- **A `required` control inside a `display:none` container still blocks submission.** The browser refuses to submit and logs "An invalid form control is not focusable". Hiding a section is not enough: the required flags must be cleared, or the section must render something other than required fields. That is why `renderSecurityChecks()` shows an empty note instead of cards when the key is unavailable, why `syncUnavailableState()` clears `softwareCompatibilitySelect.required`, and why `syncRequiredFields()` clears the flag on `hardware_works`, `seed_backup_verified` and `address_path_verified` for a key that was not available.
+- **A `required` control inside a `display:none` container still blocks submission.** The browser refuses to submit and logs "An invalid form control is not focusable". Hiding a section is not enough: the required flags must be cleared, or the section must render something other than required fields. That is why `renderSecurityChecks()` shows an empty note instead of cards when the key is unavailable, why `syncUnavailableState()` clears `softwareCompatibilitySelect.required`, and why `syncRequiredFields()` clears the flag on `hardware_works`, `seed_backup_verified` and `address_path_verified` for a key that was not available. Section 25 removes the last of those flags, because `Address path verified` stops being a field.
 - **The page heading uses `class="eyebrow"` too.** A regex over `health-check.html` finds `Annual security check` before the numbered sections, so a test on the section order must expect it first. See `test_the_form_sections_follow_the_agreed_order`.
 - **Do not assert on the quoting style of the JavaScript.** `static/health-check.js` uses single quotes for constant selectors and template literals where a `${...}` substitution is needed. Assert on the selector text, e.g. `[name="address_path"]`.
-- **`clean_record()` in `tests/test_alerts.py` has a fixed provider list.** A test that needs another provider must replace the entry itself.
-- **`sample_payload()` / `unavailable_payload()` are duplicated in `tests/test_validation.py`, `tests/test_database.py` and `tests/test_app.py`.** They build the labels from the key's name and the selected software, and they always send `contact_info_verified` and, for a hardware key, `hardware_works`. There is no `tool_checks` part any more (section 24.2).
+- **`clean_record()` in `tests/test_alerts.py` has a fixed provider list.** A test that needs another provider must replace the entry itself. It must also grow an acknowledgement entry when section 25 is implemented.
+- **`sample_payload()` / `unavailable_payload()` are duplicated in `tests/test_validation.py`, `tests/test_database.py` and `tests/test_app.py`.** They build the labels from the key's name and the selected software, and they always send `contact_info_verified` and, for a hardware key, `hardware_works`. There is no `tool_checks` part any more (section 24.2). Section 25 adds an address path to the key setup those helpers rely on.
 - **`tests/test_app.py` has three test classes.** `ServerTestCase` starts the server, `AppHandlerTests` stores the default setup in `setUp`, `RenamedSetupTests` stores the renamed one, and `KeySetupApiTests` leaves the database empty. A new test must go in the class whose setup it needs.
 - **Section 19 records one key per submission**, so a `Check id` in the export can cover up to three keys only for rows saved before section 19.
 
 ## Product clarification
 
-The key's configured name is its product label, and a cloud key's name is also a wallet-software choice. A hardware key name is never a wallet-software choice, and a cloud key records its own name as its software. Section 24.2 removed the BIP327/SLIP39 rows, so a submission records the security statuses and nothing else.
+The key's configured name is its product label, and a cloud key's name is also a wallet-software choice. A hardware key name is never a wallet-software choice, and a cloud key records its own name as its software. Section 24.2 removed the BIP327/SLIP39 rows, so a submission records the security statuses and nothing else. Section 25 adds that a key is identified by its type and its address path, while the name is only a label that the user may change.
