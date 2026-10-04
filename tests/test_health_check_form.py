@@ -54,7 +54,7 @@ class HealthCheckFormTests(unittest.TestCase):
         script = read_static("health-check.js")
         for field in (
             "hardware_works",
-            "address_path_verified",
+            "address_path",
             "seed_backup_verified",
         ):
             self.assertIn(field, script)
@@ -84,18 +84,22 @@ class HealthCheckFormTests(unittest.TestCase):
         for removed in ("seed_backup_status", "address_verified", "derivation_height"):
             self.assertNotIn(removed, script)
 
-    def test_the_wallet_software_choices_come_from_the_key_setup(self):
+    def test_the_wallet_software_choices_come_from_the_settings_and_the_cloud_keys(self):
         script = read_static("health-check.js")
         html = read_static("health-check.html")
         self.assertIn("walletSoftwareChoices", script)
-        self.assertIn('SPARROW_SOFTWARE = "Sparrow Wallet"', script)
         self.assertIn("renderWalletSoftwareOptions", script)
-        # Sparrow plus the name of every configured cloud key, and nothing else.
+        # The settings list plus the name of every configured cloud key
+        # (section 25.4).
+        self.assertIn("/api/settings", script)
+        self.assertIn("walletSoftwareList", script)
         self.assertIn('key.type === "cloud"', script)
         self.assertIn("key.name", script)
-        # The old fixed list is gone from both the markup and the script.
+        # The old fixed list and the built-in Sparrow constant are gone from both
+        # the markup and the script.
         self.assertNotIn('option value="Nunchuk"', html)
         self.assertNotIn("KEY_PRODUCTS", script)
+        self.assertNotIn("SPARROW_SOFTWARE", script)
 
     def test_form_script_uses_the_configured_key_name(self):
         script = read_static("health-check.js")
@@ -107,15 +111,18 @@ class HealthCheckFormTests(unittest.TestCase):
     def test_form_script_derives_from_availability(self):
         script = read_static("health-check.js")
         self.assertIn("/api/previous-values", script)
-        self.assertIn("derivedValues", script)
-        self.assertIn("Derived from availability", script)
+        self.assertIn("derivedSummary", script)
+        self.assertIn("Derived from availability and the address path", script)
         self.assertIn('key.type === "cloud"', script)
         # The section 20 carry-forward of a third provider is gone (section 23.3).
         self.assertNotIn("carriedSecurity", script)
         self.assertNotIn("Carried forward from the last saved check", script)
-        # The cloud key no longer renders the cloud results as form fields.
+        # The cloud key no longer renders the cloud results as form fields, and
+        # the derived values themselves are gone (section 25.6).
         self.assertNotIn('makeField("Cloud health check"', script)
         self.assertNotIn('makeField("Provider operational"', script)
+        self.assertNotIn("cloud_health_status", script)
+        self.assertNotIn("cloud_provider_operational", script)
 
     def test_form_prefills_the_saved_values_as_input_values(self):
         script = read_static("health-check.js")
@@ -125,7 +132,9 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("input.value = value", script)
         self.assertNotIn("input.placeholder", script)
         self.assertIn('previousText(previous, "firmware_version")', script)
-        self.assertIn('previousText(previous, "address_path")', script)
+        # The address path is prefilled from the key profile, because that is the
+        # stored path it is compared with (section 25.1).
+        self.assertIn("key.address_path", script)
         self.assertIn("updateSoftwareVersionValue", script)
         self.assertIn("softwareVersionInput.value = reusable", script)
         self.assertIn("previous.wallet_software === walletSoftwareSelect.value", script)
@@ -153,11 +162,10 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn('makeSelect(hardwareWorksOptions, "hardware_works")', script)
         self.assertNotIn("booleanOptions", script)
         # The required flag is cleared when the key was not available, because a
-        # hidden required control would block the submission.
-        self.assertIn(
-            '["hardware_works", "seed_backup_verified", "address_path_verified"]',
-            script,
-        )
+        # hidden required control would block the submission. The address path is
+        # no longer a field of its own (section 25.1).
+        self.assertIn('["hardware_works", "seed_backup_verified"]', script)
+        self.assertNotIn("address_path_verified", script)
         # The confirmation is required in the markup, with the same placeholder,
         # and it has no "not assessed" value.
         self.assertIn('name="contact_info_verified" required', html)
@@ -180,13 +188,14 @@ class HealthCheckFormTests(unittest.TestCase):
         html = read_static("health-check.html")
         script = read_static("health-check.js")
         self.assertIn('id="software-section"', html)
-        self.assertIn("#software-section .field-grid", script)
+        self.assertIn('id="software-grid"', html)
+        self.assertIn("softwareGrid.hidden = isCloud", script)
 
     def test_form_uses_the_english_status_values(self):
         script = read_static("health-check.js")
         self.assertIn("NOT_ASSESSED", script)
         self.assertNotIn("IKKJE_VURDERT", script)
-        # The two verification results keep OK and PROBLEM.
+        # The seed backup result keeps OK and PROBLEM.
         self.assertIn('["OK", "OK"]', script)
         self.assertIn('["PROBLEM", "Problem"]', script)
 
@@ -200,7 +209,7 @@ class HealthCheckFormTests(unittest.TestCase):
     def test_form_hides_the_rest_of_the_check_for_an_unavailable_key(self):
         script = read_static("health-check.js")
         self.assertIn("keyIsUnavailable", script)
-        self.assertIn("syncUnavailableState", script)
+        self.assertIn("syncUncheckableState", script)
         self.assertIn("softwareSection.hidden", script)
         self.assertIn("securityChecksSection.hidden", script)
         self.assertIn("walletSoftwareSelect.required", script)
@@ -211,22 +220,52 @@ class HealthCheckFormTests(unittest.TestCase):
 
     def test_form_sends_nothing_else_for_an_unavailable_key(self):
         script = read_static("health-check.js")
-        self.assertIn("unavailable ? null : data.get", script)
-        self.assertIn("unavailable ? [] : expectedLabels", script)
-        self.assertIn('unavailable ? "NOT_ASSESSED"', script)
+        self.assertIn("uncheckable ? null : data.get", script)
+        self.assertIn("uncheckable ? [] : expectedLabels", script)
+        self.assertIn('uncheckable\n      ? "NOT_ASSESSED"', script)
 
-    def test_form_hides_the_address_path_until_it_is_verified(self):
+    def test_form_records_the_address_path_and_warns_when_it_does_not_match(self):
+        html = read_static("health-check.html")
         script = read_static("health-check.js")
-        styles = read_static("styles.css")
-        self.assertIn("syncAddressPathField", script)
-        self.assertIn('verified.value === "OK"', script)
+        # The user records the path only, and the browser compares it with the
+        # stored one before it submits (section 25.1).
+        self.assertIn('makeField(\n    "Address path"', script)
         self.assertIn('[name="address_path"]', script)
-        self.assertIn('[name="address_path_verified"]', script)
-        # The control is disabled while it is hidden, so a pre-filled path is
-        # kept for the user and still never submitted with an unverified result.
-        self.assertIn("input.disabled = !show", script)
-        # The field is a grid container, so the hidden attribute needs a rule.
-        self.assertIn(".field[hidden]", styles)
+        self.assertIn("addressPathMismatch", script)
+        self.assertIn("key.address_path", script)
+        self.assertIn('id="address-path-warning"', html)
+        self.assertIn("does not match the one stored for this key", html)
+        self.assertIn("Check it against your BSMS", html)
+        self.assertIn('id="address-path-confirmed"', html)
+        self.assertIn("Record this check anyway", html)
+        self.assertIn("addressPathWarning.hidden", script)
+        self.assertIn("addressPathConfirmed.required = mismatch", script)
+        # The choice to save anyway is marked in the review summary.
+        self.assertIn("Recorded as a key that could not be checked", script)
+        self.assertIn("Address path verified: PROBLEM", script)
+        # The old verification field is gone from the form.
+        self.assertNotIn('"address_path_verified"', script)
+        self.assertNotIn("Address path verified", html)
+
+    def test_form_hides_the_address_path_for_an_unavailable_key(self):
+        script = read_static("health-check.js")
+        self.assertIn("syncAddressPathState", script)
+        # The path is not asked for when the key was not available (section 22).
+        self.assertIn("field.hidden = keyIsUnavailable()", script)
+        self.assertIn("#key-details", script)
+        self.assertIn("details.hidden = keyIsUncheckable()", script)
+
+    def test_form_records_the_software_version_for_every_key(self):
+        html = read_static("health-check.html")
+        script = read_static("health-check.js")
+        # The label lost its "(if used)" wording (section 25.5).
+        self.assertIn("<span>Software version</span>", html)
+        self.assertNotIn("(if used)", html)
+        # The version stays visible while the grid with the software and the
+        # compatibility result is hidden for a cloud key (section 25.5).
+        self.assertIn('id="software-version"', html)
+        self.assertIn("updateSoftwareVersionValue", script)
+        self.assertNotIn('key.type === "hardware"\n    && previous', script)
 
     def test_dashboard_shows_every_alert_with_its_check_date(self):
         script = read_static("app.js")
@@ -235,17 +274,31 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("alert.checked_at", script)
         self.assertIn(".alert-origin", styles)
 
+    def test_dashboard_offers_the_closing_action_of_every_alert(self):
+        script = read_static("app.js")
+        # Every alert names the actions that close it, and each action asks for a
+        # confirmation from the user (section 25.3).
+        self.assertIn("alert.actions", script)
+        self.assertIn("alert.key_id", script)
+        self.assertIn("Rotate key", script)
+        self.assertIn("/settings?rotate=", script)
+        self.assertIn("Close alert", script)
+        self.assertIn("Confirm close", script)
+        self.assertIn("Reason for closing this alert", script)
+        self.assertIn("/api/alerts/acknowledge", script)
+        self.assertIn("acknowledgeAlert", script)
+
     def test_dashboard_sends_to_the_key_setup_when_it_is_missing(self):
         script = read_static("app.js")
         self.assertIn("redirectWhenSetupIsMissing", script)
-        self.assertIn('"/api/setup"', script)
+        self.assertIn('/api/setup', script)
         self.assertIn('window.location.assign("/setup")', script)
 
     def test_health_check_page_sends_to_the_key_setup_when_it_is_missing(self):
         script = read_static("health-check.js")
         self.assertIn('window.location.assign("/setup")', script)
 
-    def test_the_setup_page_asks_for_a_name_and_a_type_for_three_keys(self):
+    def test_the_setup_page_asks_for_a_name_a_type_and_an_address_path(self):
         html = read_static("setup.html")
         script = read_static("setup.js")
         self.assertIn('id="setup-form"', html)
@@ -253,13 +306,63 @@ class HealthCheckFormTests(unittest.TestCase):
         for number in (1, 2, 3):
             self.assertIn(f'name="key_{number}_name"', html)
             self.assertIn(f'name="key_{number}_type"', html)
+            # The setup records the address path of every key (section 25.1).
+            self.assertIn(f'name="key_{number}_address_path"', html)
         self.assertIn('<option value="hardware">Hardware</option>', html)
         self.assertIn('<option value="cloud">Cloud</option>', html)
         self.assertIn("KEY_COUNT = 3", script)
-        self.assertIn('fetch("/api/setup"', script)
+        self.assertIn('/api/setup', script)
         self.assertIn("collectSetup", script)
-        # The names and the types are locked once the setup is saved.
+        self.assertIn("address_path", script)
+        self.assertIn("_address_path", script)
+        # The type and the address path are locked once the setup is saved, while
+        # the name may be changed in the settings (sections 25.1 and 25.2).
         self.assertIn("lockForm", script)
+        self.assertIn("/settings", script)
+
+    def test_the_settings_page_has_the_three_sections(self):
+        html = read_static("settings.html")
+        self.assertIn('<html lang="en">', html)
+        self.assertIn("Never enter seed phrases", html)
+        eyebrows = re.findall(r'<p class="eyebrow">([^<]+)</p>', html)
+        self.assertEqual(eyebrows, ["Settings", "01 / Keys", "02 / Wallet software", "03 / Key rotation"])
+        self.assertIn('id="keys-list"', html)
+        self.assertIn('id="wallet-software-list"', html)
+        self.assertIn('id="rotation-list"', html)
+        self.assertIn('id="add-software"', html)
+        self.assertIn('id="save-software"', html)
+        self.assertIn('id="rotate-keys"', html)
+
+    def test_the_settings_page_warns_about_moving_the_funds(self):
+        html = read_static("settings.html")
+        # Rotating a key creates a new wallet, so the funds have to be moved
+        # (section 25.2).
+        self.assertIn("Rotating a key creates a new wallet", html)
+        self.assertIn("Move your funds from the old multisig setup to the new one", html)
+        self.assertIn("Do not discard the old keys", html)
+        self.assertIn('id="rotation-replaced"', html)
+        self.assertIn('id="rotation-path-unchanged"', html)
+        self.assertIn("I confirm that each selected key has been replaced", html)
+        self.assertIn("I confirm that the address path of each selected key is unchanged", html)
+
+    def test_the_settings_script_stores_the_list_whole_and_rotates(self):
+        script = read_static("settings.js")
+        self.assertIn("/api/settings/keys", script)
+        self.assertIn("/api/settings/wallet-software", script)
+        self.assertIn("/api/keys/", script)
+        self.assertIn("rotate", script)
+        self.assertIn("wallet_software", script)
+        self.assertIn("collectSoftware", script)
+        self.assertIn("collectRotation", script)
+        self.assertIn("keep_name", script)
+        self.assertIn("address_path_unchanged", script)
+        self.assertIn("replaced", script)
+        # The address path is locked as soon as the key has a saved check, and the
+        # name may always be changed (sections 25.1 and 25.2).
+        self.assertIn("has_checks", script)
+        self.assertIn("pathInput.disabled", script)
+        # A link from the dashboard pre-selects the key it points at.
+        self.assertIn("requestedRotation", script)
 
     def test_history_shows_a_note_when_no_security_status_was_recorded(self):
         script = read_static("history.js")
@@ -271,11 +374,35 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("Contact details confirmed", script)
         self.assertIn("record.contact_info_verified", script)
 
+    def test_history_shows_the_derived_address_path_result(self):
+        script = read_static("history.js")
+        # The result is derived by the server, so it is shown as a derived value
+        # (sections 9 and 25.1).
+        self.assertIn("Address path verified (derived)", script)
+        self.assertIn("keyCheck.address_path_verified", script)
+        self.assertIn("keyCheck.address_path", script)
+        # The removed cloud results are no longer shown (section 25.6).
+        self.assertNotIn("Cloud health check", script)
+        self.assertNotIn("Provider operational", script)
+        self.assertNotIn("cloud_health_status", script)
+        self.assertNotIn("cloud_provider_operational", script)
+
     def test_stylesheet_makes_the_hidden_attribute_work_on_grid_containers(self):
         styles = read_static("styles.css")
         self.assertIn(".form-stack[hidden]", styles)
         self.assertIn(".field-grid[hidden]", styles)
         self.assertIn(".form-section[hidden]", styles)
+
+    def test_stylesheet_covers_the_new_elements(self):
+        styles = read_static("styles.css")
+        for rule in (
+            ".warning-note",
+            ".checkbox-field",
+            ".software-row",
+            ".alert-actions",
+            ".topbar-actions",
+        ):
+            self.assertIn(rule, styles)
 
 
 if __name__ == "__main__":
