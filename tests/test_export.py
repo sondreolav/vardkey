@@ -40,19 +40,25 @@ class ExportTests(unittest.TestCase):
         rows = parse(build_csv([{
             "available": 1,
             "hardware_works": 0,
-            "cloud_provider_operational": 1,
         }]))
         values = dict(zip(HEADERS, rows[1]))
 
         self.assertEqual(values["Available"], "Yes")
         self.assertEqual(values["Hardware works"], "No")
-        self.assertEqual(values["Cloud provider operational"], "Yes")
 
     def test_the_bip327_and_slip39_columns_are_gone(self):
         # The whole BIP327/SLIP39 function is removed (section 24.2), so the two
         # columns are gone from the export as well.
         self.assertNotIn("BIP327", HEADERS)
         self.assertNotIn("SLIP39", HEADERS)
+
+    def test_the_removed_cloud_columns_are_gone(self):
+        # A cloud key records only its availability, so the two derived columns
+        # are gone (section 25.6).
+        self.assertNotIn("Cloud health status", HEADERS)
+        self.assertNotIn("Cloud provider operational", HEADERS)
+        self.assertNotIn("cloud_health_status", dict(COLUMNS))
+        self.assertNotIn("cloud_provider_operational", FLAG_KEYS)
 
     def test_contact_status_is_written_as_stored_text(self):
         # The contact confirmation is a status, not a yes/no flag (section 23.1).
@@ -79,15 +85,15 @@ class ExportTests(unittest.TestCase):
     def test_status_values_are_written_as_stored(self):
         rows = parse(build_csv([{
             "seed_backup_verified": "PROBLEM",
-            "address_path_verified": "OK",
-            "cloud_health_status": "NOT_ASSESSED",
+            "address_path_verified": "PROBLEM",
             "software_compatibility_status": "NOT_ASSESSED",
         }]))
         values = dict(zip(HEADERS, rows[1]))
 
         self.assertEqual(values["Seed backup verified"], "PROBLEM")
-        self.assertEqual(values["Address path verified"], "OK")
-        self.assertEqual(values["Cloud health status"], "NOT_ASSESSED")
+        # The address path result is derived by the server, and it is written as
+        # it is stored (sections 25.1 and 25.6).
+        self.assertEqual(values["Address path verified"], "PROBLEM")
         self.assertEqual(values["Software compatibility"], "NOT_ASSESSED")
 
 
