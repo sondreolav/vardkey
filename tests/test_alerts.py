@@ -147,7 +147,10 @@ class AlertTests(unittest.TestCase):
 
         alerts = collect_alerts([mismatch, unavailable])
 
-        self.assertEqual(self.codes(alerts), ["address_path_mismatch", "key_unavailable"])
+        self.assertEqual(
+            [alert["code"] for alert in alerts],
+            ["address_path_mismatch", "key_unavailable"],
+        )
         self.assertEqual({alert["source"] for alert in alerts}, {"Key 1: SeedSigner"})
 
     def test_incompatible_software_suggests_an_alternative(self):
@@ -493,14 +496,30 @@ class CollectAlertsTests(unittest.TestCase):
 
         self.assertEqual(self.codes(collect_alerts([record], acknowledgements)), ["key_unavailable"])
 
-    def test_an_acknowledged_alert_stays_hidden_for_a_quiet_newer_check(self):
+    def test_an_alert_survives_a_quiet_newer_check_until_it_is_closed(self):
+        # Only the newest alert of a code and source pair is kept, so a newer
+        # check that raises nothing does not clear an older alert. The alert is
+        # closed by the user, either by acknowledging it or by rotating the key
+        # (sections 21 and 25.3).
         older = dated_record(1, "2026-10-01")
         older["key_checks"][0]["available"] = 0
-        # A newer check that resolves the problem raises nothing, so the alert
-        # disappears on its own as well.
         newer = dated_record(2, "2027-10-01")
 
-        self.assertEqual(collect_alerts([newer, older]), [])
+        alerts = collect_alerts([newer, older])
+
+        self.assertEqual(self.codes(alerts), ["key_unavailable"])
+        self.assertEqual(alerts[0]["check_id"], 1)
+
+        # Acknowledging it hides it, and it stays hidden because no newer check
+        # raises it again.
+        acknowledged = [{
+            "code": "key_unavailable",
+            "source": "Key 1: SeedSigner",
+            "check_id": 1,
+            "acknowledged_at": "2026-10-02T09:00:00",
+        }]
+
+        self.assertEqual(collect_alerts([newer, older], acknowledged), [])
 
 
 class RotationAlertTargetsTests(unittest.TestCase):
