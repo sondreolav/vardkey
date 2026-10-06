@@ -14,6 +14,8 @@ const contactReminder = document.querySelector("#contact-reminder");
 const securityChecks = document.querySelector("#security-checks");
 const addressPathWarning = document.querySelector("#address-path-warning");
 const addressPathConfirmed = document.querySelector("#address-path-confirmed");
+const blockedKeysNote = document.querySelector("#blocked-keys-note");
+const blockedKeysList = document.querySelector("#blocked-keys-list");
 const nextCheckPreview = document.querySelector("#next-check-preview");
 const reviewPanel = document.querySelector("#review-panel");
 const reviewSummary = document.querySelector("#review-summary");
@@ -25,6 +27,15 @@ const SECURITY_STATUSES = ["SECURE", "PATCHED", "VULNERABLE", "COMPROMISED"];
 const UNAVAILABLE_MESSAGE = "The remaining checks for this key cannot be recorded.";
 // The contact result that reminds the user to update their own records (section 23.1).
 const CONTACT_NEEDS_UPDATE = "Needs external update";
+// The button wording of every action that closes an alert (section 26.4). The
+// alert itself names the actions it offers.
+const ACTION_LABELS = {
+  rotate: "Rotate key",
+  replace_hardware: "Replace hardware",
+  remove_software: "Remove software",
+  ignore: "Ignore alert",
+  contact_updated: "Contact details updated",
+};
 const verificationStatuses = [
   ["OK", "OK"],
   ["PROBLEM", "Problem"],
@@ -38,6 +49,9 @@ let keyProfiles = [];
 let previousValues = { keys: [] };
 // The wallet software list the user maintains in the settings (section 25.4).
 let walletSoftwareList = [];
+// The open alerts that belong to a key. A key with one of them cannot get a new
+// check until the alert is closed (section 26.1).
+let blockingAlerts = [];
 // True while the compatibility control carries the value derived for a cloud key.
 let compatibilityDerived = false;
 
@@ -193,13 +207,68 @@ function expectedLabels(key) {
   return [...new Set([key.name, software])];
 }
 
+function blockedKeyIds() {
+  return new Set(blockingAlerts.map((alert) => alert.key_id));
+}
+
+function alertFor(key) {
+  return blockingAlerts.find((alert) => alert.key_id === key.id) || null;
+}
+
+function actionLabels(actions) {
+  return (actions || []).map((action) => ACTION_LABELS[action] || action).join(" or ");
+}
+
+function keyLabel(key) {
+  return `Key ${key.key_number}: ${key.name}`;
+}
+
 function renderKeySelect() {
+  keySelect.replaceChildren();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select a key";
+  keySelect.append(placeholder);
+
+  const blocked = blockedKeyIds();
   for (const key of keyProfiles) {
     const option = document.createElement("option");
     option.value = String(key.id);
-    option.textContent = `Key ${key.key_number}: ${key.name}`;
+    if (blocked.has(key.id)) {
+      // A key with an open alert cannot get a new check until the alert is
+      // closed, so it cannot be selected at all (section 26.1).
+      option.disabled = true;
+      option.textContent = `${keyLabel(key)} — blocked by an open alert`;
+    } else {
+      option.textContent = keyLabel(key);
+    }
     keySelect.append(option);
   }
+}
+
+function renderBlockedKeysNote() {
+  // The form names the alert that stands in the way, the action that closes it,
+  // and the keys that are still free (section 26.1).
+  const blocked = keyProfiles.filter((key) => blockedKeyIds().has(key.id));
+  blockedKeysNote.hidden = blocked.length === 0;
+  blockedKeysList.replaceChildren();
+  if (!blocked.length) {
+    return;
+  }
+
+  for (const key of blocked) {
+    const alert = alertFor(key);
+    const item = document.createElement("li");
+    item.textContent = `${keyLabel(key)} — ${alert.code}: ${alert.message} Close it with: ${actionLabels(alert.actions)}.`;
+    blockedKeysList.append(item);
+  }
+
+  const free = keyProfiles.filter((key) => !blockedKeyIds().has(key.id));
+  const summary = document.createElement("li");
+  summary.textContent = free.length
+    ? `Keys that can still be checked: ${free.map(keyLabel).join(", ")}.`
+    : "No key can be checked until an alert is closed.";
+  blockedKeysList.append(summary);
 }
 
 function renderKeyCheck() {
@@ -209,10 +278,18 @@ function renderKeyCheck() {
     keyCheck.append(emptyState("Select a key to record its checks."));
     return;
   }
+  if (blockedKeyIds().has(key.id)) {
+    // The server refuses the submission as well, so the form and the API agree
+    // (section 26.1).
+    keyCheck.append(emptyState(
+      "This key has an open alert and cannot be checked until the alert is closed.",
+    ));
+    return;
+  }
 
   const previous = previousForKey(key.id);
   const card = makeCard(
-    `Key ${key.key_number}: ${key.name}`,
+    keyLabel(key),
     key.type === "cloud"
       ? "Cloud key — report the result of your manual check."
       : "Hardware key — record the result of your manual check.",
@@ -518,8 +595,8 @@ function buildReview() {
 
   const checkedAt = data.get("checked_at");
   const dates = document.createElement("p");
-  const keyLabel = key ? `Key ${key.key_number}: ${key.name}` : "No key selected";
-  dates.textContent = `${keyLabel} · Check date: ${checkedAt} · Next check due: ${nextCheckDate(checkedAt)}`;
+  const keyLabelText = key ? keyLabel(key) : "No key selected";
+  dates.textContent = `${keyLabelText} · Check date: ${checkedAt} · Next check due: ${nextCheckDate(checkedAt)}`;
   fragment.append(dates);
   reviewSummary.replaceChildren(fragment);
   reviewPanel.hidden = false;
@@ -613,6 +690,8 @@ async function saveHealthCheck() {
       body: JSON.stringify(collectPayload()),
     });
     if (!response.ok) {
+      // The server refuses a key with an open alert as well, so the rule holds
+      // even if the form let the key through (section 26.1).
       const detail = await response.json().catch(() => ({}));
       throw new Error(detail.error || "The health check could not be saved.");
     }
@@ -628,10 +707,11 @@ async function saveHealthCheck() {
 
 async function loadFormData() {
   try {
-    const [keysResponse, previousResponse, settingsResponse] = await Promise.all([
+    const [keysResponse, previousResponse, settingsResponse, alertsResponse] = await Promise.all([
       fetch("/api/keys", { headers: { Accept: "application/json" } }),
       fetch("/api/previous-values", { headers: { Accept: "application/json" } }),
       fetch("/api/settings", { headers: { Accept: "application/json" } }),
+      fetch("/api/alerts", { headers: { Accept: "application/json" } }),
     ]);
     if (!keysResponse.ok) {
       throw new Error("Key profiles are unavailable.");
@@ -652,7 +732,15 @@ async function loadFormData() {
       // configured cloud keys (section 25.4).
       walletSoftwareList = settings.wallet_software || [];
     }
+    if (alertsResponse.ok) {
+      const alerts = await alertsResponse.json();
+      // Only an alert that belongs to a key blocks that key (section 26.1).
+      blockingAlerts = alerts.filter((alert) => alert.key_id);
+    }
     renderKeySelect();
+    renderBlockedKeysNote();
+    renderKeyCheck();
+    refreshKeySections();
   } catch {
     keySelect.disabled = true;
     keyCheck.replaceChildren(emptyState(
