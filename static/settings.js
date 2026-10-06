@@ -8,7 +8,6 @@ const saveSoftwareButton = document.querySelector("#save-software");
 const rotationList = document.querySelector("#rotation-list");
 const rotationStatus = document.querySelector("#rotation-status");
 const rotationReplaced = document.querySelector("#rotation-replaced");
-const rotationPathUnchanged = document.querySelector("#rotation-path-unchanged");
 const rotateButton = document.querySelector("#rotate-keys");
 const settingsStatus = document.querySelector("#settings-status");
 
@@ -64,6 +63,10 @@ function makeStatusLine() {
   return status;
 }
 
+function alertCountText(count) {
+  return count === 1 ? "1 alert" : `${count} alerts`;
+}
+
 function renderKeys() {
   keysList.replaceChildren();
   if (!settings.keys.length) {
@@ -97,7 +100,7 @@ function keyCard(key) {
   help.className = "field-help";
   help.textContent = key.has_checks
     ? "The address path is locked because this key already has a saved check. The name can still be changed."
-    : "The address path can be changed until this key has its first saved check. The type is locked.";
+    : "The address path can be changed until this key has its first saved check. The type is locked, and no two keys may share an address path.";
   card.append(help);
 
   const status = makeStatusLine();
@@ -192,7 +195,12 @@ async function saveSoftware() {
     const saved = await response.json();
     settings.wallet_software = saved.wallet_software || [];
     renderSoftware();
-    softwareStatus.textContent = "Wallet software list saved.";
+    // Removing an entry closes the alerts that software raised, such as software
+    // that no longer supports the hardware (section 26.7).
+    const closed = saved.acknowledged || [];
+    softwareStatus.textContent = closed.length
+      ? `Wallet software list saved. The ${alertCountText(closed.length)} raised by the removed software were closed.`
+      : "Wallet software list saved.";
   } catch (error) {
     softwareStatus.textContent = error.message;
   } finally {
@@ -225,7 +233,9 @@ function rotationCard(key) {
   checkbox.checked = requestedRotation === String(key.id);
   card.append(select);
 
-  const nameInput = makeTextInput("", 60);
+  // The name is only a label, so the field starts on the name the key has now
+  // (section 26.3).
+  const nameInput = makeTextInput(key.name, 60);
   nameInput.className = "rotation-name";
   nameInput.disabled = true;
 
@@ -261,6 +271,30 @@ function rotationCard(key) {
   card.append(changeLabel);
 
   card.append(makeField("New name", `rotation_name_${key.id}_value`, nameInput));
+
+  // The rotation replaces the key, so the address path has to change, and every
+  // key needs its own path (sections 26.2 and 26.3).
+  const pathInput = makeTextInput("", 200);
+  pathInput.className = "rotation-path";
+  pathInput.disabled = true;
+  card.append(makeField("New address path", `rotation_path_${key.id}`, pathInput));
+
+  const help = document.createElement("p");
+  help.className = "field-help";
+  help.textContent = "The new path must differ from the stored one, and no other key may already use it.";
+  card.append(help);
+
+  checkbox.addEventListener("change", () => {
+    // The path is only asked for the keys the user actually rotates, so a
+    // disabled field is never in the way.
+    pathInput.disabled = !checkbox.checked;
+    if (checkbox.checked) {
+      pathInput.focus();
+    }
+  });
+  if (checkbox.checked) {
+    pathInput.disabled = false;
+  }
   return card;
 }
 
@@ -273,11 +307,13 @@ function collectRotation() {
     }
     const change = card.querySelector(".rotation-change");
     const nameInput = card.querySelector(".rotation-name");
+    const pathInput = card.querySelector(".rotation-path");
     const keepName = !(change && change.checked);
     entries.push({
       key_id: Number(checkbox.dataset.keyId),
       keep_name: keepName,
       name: keepName ? "" : nameInput.value.trim(),
+      address_path: pathInput ? pathInput.value.trim() : "",
     });
   }
   return entries;
@@ -289,10 +325,15 @@ async function rotateSelected() {
     rotationStatus.textContent = "Select at least one key to rotate.";
     return;
   }
+  // The key is a new one, so its address path has to change (section 26.3).
+  if (entries.some((entry) => !entry.address_path)) {
+    rotationStatus.textContent = "Write the new address path of every selected key. The key is a new one, so its path must change.";
+    return;
+  }
   // Every action that closes an alert requires a confirmation from the user, and
-  // the app never performs the action itself (sections 25.2 and 25.3).
-  if (!rotationReplaced.checked || !rotationPathUnchanged.checked) {
-    rotationStatus.textContent = "Confirm that the selected keys have been replaced and that their address path is unchanged.";
+  // the app never performs the action itself (sections 25.2 and 26.4).
+  if (!rotationReplaced.checked) {
+    rotationStatus.textContent = "Confirm that the selected keys have been replaced by new keys or hardware wallets.";
     return;
   }
 
@@ -300,6 +341,7 @@ async function rotateSelected() {
   rotationStatus.textContent = "Rotating…";
   const rotated = [];
   const failed = [];
+  const closed = [];
   for (const entry of entries) {
     try {
       const response = await fetch(`/api/keys/${entry.key_id}/rotate`, {
@@ -309,7 +351,7 @@ async function rotateSelected() {
           replaced: true,
           keep_name: entry.keep_name,
           name: entry.name,
-          address_path_unchanged: true,
+          address_path: entry.address_path,
         }),
       });
       if (!response.ok) {
@@ -319,6 +361,7 @@ async function rotateSelected() {
       const result = await response.json();
       settings = result.settings || settings;
       rotated.push(entry.key_id);
+      closed.push(...(result.acknowledged || []));
     } catch (error) {
       failed.push(`Key ${entry.key_id}: ${error.message}`);
     }
@@ -328,13 +371,15 @@ async function rotateSelected() {
   renderKeys();
   renderRotation();
   rotationReplaced.checked = false;
-  rotationPathUnchanged.checked = false;
   rotateButton.disabled = false;
 
   const summary = rotated.length === 1 ? "1 key rotated." : `${rotated.length} keys rotated.`;
+  const closedNote = closed.length
+    ? ` The ${alertCountText(closed.length)} those keys raised were closed, and they come back only if a newer check raises them again.`
+    : "";
   rotationStatus.textContent = failed.length
     ? `${summary} ${failed.join(" ")}`
-    : `${summary} The alerts those keys raised are closed until a newer check raises them again.`;
+    : `${summary}${closedNote}`;
 }
 
 function scrollToRotation() {
