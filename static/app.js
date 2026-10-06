@@ -9,11 +9,45 @@ const overdueDetail = document.querySelector("#overdue-detail");
 const alertsList = document.querySelector("#alerts-list");
 const alertCount = document.querySelector("#alert-count");
 
+// The button wording of every action that closes an alert (section 26.4). The
+// alert itself names the actions it offers.
+const ACTION_LABELS = {
+  rotate: "Rotate key",
+  replace_hardware: "Replace hardware",
+  remove_software: "Remove software",
+  ignore: "Ignore alert",
+  contact_updated: "Contact details updated",
+};
+// Every action has its own confirmation step, and the app never performs the
+// action itself (section 26.4).
+const ACTION_CONFIRMATIONS = {
+  replace_hardware: "I have replaced the hardware wallet and restored the same seed on the new device.",
+  remove_software: "I have stopped using this wallet software for this key, and I want to remove it from the settings.",
+  ignore: "I understand that this alert is closed without a replacement, and that it comes back if a newer check raises it again.",
+  contact_updated: "I have updated the contact details in my external documentation.",
+};
+
+let keyStatus = [];
+let alerts = [];
+// The wallet software list from the settings, so a software alert can point at
+// the entry it is about (section 26.7).
+let walletSoftware = [];
+let keysLoaded = false;
+let alertsLoaded = false;
+
 function createEmptyState(text) {
   const message = document.createElement("p");
   message.className = "empty-state";
   message.textContent = text;
   return message;
+}
+
+async function fetchJson(path) {
+  const response = await fetch(path, { headers: { Accept: "application/json" } });
+  if (!response.ok) {
+    throw new Error(`${path} is unavailable.`);
+  }
+  return response.json();
 }
 
 function formatLocalDate(date) {
@@ -50,6 +84,14 @@ function appendDateRow(list, label, value) {
   list.append(term, detail);
 }
 
+function alertsForKey(keyId) {
+  return alerts.filter((alert) => alert.key_id === keyId);
+}
+
+function actionLabels(actions) {
+  return (actions || []).map((action) => ACTION_LABELS[action] || action).join(" or ");
+}
+
 function createKeyCard(entry) {
   const card = document.createElement("article");
   card.className = "key-card";
@@ -61,9 +103,18 @@ function createKeyCard(entry) {
   number.className = "key-number";
   number.textContent = String(entry.key_number).padStart(2, "0");
 
+  const open = alertsForKey(entry.key_id);
   const status = document.createElement("span");
-  status.className = `status ${statusClass(entry)}`;
-  status.textContent = statusLabel(entry);
+  if (open.length) {
+    // A key with an open alert needs the user's attention instead of its
+    // ordinary status, and it cannot be checked until the alert is closed
+    // (sections 26.1 and 26.5).
+    status.className = "status status-alert";
+    status.textContent = "Needs action";
+  } else {
+    status.className = `status ${statusClass(entry)}`;
+    status.textContent = statusLabel(entry);
+  }
 
   const name = document.createElement("h3");
   name.textContent = entry.name;
@@ -71,14 +122,47 @@ function createKeyCard(entry) {
   const type = document.createElement("p");
   type.textContent = entry.type === "cloud" ? "Cloud key" : "Hardware key";
 
-  const dates = document.createElement("dl");
-  dates.className = "key-dates";
-  appendDateRow(dates, "Last checked", entry.last_checked_at);
-  appendDateRow(dates, "Next check due", entry.next_check_due);
-
   top.append(number, status);
-  card.append(top, name, type, dates);
+  card.append(top, name, type);
+
+  if (open.length) {
+    card.append(createKeyAlertNote(entry, open));
+  } else {
+    const dates = document.createElement("dl");
+    dates.className = "key-dates";
+    appendDateRow(dates, "Last checked", entry.last_checked_at);
+    appendDateRow(dates, "Next check due", entry.next_check_due);
+    card.append(dates);
+  }
   return card;
+}
+
+function createKeyAlertNote(entry, open) {
+  // The card says how many alerts are open, that the key needs action before it
+  // can be checked again, and which action closes them, with a link to the alert
+  // list for the rest (section 26.5).
+  const note = document.createElement("div");
+  note.className = "key-alert-note";
+
+  const message = document.createElement("p");
+  message.className = "key-alert-message";
+  message.textContent = open.length === 1
+    ? "1 open alert. This key needs action, and it cannot be checked until the alert is closed."
+    : `${open.length} open alerts. This key needs action, and it cannot be checked until they are closed.`;
+  note.append(message);
+
+  const first = open[0];
+  const detail = document.createElement("p");
+  detail.className = "key-alert-detail";
+  detail.textContent = `Close it with: ${actionLabels(first.actions)} (${first.source}).`;
+  note.append(detail);
+
+  const link = document.createElement("a");
+  link.className = "back-link";
+  link.href = "#alerts-list";
+  link.textContent = "Open the alert list";
+  note.append(link);
+  return note;
 }
 
 function renderSummary(status) {
@@ -126,51 +210,65 @@ function createAlertItem(alert) {
 }
 
 function createAlertActions(alert) {
-  // Every alert names the actions that close it, and each action requires a
-  // confirmation from the user (section 25.3).
+  // Every alert names the actions that close it, and each action has its own
+  // button text and its own confirmation step (section 26.4).
   const actions = document.createElement("div");
   actions.className = "alert-actions";
   for (const action of alert.actions || []) {
-    if (action === "rotate" && alert.key_id) {
-      const link = document.createElement("a");
-      link.className = "secondary-button";
-      link.href = `/settings?rotate=${encodeURIComponent(alert.key_id)}`;
-      link.textContent = "Rotate key";
-      actions.append(link);
+    if (action === "rotate") {
+      actions.append(createRotateLink(alert));
+      continue;
     }
-    if (action === "acknowledge") {
-      actions.append(createCloseControl(alert));
+    if (action === "remove_software") {
+      actions.append(createRemoveSoftwareControl(alert));
+      continue;
     }
+    actions.append(createConfirmControl(
+      ACTION_LABELS[action] || action,
+      ACTION_CONFIRMATIONS[action] || "I confirm this action.",
+      (status, button) => acknowledgeAlert(alert, action, status, button),
+    ));
   }
   return actions;
 }
 
-function createCloseControl(alert) {
+function createRotateLink(alert) {
+  // A rotation replaces the key and is confirmed in the settings, where the new
+  // address path is recorded (sections 26.3 and 26.4).
+  const link = document.createElement("a");
+  link.className = "secondary-button";
+  link.href = alert.key_id
+    ? `/settings?rotate=${encodeURIComponent(alert.key_id)}`
+    : "/settings";
+  link.textContent = ACTION_LABELS.rotate;
+  return link;
+}
+
+function createConfirmControl(text, confirmationText, onConfirm) {
   const wrapper = document.createElement("div");
   wrapper.className = "alert-close";
 
   const open = document.createElement("button");
   open.type = "button";
   open.className = "secondary-button";
-  open.textContent = "Close alert";
+  open.textContent = text;
 
   const panel = document.createElement("div");
   panel.className = "form-stack";
   panel.hidden = true;
 
   const label = document.createElement("label");
-  label.className = "field";
-  const labelText = document.createElement("span");
-  labelText.textContent = "Reason for closing this alert";
-  const reason = document.createElement("textarea");
-  reason.rows = 2;
-  reason.maxLength = 2000;
-  label.append(labelText, reason);
+  label.className = "field checkbox-field";
+  const confirm = document.createElement("input");
+  confirm.type = "checkbox";
+  const textSpan = document.createElement("span");
+  textSpan.textContent = confirmationText;
+  label.append(confirm, textSpan);
 
   const confirmButton = document.createElement("button");
   confirmButton.type = "button";
   confirmButton.className = "primary-button active-button";
-  confirmButton.textContent = "Confirm close";
+  confirmButton.textContent = `Confirm ${text.toLowerCase()}`;
 
   const cancelButton = document.createElement("button");
   cancelButton.type = "button";
@@ -191,36 +289,82 @@ function createCloseControl(alert) {
   open.addEventListener("click", () => {
     open.hidden = true;
     panel.hidden = false;
-    reason.focus();
+    confirm.focus();
   });
   cancelButton.addEventListener("click", () => {
     panel.hidden = true;
     open.hidden = false;
     status.textContent = "";
   });
-  confirmButton.addEventListener("click", () => acknowledgeAlert(alert, reason, status, confirmButton));
+  confirmButton.addEventListener("click", () => {
+    if (!confirm.checked) {
+      status.textContent = "Confirm the action before you continue.";
+      return;
+    }
+    onConfirm(status, confirmButton);
+  });
   return wrapper;
 }
 
-async function acknowledgeAlert(alert, reason, status, button) {
-  const text = reason.value.trim();
-  if (!text) {
-    status.textContent = "Write a short reason before you close the alert.";
-    return;
+function createRemoveSoftwareControl(alert) {
+  // Removing the failing software from the settings closes the alert, and the
+  // alert names the software it is about, so the removal points at the right
+  // entry (section 26.7).
+  const software = alert.software;
+  const removable = Boolean(software)
+    && walletSoftware.includes(software)
+    && walletSoftware.length > 1;
+  if (!removable) {
+    // The list may never be empty, so a single entry has to be replaced in the
+    // settings first (sections 25.4 and 26.7).
+    const link = document.createElement("a");
+    link.className = "secondary-button";
+    link.href = "/settings";
+    link.textContent = "Open the settings";
+    return link;
   }
+  return createConfirmControl(
+    `Remove ${software} from the settings`,
+    ACTION_CONFIRMATIONS.remove_software,
+    (status, button) => removeSoftware(software, status, button),
+  );
+}
+
+async function removeSoftware(software, status, button) {
+  button.disabled = true;
+  status.textContent = "Removing…";
+  try {
+    const remaining = walletSoftware.filter((name) => name !== software);
+    const response = await fetch("/api/settings/wallet-software", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ wallet_software: remaining }),
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || "The wallet software could not be removed.");
+    }
+    await loadDashboard();
+  } catch (error) {
+    status.textContent = error.message;
+    button.disabled = false;
+  }
+}
+
+async function acknowledgeAlert(alert, action, status, button) {
   button.disabled = true;
   status.textContent = "Closing…";
   try {
     const response = await fetch("/api/alerts/acknowledge", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ code: alert.code, source: alert.source, reason: text }),
+      body: JSON.stringify({ code: alert.code, source: alert.source, action: action }),
     });
     if (!response.ok) {
       const detail = await response.json().catch(() => ({}));
       throw new Error(detail.error || "The alert could not be closed.");
     }
-    await loadAlerts();
+    await loadDashboard();
   } catch (error) {
     status.textContent = error.message;
     button.disabled = false;
@@ -244,18 +388,8 @@ async function redirectWhenSetupIsMissing() {
   }
 }
 
-async function loadKeyStatus() {
-  try {
-    const response = await fetch("/api/key-status", { headers: { Accept: "application/json" } });
-    if (!response.ok) {
-      throw new Error("Key status is unavailable.");
-    }
-
-    const status = await response.json();
-    keyList.replaceChildren(...status.map(createKeyCard));
-    keyCount.textContent = `${status.length} keys`;
-    renderSummary(status);
-  } catch {
+function renderKeyCards() {
+  if (!keysLoaded) {
     keyList.replaceChildren(createEmptyState(
       "Key status is unavailable. Please reload the page or contact the service administrator.",
     ));
@@ -264,38 +398,60 @@ async function loadKeyStatus() {
     nextCheckDetail.textContent = "The next check dates could not be loaded.";
     overdueTitle.textContent = "Unavailable";
     overdueDetail.textContent = "The overdue keys could not be determined.";
+    return;
   }
+  keyList.replaceChildren(...keyStatus.map(createKeyCard));
+  keyCount.textContent = `${keyStatus.length} keys`;
+  renderSummary(keyStatus);
 }
 
-async function loadAlerts() {
-  try {
-    const response = await fetch("/api/alerts", { headers: { Accept: "application/json" } });
-    if (!response.ok) {
-      throw new Error("Alerts are unavailable.");
-    }
-
-    const alerts = await response.json();
-    if (!alerts.length) {
-      alertsList.replaceChildren(createEmptyState(
-        "No alerts. No saved check has a result that needs follow-up.",
-      ));
-      alertCount.textContent = "No alerts";
-      return;
-    }
-
-    const list = document.createElement("ul");
-    list.className = "alert-list";
-    list.append(...alerts.map(createAlertItem));
-    alertsList.replaceChildren(list);
-    alertCount.textContent = alerts.length === 1 ? "1 alert" : `${alerts.length} alerts`;
-  } catch {
+function renderAlerts() {
+  if (!alertsLoaded) {
     alertsList.replaceChildren(createEmptyState(
       "Alerts could not be loaded. Please reload the page.",
     ));
     alertCount.textContent = "Unavailable";
+    return;
   }
+  if (!alerts.length) {
+    alertsList.replaceChildren(createEmptyState(
+      "No alerts. No saved check has a result that needs follow-up.",
+    ));
+    alertCount.textContent = "No alerts";
+    return;
+  }
+
+  const list = document.createElement("ul");
+  list.className = "alert-list";
+  list.append(...alerts.map(createAlertItem));
+  alertsList.replaceChildren(list);
+  alertCount.textContent = alerts.length === 1 ? "1 alert" : `${alerts.length} alerts`;
+}
+
+async function loadDashboard() {
+  const [statusResult, alertResult, settingsResult] = await Promise.allSettled([
+    fetchJson("/api/key-status"),
+    fetchJson("/api/alerts"),
+    fetchJson("/api/settings"),
+  ]);
+
+  if (settingsResult.status === "fulfilled") {
+    // The wallet software list tells a software alert whether the failing entry
+    // can be removed from here (section 26.7).
+    walletSoftware = settingsResult.value.wallet_software || [];
+  }
+  if (alertResult.status === "fulfilled") {
+    alerts = alertResult.value;
+    alertsLoaded = true;
+  }
+  if (statusResult.status === "fulfilled") {
+    keyStatus = statusResult.value;
+    keysLoaded = true;
+  }
+
+  renderKeyCards();
+  renderAlerts();
 }
 
 redirectWhenSetupIsMissing();
-loadKeyStatus();
-loadAlerts();
+loadDashboard();
