@@ -14,7 +14,8 @@ available hardware key (section 23.1), and the contact confirmation is
 The key setup is configured once and stored in the database (section 23.2). The
 configured name is the product label of a key, and the key's type decides which
 checks apply, never the key number (section 23.3). The address path is part of
-the key's identity (section 25.1).
+the key's identity (section 25.1), and no two keys may share one: the comparison
+ignores surrounding whitespace and letter case (section 26.2).
 
 ``available`` is always recorded (section 22). When the key was not available,
 the wallet software and the security statuses are not recorded either, so they
@@ -27,7 +28,10 @@ treated exactly like an unavailable key.
 
 The wallet software choices are the settings list and the name of every
 configured cloud key (section 25.4), and the settings, the key rotation and the
-alert acknowledgements have their own payloads (sections 25.2, 25.3 and 25.4).
+alert acknowledgements have their own payloads (sections 25.2, 25.3, 25.4 and
+26.4). A rotation replaces the key, so it requires a new, unique address path,
+and an acknowledgement records the action that closed the alert instead of a free
+reason (sections 26.3 and 26.4).
 
 The BIP327/SLIP39 results are gone, together with the rest of that function
 (section 24.2).
@@ -35,7 +39,7 @@ The BIP327/SLIP39 results are gone, together with the rest of that function
 
 from datetime import date
 
-from alerts import ALERT_CODES
+from alerts import ALERT_CODES, CLOSING_ACTIONS
 from database import KEY_COUNT
 
 # Software compatibility requires an active choice, so "not assessed" is not
@@ -57,6 +61,15 @@ class ValidationError(ValueError):
     """Raised when a payload does not match the expected shape."""
 
 
+class DuplicateAddressPath(ValidationError):
+    """Raised when an address path already belongs to another key.
+
+    The settings answer this with ``409``, while the setup and the rotation
+    answer ``400`` (section 26.2), so the two are kept apart here instead of
+    being told apart by their message text.
+    """
+
+
 def next_check_due(checked_at):
     """Return the check date one calendar year later, clamping 29 February."""
     checked = date.fromisoformat(checked_at)
@@ -72,8 +85,8 @@ def validate_key_setup(payload):
     The user names each key, picks its type, and records its address path once,
     and all three are locked after the setup is saved (sections 23.2 and 25.1).
     The names must be non-empty and unique, compared without regard to case. The
-    same address path may be configured for more than one key, because the three
-    keys of one multisig setup normally share their derivation path.
+    address paths must be unique as well, so no two keys share one, because the
+    path is part of the identity of a key (section 26.2).
     """
     if not isinstance(payload, dict):
         raise ValidationError("payload must be a JSON object")
@@ -87,6 +100,7 @@ def validate_key_setup(payload):
     normalized = []
     numbers = set()
     names = set()
+    paths = {}
     for entry in entries:
         if not isinstance(entry, dict):
             raise ValidationError("each key must be an object")
@@ -105,11 +119,21 @@ def validate_key_setup(payload):
         key_type = entry.get("type")
         if key_type not in KEY_TYPES:
             raise ValidationError("key type must be hardware or cloud")
+
+        address_path = _required_path(entry.get("address_path"), "address_path")
+        folded = address_path.casefold()
+        if folded in paths:
+            raise ValidationError(
+                f"the address path is already used by key {paths[folded][0]}: "
+                f"{paths[folded][1]}"
+            )
+        paths[folded] = (number, name)
+
         normalized.append({
             "key_number": number,
             "name": name,
             "type": key_type,
-            "address_path": _required_path(entry.get("address_path"), "address_path"),
+            "address_path": address_path,
         })
 
     return sorted(normalized, key=lambda entry: entry["key_number"])
@@ -170,7 +194,8 @@ def validate_key_settings(payload, keys):
 
     The name is only a label and may be changed at any time; the address path is
     part of the key's identity and may only be changed while the key has no saved
-    check, which the caller decides (sections 25.1 and 25.2).
+    check, which the caller decides (sections 25.1 and 25.2). A path that another
+    key already has is refused (section 26.2).
     """
     if not isinstance(payload, dict):
         raise ValidationError("payload must be a JSON object")
@@ -182,10 +207,12 @@ def validate_key_settings(payload, keys):
         for other in keys
     ):
         raise ValidationError("key names must be unique")
+    address_path = _required_path(payload.get("address_path"), "address_path")
+    _ensure_unique_path(address_path, keys, key["id"])
     return {
         "key_id": key["id"],
         "name": name,
-        "address_path": _required_path(payload.get("address_path"), "address_path"),
+        "address_path": address_path,
     }
 
 
@@ -227,9 +254,11 @@ def validate_wallet_software(payload, keys):
 def validate_rotation(payload, keys, key_id):
     """Return the confirmed rotation of one key.
 
-    The user confirms that the hardware wallet has been replaced, chooses whether
-    the name stays or changes, and confirms that the address path is unchanged.
-    The type is locked and is never part of the payload (section 25.2).
+    The user confirms that the key has been replaced, chooses whether the name
+    stays or changes, and records the new address path. The path must change,
+    because the rotation replaces the key and the path is its identity, and it
+    must not belong to another key (sections 26.2 and 26.3). The type is locked
+    and is never part of the payload.
     """
     if not isinstance(payload, dict):
         raise ValidationError("payload must be a JSON object")
@@ -237,8 +266,6 @@ def validate_rotation(payload, keys, key_id):
     key = _select_key(key_id, keys)
     if payload.get("replaced") is not True:
         raise ValidationError("the replacement of the key must be confirmed")
-    if payload.get("address_path_unchanged") is not True:
-        raise ValidationError("an unchanged address path must be confirmed")
 
     keep_name = payload.get("keep_name")
     if not isinstance(keep_name, bool):
@@ -252,14 +279,30 @@ def validate_rotation(payload, keys, key_id):
             for other in keys
         ):
             raise ValidationError("key names must be unique")
-    return {"key_id": key["id"], "keep_name": keep_name, "name": name}
+
+    address_path = _required_path(payload.get("address_path"), "address_path")
+    if address_path.casefold() == (key.get("address_path") or "").strip().casefold():
+        raise ValidationError(
+            "the address path must change when the key is rotated"
+        )
+    _ensure_unique_path(address_path, keys, key["id"])
+    return {
+        "key_id": key["id"],
+        "keep_name": keep_name,
+        "name": name,
+        "address_path": address_path,
+    }
 
 
 def validate_acknowledgement(payload):
     """Return the normalized acknowledgement of one alert.
 
     An acknowledgement closes a single alert, identified by its code and its
-    source, and records why it was closed (section 25.3).
+    source, and records the action that closed it, which is stored as the reason
+    (sections 25.3 and 26.4). Only the actions the acknowledgement itself
+    performs are accepted here: a rotation goes through the rotation endpoint,
+    because it requires a new, unique address path (section 26.3). Whether the
+    action belongs to the alert is checked against the alert itself.
     """
     if not isinstance(payload, dict):
         raise ValidationError("payload must be a JSON object")
@@ -270,10 +313,10 @@ def validate_acknowledgement(payload):
     source = _text(payload.get("source"), "source", MAX_SOURCE_LENGTH)
     if source is None:
         raise ValidationError("source is required")
-    reason = _text(payload.get("reason"), "reason", MAX_NOTES_LENGTH)
-    if reason is None:
-        raise ValidationError("reason is required")
-    return {"code": code, "source": source, "reason": reason}
+    action = payload.get("action")
+    if action not in CLOSING_ACTIONS:
+        raise ValidationError("action is not a closing action for an alert")
+    return {"code": code, "source": source, "action": action}
 
 
 def _key_name(value):
@@ -301,6 +344,24 @@ def _required_path(value, field):
     if len(path) > MAX_PATH_LENGTH:
         raise ValidationError(f"{field} is too long")
     return path
+
+
+def _ensure_unique_path(path, keys, key_id):
+    """Reject an address path that another key already has (section 26.2).
+
+    The comparison ignores surrounding whitespace and letter case, so two paths
+    that differ only in case count as the same one. The message names the key
+    that already has the path.
+    """
+    folded = path.casefold()
+    for other in keys:
+        if other["id"] == key_id:
+            continue
+        if (other.get("address_path") or "").strip().casefold() == folded:
+            raise DuplicateAddressPath(
+                f"the address path is already used by key {other['key_number']}: "
+                f"{other['name']}"
+            )
 
 
 def _select_key(key_id, keys):
