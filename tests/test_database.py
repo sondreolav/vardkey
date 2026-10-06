@@ -28,24 +28,27 @@ from database import (
 from validation import validate_health_check
 
 
-# The address path the keys are configured with, and the path a submission
-# records (section 25.1).
+# The address path each key slot is configured with, and the path a submission
+# records (sections 25.1 and 26.2). Every key has its own one, so the fixtures
+# match a setup the API accepts.
 DEFAULT_ADDRESS_PATH = "m/48'/0'/0'/2'"
+SECOND_ADDRESS_PATH = "m/48'/1'/0'/2'"
+THIRD_ADDRESS_PATH = "m/48'/2'/0'/2'"
 # The wallet software list the settings hold, and that the app passes to the
 # validator (section 25.4).
 SOFTWARE_NAMES = (DEFAULT_WALLET_SOFTWARE,)
 # The key setup every test starts from, unless it tests the setup itself.
 DEFAULT_SETUP = (
     {"key_number": 1, "name": "SeedSigner", "type": "hardware", "address_path": DEFAULT_ADDRESS_PATH},
-    {"key_number": 2, "name": "Blockstream Jade", "type": "hardware", "address_path": DEFAULT_ADDRESS_PATH},
-    {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": DEFAULT_ADDRESS_PATH},
+    {"key_number": 2, "name": "Blockstream Jade", "type": "hardware", "address_path": SECOND_ADDRESS_PATH},
+    {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": THIRD_ADDRESS_PATH},
 )
-# A setup with the cloud key in the first slot, renamed hardware keys, and two
-# different address paths, so the comparison is proven to be per key.
+# A setup with the cloud key in the first slot, renamed hardware keys, and a
+# different address path per key, so the comparison is proven to be per key.
 RENAMED_SETUP = (
     {"key_number": 1, "name": "Coinbase", "type": "cloud", "address_path": DEFAULT_ADDRESS_PATH},
-    {"key_number": 2, "name": "ColdCard", "type": "hardware", "address_path": "m/48'/1'/0'/2'"},
-    {"key_number": 3, "name": "Jade", "type": "hardware", "address_path": "m/48'/2'/0'/2'"},
+    {"key_number": 2, "name": "ColdCard", "type": "hardware", "address_path": SECOND_ADDRESS_PATH},
+    {"key_number": 3, "name": "Jade", "type": "hardware", "address_path": THIRD_ADDRESS_PATH},
 )
 
 
@@ -549,8 +552,8 @@ class DatabaseInitializationTests(unittest.TestCase):
             ],
             [
                 (1, "Coinbase", "cloud", DEFAULT_ADDRESS_PATH),
-                (2, "ColdCard", "hardware", "m/48'/1'/0'/2'"),
-                (3, "Jade", "hardware", "m/48'/2'/0'/2'"),
+                (2, "ColdCard", "hardware", SECOND_ADDRESS_PATH),
+                (3, "Jade", "hardware", THIRD_ADDRESS_PATH),
             ],
         )
 
@@ -961,7 +964,7 @@ class DatabaseInitializationTests(unittest.TestCase):
             "address_path_mismatch",
             "Key 1: SeedSigner",
             saved_id,
-            "The key was replaced",
+            "rotate",
             self.database_path,
         )
 
@@ -971,7 +974,8 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(stored[0]["code"], "address_path_mismatch")
         self.assertEqual(stored[0]["source"], "Key 1: SeedSigner")
         self.assertEqual(stored[0]["check_id"], saved_id)
-        self.assertEqual(stored[0]["reason"], "The key was replaced")
+        # The stored reason is the action that closed the alert (section 26.4).
+        self.assertEqual(stored[0]["reason"], "rotate")
         self.assertTrue(stored[0]["acknowledged_at"])
 
     def test_each_key_can_be_recorded_separately(self):
