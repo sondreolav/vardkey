@@ -21,20 +21,29 @@ from database import initialize_database, save_key_setup
 from export import HEADERS
 
 
-# The address path the keys are configured with (section 25.1).
+# The address path each key slot is configured with (sections 25.1 and 26.2).
 ADDRESS_PATH = "m/48'/0'/0'/2'"
+SECOND_ADDRESS_PATH = "m/48'/1'/0'/2'"
+THIRD_ADDRESS_PATH = "m/48'/2'/0'/2'"
+# The path a rotation of each key records: it must be new and unique
+# (section 26.3).
+ROTATION_PATHS = {
+    1: "m/48'/10'/0'/2'",
+    2: "m/48'/11'/0'/2'",
+    3: "m/48'/12'/0'/2'",
+}
 # The key setup most tests start from (section 23.2).
 DEFAULT_SETUP = [
     {"key_number": 1, "name": "SeedSigner", "type": "hardware", "address_path": ADDRESS_PATH},
-    {"key_number": 2, "name": "Blockstream Jade", "type": "hardware", "address_path": ADDRESS_PATH},
-    {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": ADDRESS_PATH},
+    {"key_number": 2, "name": "Blockstream Jade", "type": "hardware", "address_path": SECOND_ADDRESS_PATH},
+    {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": THIRD_ADDRESS_PATH},
 ]
 # A setup with the cloud key in the first slot, renamed hardware keys, and a
 # different address path per key.
 RENAMED_SETUP = [
     {"key_number": 1, "name": "Coinbase", "type": "cloud", "address_path": ADDRESS_PATH},
-    {"key_number": 2, "name": "ColdCard", "type": "hardware", "address_path": "m/48'/1'/0'/2'"},
-    {"key_number": 3, "name": "Jade", "type": "hardware", "address_path": "m/48'/2'/0'/2'"},
+    {"key_number": 2, "name": "ColdCard", "type": "hardware", "address_path": SECOND_ADDRESS_PATH},
+    {"key_number": 3, "name": "Jade", "type": "hardware", "address_path": THIRD_ADDRESS_PATH},
 ]
 
 
@@ -216,13 +225,17 @@ class ServerTestCase(unittest.TestCase):
     def assert_setup_rejected(self, payload, status=400):
         self.assert_rejected_at("/api/setup", payload, status)
 
-    def rotate(self, key_id, keep_name=True, name="", **extra):
+    def rotation_path(self, key_id):
+        """Return the new address path a rotation of one key records."""
+        return ROTATION_PATHS[key_id]
+
+    def rotate(self, key_id, keep_name=True, name="", address_path=None, **extra):
         """Rotate one key and return the stored settings the server answers."""
         payload = {
             "replaced": True,
-            "address_path_unchanged": True,
             "keep_name": keep_name,
             "name": name,
+            "address_path": address_path or self.rotation_path(key_id),
         }
         payload.update(extra)
         with self.post_rotation(key_id, payload) as response:
@@ -252,8 +265,12 @@ class AppHandlerTests(ServerTestCase):
             ["SeedSigner", "Blockstream Jade", "Nunchuk"],
         )
         self.assertEqual([key["type"] for key in keys], ["hardware", "hardware", "cloud"])
-        # The address path is part of the key's identity (section 25.1).
-        self.assertEqual([key["address_path"] for key in keys], [ADDRESS_PATH] * 3)
+        # The address path is part of the key's identity, and every key has its
+        # own one (sections 25.1 and 26.2).
+        self.assertEqual(
+            [key["address_path"] for key in keys],
+            [ADDRESS_PATH, SECOND_ADDRESS_PATH, THIRD_ADDRESS_PATH],
+        )
         # The configured name is the product label, so there is no device field.
         self.assertNotIn("device", keys[0])
 
@@ -385,6 +402,9 @@ class AppHandlerTests(ServerTestCase):
         self.assertIn('id="health-check-form"', body)
         self.assertIn('id="key-select"', body)
         self.assertIn('id="address-path-warning"', body)
+        # The form names the keys that an open alert blocks (section 26.1).
+        self.assertIn('id="blocked-keys-note"', body)
+        self.assertIn('id="blocked-keys-list"', body)
         self.assertIn("Never enter seed phrases", body)
         self.assertIn("Save health check", body)
 
@@ -409,8 +429,10 @@ class AppHandlerTests(ServerTestCase):
         self.assertIn('id="wallet-software-list"', body)
         self.assertIn('id="rotation-list"', body)
         self.assertIn("Rotate selected keys", body)
-        # The funds have to be moved to the new wallet (section 25.2).
+        # The funds have to be moved to the new wallet, and the path has to change
+        # because the key is a new one (sections 25.2 and 26.3).
         self.assertIn("Rotating a key creates a new wallet", body)
+        self.assertIn("The address path must change", body)
         self.assertIn("Never enter seed phrases", body)
 
     def test_history_page_is_served_in_english(self):
@@ -448,9 +470,59 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual(alerts[0]["check_id"], saved_id)
         self.assertEqual(alerts[0]["checked_at"], "2026-10-01")
         # The alert names the action that closes it and the key it came from
-        # (sections 25.2 and 25.3).
+        # (sections 25.2 and 26.4).
         self.assertEqual(alerts[0]["actions"], ["rotate"])
         self.assertEqual(alerts[0]["key_id"], self.key_profiles()[1]["id"])
+        self.assertIsNone(alerts[0]["software"])
+
+    def test_a_key_with_an_open_alert_cannot_get_a_new_check(self):
+        # The server enforces the rule, so a direct API call cannot bypass it
+        # (section 26.1).
+        keys = self.key_profiles()
+        self.post_health_check(unavailable_payload(keys[1]))
+        self.assertEqual([alert["code"] for alert in self.get_alerts()], ["key_unavailable"])
+
+        self.assert_rejected(unavailable_payload(keys[1]), status=409)
+
+        # The blocking applies to that key only.
+        self.post_health_check(sample_payload(keys[0]))
+
+        # Closing the alert with the action that belongs to it frees the key again.
+        self.rotate(keys[1]["id"])
+        self.assertEqual(self.get_alerts(), [])
+        self.post_health_check(unavailable_payload(keys[1]))
+
+        self.assertEqual(len(self.get_health_checks()), 3)
+
+    def test_the_blocking_rule_runs_before_the_rest_of_the_validation(self):
+        keys = self.key_profiles()
+        self.post_health_check(unavailable_payload(keys[1]))
+
+        # The key is blocked, so the answer is 409 even when the payload would
+        # otherwise be refused with 400 (section 26.1).
+        payload = unavailable_payload(keys[1])
+        payload["contact_info_verified"] = ""
+        self.assert_rejected(payload, status=409)
+
+    def test_closing_an_alert_with_its_action_frees_the_key(self):
+        keys = self.key_profiles()
+        payload = sample_payload(keys[0])
+        payload["key_check"]["hardware_works"] = 0
+        self.post_health_check(payload)
+        alert = self.get_alerts()[0]
+        self.assertEqual(alert["code"], "hardware_failure")
+
+        self.assert_rejected(sample_payload(keys[0]), status=409)
+
+        with self.post_acknowledgement({
+            "code": alert["code"],
+            "source": alert["source"],
+            "action": "replace_hardware",
+        }) as response:
+            self.assertEqual(response.status, 201)
+
+        self.assertEqual(self.get_alerts(), [])
+        self.post_health_check(sample_payload(keys[0]))
 
     def test_alerts_api_keeps_alerts_from_older_checks(self):
         older = unavailable_payload(self.key_profiles()[1])
@@ -503,6 +575,20 @@ class AppHandlerTests(ServerTestCase):
             [alert["code"] for alert in alerts],
             ["hardware_failure", "contact_info_unconfirmed"],
         )
+
+    def test_a_software_alert_names_the_software_it_is_about(self):
+        payload = sample_payload(self.key_profiles()[0])
+        payload["software_compatibility_status"] = "PROBLEM"
+        self.post_health_check(payload)
+
+        alerts = self.get_alerts()
+
+        self.assertEqual([alert["code"] for alert in alerts], ["software_incompatible"])
+        # The alert names the software, so the settings link and the removal point
+        # at the right entry (section 26.7).
+        self.assertEqual(alerts[0]["source"], "Sparrow Wallet")
+        self.assertEqual(alerts[0]["software"], "Sparrow Wallet")
+        self.assertEqual(alerts[0]["actions"], ["remove_software"])
 
     def test_saved_health_check_can_be_read_back(self):
         key = self.key_profiles()[0]
@@ -700,7 +786,7 @@ class AppHandlerTests(ServerTestCase):
     def test_an_unavailable_key_never_reports_a_mismatch(self):
         key = self.key_profiles()[1]
         payload = unavailable_payload(key)
-        payload["key_check"]["address_path"] = ADDRESS_PATH
+        payload["key_check"]["address_path"] = SECOND_ADDRESS_PATH
 
         saved_id = self.post_health_check(payload)
 
@@ -754,6 +840,7 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual([alert["code"] for alert in alerts], ["contact_info_unconfirmed"])
         self.assertEqual(alerts[0]["severity"], "info")
         self.assertEqual(alerts[0]["check_id"], saved_id)
+        self.assertEqual(alerts[0]["actions"], ["contact_updated"])
 
     def test_a_hardware_key_name_is_not_a_wallet_software_choice(self):
         # "Jade" is a hardware key in this setup, so it is never software.
@@ -885,7 +972,8 @@ class SettingsApiTests(ServerTestCase):
             ["SeedSigner", "Blockstream Jade", "Nunchuk"],
         )
         self.assertEqual(
-            [key["address_path"] for key in settings["keys"]], [ADDRESS_PATH] * 3
+            [key["address_path"] for key in settings["keys"]],
+            [ADDRESS_PATH, SECOND_ADDRESS_PATH, THIRD_ADDRESS_PATH],
         )
         self.assertEqual(settings["wallet_software"], ["Sparrow Wallet"])
 
@@ -948,6 +1036,20 @@ class SettingsApiTests(ServerTestCase):
         self.assertEqual(self.key_profiles()[0]["name"], "ColdCard")
         self.assertEqual(self.key_profiles()[0]["address_path"], ADDRESS_PATH)
 
+    def test_a_path_that_another_key_already_has_is_rejected(self):
+        # The settings answer a duplicate path with 409, and the message names
+        # the key that has it (section 26.2).
+        key = self.key_profiles()[1]
+
+        for value in (ADDRESS_PATH, f"  {ADDRESS_PATH}  ", ADDRESS_PATH.upper()):
+            self.assert_rejected_at("/api/settings/keys", {
+                "key_id": key["id"],
+                "name": key["name"],
+                "address_path": value,
+            }, status=409)
+
+        self.assertEqual(self.key_profiles()[1]["address_path"], SECOND_ADDRESS_PATH)
+
     def test_a_name_that_repeats_another_key_is_rejected(self):
         key = self.key_profiles()[0]
 
@@ -974,6 +1076,7 @@ class SettingsApiTests(ServerTestCase):
             body = json.load(response)
 
         self.assertEqual(body["wallet_software"], ["Sparrow Wallet", "BlueWallet"])
+        self.assertEqual(body["acknowledged"], [])
         self.assertEqual(self.get_settings()["wallet_software"], ["Sparrow Wallet", "BlueWallet"])
 
         # Replacing the list removes the entries that are not sent again.
@@ -1005,8 +1108,78 @@ class SettingsApiTests(ServerTestCase):
             self.assertEqual(response.status, 200)
 
         # The selected software is kept as free text, so an earlier check is not
-        # changed by removing the name (section 25.4).
+        # changed by removing the name (sections 25.4 and 26.7).
         self.assertEqual(self.get_record(saved_id)["wallet_software"], "BlueWallet")
+
+    def test_removing_the_failing_software_closes_its_alert(self):
+        key = self.key_profiles()[0]
+        with self.post_wallet_software(["Sparrow Wallet", "BlueWallet"]) as response:
+            self.assertEqual(response.status, 200)
+
+        payload = sample_payload(key, wallet_software="BlueWallet")
+        payload["software_compatibility_status"] = "PROBLEM"
+        saved_id = self.post_health_check(payload)
+        alerts = self.get_alerts()
+        self.assertEqual([alert["code"] for alert in alerts], ["software_incompatible"])
+        self.assertEqual(alerts[0]["source"], "BlueWallet")
+
+        # Removing the failing software is what closes the alert (section 26.7).
+        with self.post_wallet_software(["Sparrow Wallet"]) as response:
+            self.assertEqual(response.status, 200)
+            body = json.load(response)
+
+        self.assertEqual(
+            body["acknowledged"],
+            [{"code": "software_incompatible", "source": "BlueWallet"}],
+        )
+        self.assertEqual(self.get_alerts(), [])
+        # The saved check is untouched.
+        self.assertEqual(self.get_record(saved_id)["software_compatibility_status"], "PROBLEM")
+
+    def test_removing_a_software_closes_a_software_named_security_alert(self):
+        key = self.key_profiles()[0]
+        with self.post_wallet_software(["Sparrow Wallet", "BlueWallet"]) as response:
+            self.assertEqual(response.status, 200)
+
+        payload = sample_payload(key, wallet_software="BlueWallet")
+        for entry in payload["ai_security_checks"]:
+            if entry["provider"] == "BlueWallet":
+                entry["status"] = "VULNERABLE"
+        self.post_health_check(payload)
+        self.assertEqual([alert["code"] for alert in self.get_alerts()], ["security_vulnerable"])
+
+        with self.post_wallet_software(["Sparrow Wallet"]) as response:
+            self.assertEqual(response.status, 200)
+
+        self.assertEqual(self.get_alerts(), [])
+
+    def test_removing_a_software_leaves_the_other_alerts_alone(self):
+        key = self.key_profiles()[0]
+        with self.post_wallet_software(["Sparrow Wallet", "BlueWallet"]) as response:
+            self.assertEqual(response.status, 200)
+
+        payload = sample_payload(key, wallet_software="BlueWallet")
+        payload["software_compatibility_status"] = "PROBLEM"
+        self.post_health_check(payload)
+        self.post_health_check(unavailable_payload(self.key_profiles()[1]))
+
+        with self.post_wallet_software(["Sparrow Wallet"]) as response:
+            self.assertEqual(response.status, 200)
+
+        self.assertEqual([alert["code"] for alert in self.get_alerts()], ["key_unavailable"])
+
+    def test_the_only_software_entry_cannot_be_removed(self):
+        key = self.key_profiles()[0]
+        payload = sample_payload(key)
+        payload["software_compatibility_status"] = "PROBLEM"
+        self.post_health_check(payload)
+        self.assertEqual([alert["code"] for alert in self.get_alerts()], ["software_incompatible"])
+
+        # The list may never be empty, so a single entry has to be replaced
+        # first, and the alert stays open (sections 25.4 and 26.7).
+        self.assert_rejected_at("/api/settings/wallet-software", {"wallet_software": []})
+
+        self.assertEqual([alert["code"] for alert in self.get_alerts()], ["software_incompatible"])
 
     def test_an_empty_list_or_a_cloud_key_name_is_rejected(self):
         for names in ([], ["   "], ["Nunchuk"], ["nunchuk"], ["Sparrow Wallet", "sparrow wallet"]):
@@ -1020,13 +1193,13 @@ class SettingsApiTests(ServerTestCase):
 
 
 class RotationApiTests(ServerTestCase):
-    """A rotation replaces one key and closes the alerts it raised (section 25.2)."""
+    """A rotation replaces one key and closes the alerts it raised (sections 25.2 and 26.3)."""
 
     def setUp(self):
         super().setUp()
         self.store_setup()
 
-    def test_a_rotation_keeps_the_name(self):
+    def test_a_rotation_keeps_the_name_and_records_the_new_path(self):
         key = self.key_profiles()[0]
 
         body = self.rotate(key["id"])
@@ -1035,7 +1208,7 @@ class RotationApiTests(ServerTestCase):
         stored = self.key_profiles()[0]
         self.assertEqual(stored["name"], key["name"])
         self.assertEqual(stored["type"], key["type"])
-        self.assertEqual(stored["address_path"], key["address_path"])
+        self.assertEqual(stored["address_path"], self.rotation_path(key["id"]))
 
     def test_a_rotation_changes_the_name(self):
         key = self.key_profiles()[1]
@@ -1044,26 +1217,53 @@ class RotationApiTests(ServerTestCase):
 
         stored = self.key_profiles()[1]
         self.assertEqual(stored["name"], "Replacement")
-        self.assertEqual(stored["address_path"], key["address_path"])
+        self.assertEqual(stored["address_path"], self.rotation_path(key["id"]))
 
-    def test_a_rotation_needs_the_two_confirmations(self):
+    def test_a_rotation_needs_the_replacement_confirmation(self):
         key = self.key_profiles()[0]
 
-        for field in ("replaced", "address_path_unchanged"):
-            for value in (None, False, 1, "yes"):
-                payload = {
-                    "replaced": True,
-                    "address_path_unchanged": True,
-                    "keep_name": True,
-                }
-                payload[field] = value
-                self.assert_rejected_at(f"/api/keys/{key['id']}/rotate", payload)
+        for value in (None, False, 1, "yes"):
+            self.assert_rejected_at(f"/api/keys/{key['id']}/rotate", {
+                "replaced": value,
+                "keep_name": True,
+                "address_path": self.rotation_path(key["id"]),
+            })
+
+    def test_a_rotation_requires_a_new_address_path(self):
+        key = self.key_profiles()[0]
+        path = f"/api/keys/{key['id']}/rotate"
+
+        # The key is a new one, so an empty path, the stored path, and the path of
+        # another key are all refused (sections 26.2 and 26.3).
+        for value in (None, "", "   ", ADDRESS_PATH, SECOND_ADDRESS_PATH):
+            self.assert_rejected_at(path, {
+                "replaced": True,
+                "keep_name": True,
+                "address_path": value,
+            })
+
+        self.assert_rejected_at(path, {"replaced": True, "keep_name": True})
+        self.assertEqual(self.key_profiles()[0]["address_path"], ADDRESS_PATH)
+
+    def test_a_rotation_keeps_the_new_path_after_it_is_stored(self):
+        key = self.key_profiles()[0]
+        self.rotate(key["id"], address_path="m/48'/5'/0'/2'")
+
+        self.assertEqual(self.key_profiles()[0]["address_path"], "m/48'/5'/0'/2'")
+
+        # The new path is the identity of the key now, so it may not be recorded
+        # as the next rotation either.
+        self.assert_rejected_at(f"/api/keys/{key['id']}/rotate", {
+            "replaced": True,
+            "keep_name": True,
+            "address_path": "m/48'/5'/0'/2'",
+        })
 
     def test_a_rotation_of_an_unknown_key_is_rejected(self):
         self.assert_rejected_at("/api/keys/999/rotate", {
             "replaced": True,
-            "address_path_unchanged": True,
             "keep_name": True,
+            "address_path": self.rotation_path(1),
         }, status=404)
 
     def test_a_rotation_closes_the_alerts_of_its_key(self):
@@ -1118,74 +1318,126 @@ class RotationApiTests(ServerTestCase):
 
 
 class AcknowledgementApiTests(ServerTestCase):
-    """An acknowledged alert stays hidden until a newer check raises it (section 25.3)."""
+    """An alert is closed by the action that belongs to it (sections 25.3 and 26.4)."""
 
     def setUp(self):
         super().setUp()
         self.store_setup()
 
     def test_an_acknowledged_alert_disappears(self):
-        key = self.key_profiles()[1]
-        saved_id = self.post_health_check(unavailable_payload(key))
+        key = self.key_profiles()[0]
+        payload = sample_payload(key)
+        payload["contact_info_verified"] = "Needs external update"
+        saved_id = self.post_health_check(payload)
         alerts = self.get_alerts()
-        self.assertEqual(len(alerts), 1)
+        self.assertEqual([alert["code"] for alert in alerts], ["contact_info_unconfirmed"])
 
         with self.post_acknowledgement({
             "code": alerts[0]["code"],
             "source": alerts[0]["source"],
-            "reason": "The key was replaced",
+            "action": "contact_updated",
         }) as response:
             self.assertEqual(response.status, 201)
+            body = json.load(response)
 
+        self.assertEqual(body["action"], "contact_updated")
         self.assertEqual(self.get_alerts(), [])
         # The saved check itself is untouched.
-        self.assertEqual(self.get_record(saved_id)["key_checks"][0]["available"], 0)
+        self.assertEqual(self.get_record(saved_id)["contact_info_verified"], "Needs external update")
 
     def test_a_newer_check_raises_the_alert_again(self):
-        key = self.key_profiles()[1]
-        older = unavailable_payload(key)
+        key = self.key_profiles()[0]
+        older = sample_payload(key)
         older["checked_at"] = "2026-10-01"
+        older["contact_info_verified"] = "Needs external update"
         self.post_health_check(older)
         alerts = self.get_alerts()
 
         with self.post_acknowledgement({
             "code": alerts[0]["code"],
             "source": alerts[0]["source"],
-            "reason": "The key was replaced",
+            "action": "contact_updated",
         }) as response:
             self.assertEqual(response.status, 201)
 
         self.assertEqual(self.get_alerts(), [])
 
-        newer = unavailable_payload(key)
+        newer = sample_payload(key)
         newer["checked_at"] = "2027-10-01"
+        newer["contact_info_verified"] = "Needs external update"
         self.post_health_check(newer)
 
         alerts = self.get_alerts()
-        self.assertEqual([alert["code"] for alert in alerts], ["key_unavailable"])
+        self.assertEqual([alert["code"] for alert in alerts], ["contact_info_unconfirmed"])
         self.assertEqual(alerts[0]["checked_at"], "2027-10-01")
 
     def test_an_unknown_alert_is_rejected(self):
         self.post_health_check(unavailable_payload(self.key_profiles()[1]))
 
         for payload in (
-            {"code": "key_unavailable", "source": "Key 3: Nunchuk", "reason": "Done"},
-            {"code": "address_path_mismatch", "source": "Key 2: Blockstream Jade", "reason": "Done"},
+            {"code": "key_unavailable", "source": "Key 3: Nunchuk", "action": "replace_hardware"},
+            {"code": "address_path_mismatch", "source": "Key 2: Blockstream Jade", "action": "replace_hardware"},
         ):
             self.assert_rejected_at("/api/alerts/acknowledge", payload, status=404)
 
-    def test_an_unknown_code_or_a_missing_reason_is_rejected(self):
+    def test_an_unknown_code_or_an_unknown_action_is_rejected(self):
         self.post_health_check(unavailable_payload(self.key_profiles()[1]))
         source = self.get_alerts()[0]["source"]
 
         for payload in (
-            {"code": "cloud_provider_problem", "source": source, "reason": "Done"},
-            {"code": "address_verification_failed", "source": source, "reason": "Done"},
-            {"code": "key_unavailable", "source": source, "reason": ""},
+            {"code": "cloud_provider_problem", "source": source, "action": "replace_hardware"},
+            {"code": "address_verification_failed", "source": source, "action": "replace_hardware"},
+            {"code": "key_unavailable", "source": source, "action": ""},
             {"code": "key_unavailable", "source": source},
-            {"code": "key_unavailable", "source": "", "reason": "Done"},
+            {"code": "key_unavailable", "source": "", "action": "replace_hardware"},
+            # A rotation has its own endpoint, and the removed generic
+            # acknowledgement is gone (sections 26.3 and 26.4).
+            {"code": "key_unavailable", "source": source, "action": "rotate"},
+            {"code": "key_unavailable", "source": source, "action": "acknowledge"},
         ):
             self.assert_rejected_at("/api/alerts/acknowledge", payload)
+
+    def test_an_action_that_does_not_belong_to_the_alert_is_rejected(self):
+        key = self.key_profiles()[0]
+        payload = sample_payload(key)
+        payload["key_check"]["hardware_works"] = 0
+        self.post_health_check(payload)
+        alert = self.get_alerts()[0]
+        self.assertEqual(alert["actions"], ["rotate", "replace_hardware"])
+
+        # An action the alert does not offer cannot close it (section 26.4).
+        for action in ("ignore", "remove_software", "contact_updated"):
+            self.assert_rejected_at("/api/alerts/acknowledge", {
+                "code": alert["code"],
+                "source": alert["source"],
+                "action": action,
+            })
+
+        self.assertEqual([entry["code"] for entry in self.get_alerts()], ["hardware_failure"])
+
+    def test_a_software_alert_can_only_be_removed_or_ignored(self):
+        key = self.key_profiles()[0]
+        payload = sample_payload(key)
+        payload["software_compatibility_status"] = "PROBLEM"
+        self.post_health_check(payload)
+        alert = self.get_alerts()[0]
+        self.assertEqual(alert["actions"], ["remove_software"])
+
+        for action in ("replace_hardware", "contact_updated"):
+            self.assert_rejected_at("/api/alerts/acknowledge", {
+                "code": alert["code"],
+                "source": alert["source"],
+                "action": action,
+            })
+
+        with self.post_acknowledgement({
+            "code": alert["code"],
+            "source": alert["source"],
+            "action": "remove_software",
+        }) as response:
+            self.assertEqual(response.status, 201)
+
+        self.assertEqual(self.get_alerts(), [])
 
     def test_an_informational_alert_can_be_closed_too(self):
         payload = sample_payload(self.key_profiles()[0])
@@ -1197,7 +1449,7 @@ class AcknowledgementApiTests(ServerTestCase):
         with self.post_acknowledgement({
             "code": alerts[0]["code"],
             "source": alerts[0]["source"],
-            "reason": "The contact details were updated externally",
+            "action": "contact_updated",
         }) as response:
             self.assertEqual(response.status, 201)
 
@@ -1224,15 +1476,18 @@ class KeySetupApiTests(ServerTestCase):
         self.assertTrue(body["configured"])
         self.assertEqual([key["name"] for key in body["keys"]],
                          ["SeedSigner", "Blockstream Jade", "Nunchuk"])
-        self.assertEqual([key["address_path"] for key in body["keys"]], [ADDRESS_PATH] * 3)
+        self.assertEqual(
+            [key["address_path"] for key in body["keys"]],
+            [ADDRESS_PATH, SECOND_ADDRESS_PATH, THIRD_ADDRESS_PATH],
+        )
         self.assertTrue(self.get_setup()["configured"])
         self.assertEqual(len(self.key_profiles()), 3)
 
     def test_a_setup_with_all_three_keys_as_cloud_keys_is_accepted(self):
         payload = {"keys": [
             {"key_number": 1, "name": "Provider one", "type": "cloud", "address_path": ADDRESS_PATH},
-            {"key_number": 2, "name": "Provider two", "type": "cloud", "address_path": ADDRESS_PATH},
-            {"key_number": 3, "name": "Provider three", "type": "cloud", "address_path": ADDRESS_PATH},
+            {"key_number": 2, "name": "Provider two", "type": "cloud", "address_path": SECOND_ADDRESS_PATH},
+            {"key_number": 3, "name": "Provider three", "type": "cloud", "address_path": THIRD_ADDRESS_PATH},
         ]}
 
         with self.post_setup(payload) as response:
@@ -1243,18 +1498,31 @@ class KeySetupApiTests(ServerTestCase):
     def test_a_duplicate_name_is_rejected(self):
         payload = {"keys": [
             {"key_number": 1, "name": "Jade", "type": "hardware", "address_path": ADDRESS_PATH},
-            {"key_number": 2, "name": "jade", "type": "hardware", "address_path": ADDRESS_PATH},
-            {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": ADDRESS_PATH},
+            {"key_number": 2, "name": "jade", "type": "hardware", "address_path": SECOND_ADDRESS_PATH},
+            {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": THIRD_ADDRESS_PATH},
         ]}
 
         self.assert_setup_rejected(payload)
         self.assertFalse(self.get_setup()["configured"])
 
+    def test_a_duplicate_address_path_is_rejected(self):
+        # Every key needs its own path, and the message names the key that
+        # already has it (section 26.2).
+        for value in (ADDRESS_PATH, f"  {ADDRESS_PATH}  ", ADDRESS_PATH.upper()):
+            payload = {"keys": [
+                {"key_number": 1, "name": "ColdCard", "type": "hardware", "address_path": ADDRESS_PATH},
+                {"key_number": 2, "name": "Jade", "type": "hardware", "address_path": value},
+                {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": THIRD_ADDRESS_PATH},
+            ]}
+            self.assert_setup_rejected(payload)
+
+        self.assertFalse(self.get_setup()["configured"])
+
     def test_an_empty_name_is_rejected(self):
         payload = {"keys": [
             {"key_number": 1, "name": "   ", "type": "hardware", "address_path": ADDRESS_PATH},
-            {"key_number": 2, "name": "Jade", "type": "hardware", "address_path": ADDRESS_PATH},
-            {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": ADDRESS_PATH},
+            {"key_number": 2, "name": "Jade", "type": "hardware", "address_path": SECOND_ADDRESS_PATH},
+            {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": THIRD_ADDRESS_PATH},
         ]}
 
         self.assert_setup_rejected(payload)
@@ -1264,15 +1532,15 @@ class KeySetupApiTests(ServerTestCase):
         for value in (None, "", "   "):
             payload = {"keys": [
                 {"key_number": 1, "name": "ColdCard", "type": "hardware", "address_path": value},
-                {"key_number": 2, "name": "Jade", "type": "hardware", "address_path": ADDRESS_PATH},
-                {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": ADDRESS_PATH},
+                {"key_number": 2, "name": "Jade", "type": "hardware", "address_path": SECOND_ADDRESS_PATH},
+                {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": THIRD_ADDRESS_PATH},
             ]}
             self.assert_setup_rejected(payload)
 
         payload = {"keys": [
             {"key_number": 1, "name": "ColdCard", "type": "hardware"},
-            {"key_number": 2, "name": "Jade", "type": "hardware", "address_path": ADDRESS_PATH},
-            {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": ADDRESS_PATH},
+            {"key_number": 2, "name": "Jade", "type": "hardware", "address_path": SECOND_ADDRESS_PATH},
+            {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": THIRD_ADDRESS_PATH},
         ]}
         self.assert_setup_rejected(payload)
 
@@ -1284,8 +1552,8 @@ class KeySetupApiTests(ServerTestCase):
     def test_an_unknown_type_is_rejected(self):
         payload = {"keys": [
             {"key_number": 1, "name": "ColdCard", "type": "usb", "address_path": ADDRESS_PATH},
-            {"key_number": 2, "name": "Jade", "type": "hardware", "address_path": ADDRESS_PATH},
-            {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": ADDRESS_PATH},
+            {"key_number": 2, "name": "Jade", "type": "hardware", "address_path": SECOND_ADDRESS_PATH},
+            {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": THIRD_ADDRESS_PATH},
         ]}
 
         self.assert_setup_rejected(payload)
@@ -1311,8 +1579,8 @@ class KeySetupApiTests(ServerTestCase):
     def test_a_key_cannot_be_rotated_before_the_setup(self):
         self.assert_rejected_at("/api/keys/1/rotate", {
             "replaced": True,
-            "address_path_unchanged": True,
             "keep_name": True,
+            "address_path": self.rotation_path(1),
         }, status=404)
 
 
