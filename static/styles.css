@@ -55,11 +55,17 @@ h2 { margin-bottom: 0; font-size: 20px; letter-spacing: -.02em; }
 .status-neutral { color: #5e6962; background: #f0f2ef; }
 .status-ok { color: #1f5f45; background: var(--green-soft); }
 .status-overdue { color: #8a3529; background: #fbeceb; }
+.status-alert { color: #8a3529; background: #fbeceb; }
 .key-card h3 { margin: 20px 0 5px; font-size: 16px; }
 .key-card p, .info-card p:not(.eyebrow), .history-card > p { margin-bottom: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
 .key-dates { margin: 14px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: 12px; }
 .key-dates dt { color: var(--muted); font-weight: 600; }
 .key-dates dd { margin: 0; }
+.key-alert-note { margin: 14px 0 0; padding: 10px 12px; border-left: 4px solid #b4483c; border-radius: 8px; background: #fdf5f4; }
+.key-alert-note p { margin: 0 0 6px; color: #43564a; font-size: 12px; line-height: 1.55; }
+.key-alert-note .key-alert-message { color: #8a3529; font-weight: 650; }
+.key-alert-note .key-alert-detail { color: var(--muted); }
+.key-alert-note .back-link { font-size: 12px; }
 .overview-grid { margin-top: 20px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .info-card { min-height: 132px; padding: 20px; }
 .info-card h2 { margin-bottom: 8px; font-size: 17px; }
@@ -114,6 +120,8 @@ h2 { margin-bottom: 0; font-size: 20px; letter-spacing: -.02em; }
 .form-stack[hidden], .field-grid[hidden], .field[hidden], .form-section[hidden] { display: none; }
 .review-panel h3 { margin: 18px 0 8px; font-size: 15px; }
 .review-panel ul { margin: 0; padding-left: 22px; color: #4b5850; font-size: 13px; line-height: 1.7; }
+/* The rotation note and the rotation list must not run together (section 26.6). */
+.rotation-list { margin-top: 22px; }
 
 .history-list { margin: 0; padding: 0; display: grid; gap: 12px; list-style: none; }
 .history-item { padding: 16px 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--line); border-radius: 11px; background: #fff; }
