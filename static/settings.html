@@ -37,7 +37,7 @@
           <p class="eyebrow">01 / Keys</p>
           <h2 id="settings-keys-title">Keys</h2>
         </div>
-        <p class="field-help">The name is only a label, so it can be changed at any time. The type and the address path are the identity of the key: the type is locked, and the address path can only be changed while the key has no saved check.</p>
+        <p class="field-help">The name is only a label, so it can be changed at any time. The type and the address path are the identity of the key: the type is locked, and the address path can only be changed while the key has no saved check. No two keys may share an address path.</p>
         <div id="keys-list" class="form-stack"><p class="empty-state">Loading keys…</p></div>
       </section>
 
@@ -48,6 +48,7 @@
         </div>
         <p class="field-help">Every entry is a wallet software choice for the keys you check. The list is saved as a whole, so add an entry before you remove the last one. A name that already comes from a cloud key is not needed here, and names must be unique.</p>
         <p class="field-help">Removing an entry never changes a saved check: the software selected in an earlier check stays as it was recorded.</p>
+        <p class="field-help">Removing an entry also closes the alerts that software raised, such as software that no longer supports the hardware. A blocked key becomes available again as soon as its alert is closed.</p>
         <div id="wallet-software-list" class="form-stack"></div>
         <div class="form-actions">
           <button class="secondary-button" id="add-software" type="button">Add entry</button>
@@ -61,14 +62,14 @@
           <p class="eyebrow">03 / Key rotation</p>
           <h2 id="settings-rotation-title">Key rotation</h2>
         </div>
-        <p class="field-help">A rotation records that a key has been replaced by a new one, keeps or changes its name, and closes the alerts that the key raised. The type and the address path are locked, and no earlier check is changed.</p>
+        <p class="field-help">A rotation records that a key has been replaced by a new one, keeps or changes its name, and closes the alerts that the key raised. The type is locked, and no earlier check is changed.</p>
+        <p class="field-help">The address path must change, because the key is a new one and the path is part of its identity. Every key needs its own new path, and no two keys may share one.</p>
         <div class="warning-note" role="note">
           <p><strong>Rotating a key creates a new wallet.</strong> Move your funds from the old multisig setup to the new one, and verify that the new setup works, before you rely on it.</p>
           <p>Do not discard the old keys or the old seed backups until the funds have been moved and confirmed. Losing access to the old setup before the move can mean losing the bitcoin.</p>
         </div>
-        <div id="rotation-list" class="form-stack"><p class="empty-state">Loading keys…</p></div>
+        <div id="rotation-list" class="form-stack rotation-list"><p class="empty-state">Loading keys…</p></div>
         <label class="field checkbox-field"><input id="rotation-replaced" type="checkbox"><span>I confirm that each selected key has been replaced by a new key or hardware wallet</span></label>
-        <label class="field checkbox-field"><input id="rotation-path-unchanged" type="checkbox"><span>I confirm that the address path of each selected key is unchanged</span></label>
         <div class="form-actions">
           <button class="primary-button active-button" id="rotate-keys" type="button">Rotate selected keys</button>
         </div>
