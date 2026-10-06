@@ -10,19 +10,41 @@ performed. A recorded address path that does not match the key is treated the
 same way, with its own code, so it is never merged with a real unavailable key
 (section 25.1).
 
-Every alert names the actions that close it (section 25.3). A rotation replaces
-the key, while a plain acknowledgement closes an alert until a newer check for
-the same code and source raises it again. ``collect_alerts`` builds the alerts of
-every saved check, merges them, and leaves out the acknowledged ones, which is
-what the dashboard shows (sections 21 and 25.3).
+Every alert code has its own closing actions (section 26.4). A rotation replaces
+the key and is confirmed in the settings, while the other actions close the
+alert where it is shown. The software an alert is about is named, so the link,
+the button, and the removal point at the right settings entry (section 26.7).
+``collect_alerts`` builds the alerts of every saved check, merges them, and
+leaves out the acknowledged ones, which is what the dashboard shows
+(sections 21 and 25.3).
+
+An alert without an action is a bug, not a state the user can reach: the key
+would be locked with no way out (section 26.1). ``_alert`` therefore refuses to
+build one.
 """
 
 CRITICAL = "critical"
 INFO = "info"
 
-# The actions that can close an alert (section 25.3).
+# The actions that close an alert (section 26.4). A rotation replaces the key and
+# is performed in the settings; the other actions close the alert where it is
+# shown, after the user has confirmed the action.
 ROTATE = "rotate"
-ACKNOWLEDGE = "acknowledge"
+REPLACE_HARDWARE = "replace_hardware"
+REMOVE_SOFTWARE = "remove_software"
+IGNORE = "ignore"
+CONTACT_UPDATED = "contact_updated"
+# The actions the acknowledgement endpoint performs. A rotation is not one of
+# them: it goes through POST /api/keys/<id>/rotate, which requires a new address
+# path, so an alert that only offers a rotation cannot be closed by a plain
+# acknowledgement (sections 26.1, 26.3 and 26.4).
+CLOSING_ACTIONS = frozenset({
+    REPLACE_HARDWARE,
+    REMOVE_SOFTWARE,
+    IGNORE,
+    CONTACT_UPDATED,
+})
+ALERT_ACTIONS = frozenset({ROTATE}) | CLOSING_ACTIONS
 
 # Every alert code the app can raise. ``cloud_provider_problem`` and
 # ``address_verification_failed`` are gone: the first could not be triggered from
@@ -40,7 +62,7 @@ ALERT_CODES = frozenset({
 })
 # The codes a rotation closes. A security code is only closed by a rotation when
 # its source is the key itself, because a problem in the software the key runs
-# with is not resolved by replacing the key (section 25.3).
+# with is not resolved by replacing the key (sections 25.3 and 26.4).
 ROTATION_CODES = frozenset({
     "key_unavailable",
     "address_path_mismatch",
@@ -60,6 +82,23 @@ _ADDRESS_PATH_MISMATCH_MESSAGE = (
     "The recorded address path does not match this key. Replace the key before "
     "continuing; the remaining checks for this key cannot be recorded."
 )
+# The software that produced the result is named by the alert itself, so this
+# message covers the software in general (section 26.7).
+_SOFTWARE_INCOMPATIBLE_MESSAGE = (
+    "This wallet software no longer supports the hardware. Add another wallet "
+    "software in the settings, then remove this one to close the alert."
+)
+_VULNERABLE_MESSAGE = (
+    "Security status VULNERABLE: the firmware or security problem must be followed up."
+)
+_COMPROMISED_MESSAGE = "Security status COMPROMISED: follow the key loss procedure."
+_CONTACT_MESSAGE = (
+    "The contact details for this key need an external update. "
+    "Update them in your external documentation, then close this alert."
+)
+# A saved check that predates the software column has no name to point at, so the
+# alert falls back to this label and offers the settings link only.
+_SOFTWARE_SOURCE = "Software compatibility"
 # The stored contact status that asks for an update of the user's own records
 # (section 23.1).
 _CONTACT_NEEDS_UPDATE = "Needs external update"
@@ -130,8 +169,8 @@ def rotation_alert_targets(records, key):
     """Return the (code, source) pairs that rotating one key closes.
 
     A rotation closes the alerts that this key's own checks raised and that a
-    replacement resolves (section 25.3). A security alert whose source is the
-    software the key runs with is not closed by the rotation, because that
+    replacement resolves (sections 25.3 and 26.4). A security alert whose source
+    is the software the key runs with is not closed by the rotation, because that
     problem is about the software and not about the key.
     """
     targets = []
@@ -145,6 +184,28 @@ def rotation_alert_targets(records, key):
                 continue
             targets.append((alert["code"], alert["source"]))
     # One entry per pair, in the order the checks were read.
+    return list(dict.fromkeys(targets))
+
+
+def software_alert_targets(records, acknowledgements, names):
+    """Return the (code, source) pairs that removing software closes.
+
+    Removing a wallet software from the settings closes the alerts the software
+    itself raised: software that no longer supports the hardware, and a security
+    status the software got (sections 26.4 and 26.7). Only the alerts that are
+    still open are returned, so removing a name never writes an acknowledgement
+    for an alert that is already closed.
+    """
+    folded = {
+        name.strip().casefold() for name in names if isinstance(name, str)
+    }
+    targets = []
+    for alert in collect_alerts(records, acknowledgements):
+        software = alert.get("software")
+        if not software or software.casefold() not in folded:
+            continue
+        targets.append((alert["code"], alert["source"]))
+    # One entry per pair, so a name is closed once.
     return list(dict.fromkeys(targets))
 
 
@@ -184,19 +245,35 @@ def _recency_key(alert):
     return (alert.get("checked_at") or "", alert.get("check_id") or 0)
 
 
-def _alert(code, severity, source, message, actions, key_id=None):
+def _alert(code, severity, source, message, actions, key_id=None, software=None):
+    """Return one alert, and refuse to build one without a closing action.
+
+    Every alert has to stay closable, or the key would be locked with no way out
+    (section 26.1). ``software`` names the wallet software the alert is about, so
+    the settings can remove the right entry, and it is None for every other alert
+    (section 26.7).
+    """
+    actions = list(actions)
+    if not actions:
+        raise ValueError(f"alert {code} must offer at least one closing action")
     return {
         "code": code,
         "severity": severity,
         "source": source,
         "message": message,
-        "actions": list(actions),
+        "actions": actions,
         "key_id": key_id,
+        "software": software,
     }
 
 
 def _key_alerts(key_check):
-    """Return the alerts for one key check."""
+    """Return the alerts for one key check.
+
+    A key alert is closed by replacing the key. A hardware failure may also be
+    closed by replacing the hardware wallet, because the key and its address path
+    stay the same when the same seed is restored on a new device (section 26.4).
+    """
     source = f"Key {key_check.get('key_number')}: {key_check.get('name')}"
     key_id = key_check.get("key_id")
     if key_check.get("available") == 0:
@@ -217,7 +294,7 @@ def _key_alerts(key_check):
             CRITICAL,
             source,
             "The hardware does not work. Test the seed backup on another compatible device.",
-            (ROTATE, ACKNOWLEDGE),
+            (ROTATE, REPLACE_HARDWARE),
             key_id,
         ))
     if key_check.get("seed_backup_verified") == "PROBLEM":
@@ -245,17 +322,22 @@ def _key_alerts(key_check):
 
 
 def _software_alerts(record):
-    """Return the alert for software that no longer supports the hardware."""
-    if record.get("software_compatibility_status") == "PROBLEM":
-        return [_alert(
-            "software_incompatible",
-            CRITICAL,
-            "Software compatibility",
-            "The software no longer supports the hardware. Add alternative software "
-            "in the settings, then close this alert.",
-            (ACKNOWLEDGE,),
-        )]
-    return []
+    """Return the alert for software that no longer supports the hardware.
+
+    The source is the software that produced the result, so the alert, the
+    settings link, and the removal point at the right entry (section 26.7).
+    """
+    if record.get("software_compatibility_status") != "PROBLEM":
+        return []
+    software = (record.get("wallet_software") or "").strip() or None
+    return [_alert(
+        "software_incompatible",
+        CRITICAL,
+        software or _SOFTWARE_SOURCE,
+        _SOFTWARE_INCOMPATIBLE_MESSAGE,
+        (REMOVE_SOFTWARE,),
+        software=software,
+    )]
 
 
 def _security_alerts(security_check, key_ids):
@@ -263,33 +345,37 @@ def _security_alerts(security_check, key_ids):
 
     The source of a security alert is the provider. When that provider is the
     key's own configured name, the key is the source and a rotation closes the
-    alert; otherwise the provider is the software the key runs with, and only a
-    plain acknowledgement closes it (section 25.3).
+    alert; otherwise the provider is the software the key runs with, so the alert
+    names it and is closed by removing it from the settings (sections 25.3, 26.4
+    and 26.7). A compromised key or software can never be ignored: the key must
+    be replaced, and the software must be removed.
     """
     provider = security_check.get("provider")
     status = security_check.get("status")
     key_id = key_ids.get(provider)
+    software = None if key_id is not None else provider
 
     if status == "VULNERABLE":
-        actions = (ROTATE, ACKNOWLEDGE) if key_id is not None else (ACKNOWLEDGE,)
+        actions = (ROTATE, IGNORE) if key_id is not None else (REMOVE_SOFTWARE, IGNORE)
         return [_alert(
             "security_vulnerable",
             CRITICAL,
             provider,
-            "Security status VULNERABLE: the firmware or security problem must be followed up.",
+            _VULNERABLE_MESSAGE,
             actions,
             key_id,
+            software,
         )]
     if status == "COMPROMISED":
-        # A compromised key must be replaced, so closing is not enough there.
-        actions = (ROTATE,) if key_id is not None else (ACKNOWLEDGE,)
+        actions = (ROTATE,) if key_id is not None else (REMOVE_SOFTWARE,)
         return [_alert(
             "security_compromised",
             CRITICAL,
             provider,
-            "Security status COMPROMISED: follow the key loss procedure.",
+            _COMPROMISED_MESSAGE,
             actions,
             key_id,
+            software,
         )]
     return []
 
@@ -305,8 +391,7 @@ def _contact_alerts(record):
             "contact_info_unconfirmed",
             INFO,
             "Contact information",
-            "The contact details for this key need an external update. "
-            "Update them in your external documentation, then close this alert.",
-            (ACKNOWLEDGE,),
+            _CONTACT_MESSAGE,
+            (CONTACT_UPDATED,),
         )]
     return []
