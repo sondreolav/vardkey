@@ -8,7 +8,14 @@ import re
 import sqlite3
 from urllib.parse import urlsplit
 
-from alerts import build_alerts, collect_alerts, rotation_alert_targets
+from alerts import (
+    REMOVE_SOFTWARE,
+    ROTATE,
+    build_alerts,
+    collect_alerts,
+    rotation_alert_targets,
+    software_alert_targets,
+)
 from database import (
     get_health_check,
     initialize_database,
@@ -28,6 +35,7 @@ from database import (
 )
 from export import build_csv
 from validation import (
+    DuplicateAddressPath,
     ValidationError,
     validate_acknowledgement,
     validate_health_check,
@@ -58,9 +66,12 @@ EXPORT_FILENAME = "helsesjekk-export.csv"
 MAX_REQUEST_BYTES = 262144
 # Errors that mean the stored data cannot be served as it stands.
 STORAGE_ERRORS = (OSError, sqlite3.Error, ValueError, RuntimeError)
-# A rotation closes the alerts of the key it replaces, so the acknowledgement it
-# writes carries the reason it was closed (sections 25.2 and 25.3).
-ROTATION_REASON = "The key was replaced by a rotation, so this alert was closed."
+# An alert is closed by the action that belongs to it, and the stored
+# acknowledgement carries the action name as its reason (section 26.4). A
+# rotation replaces the key, while the removal of a failing software from the
+# settings closes the alerts that software raised (sections 26.3 and 26.7).
+ROTATION_REASON = ROTATE
+REMOVAL_REASON = REMOVE_SOFTWARE
 
 
 def get_database_path():
@@ -85,6 +96,19 @@ def newest_alert_check_id(records, code, source):
             if newest is None or check_id > newest:
                 newest = check_id
     return newest
+
+
+def blocking_alert(alerts, key_id):
+    """Return the open alert that blocks a key, or None.
+
+    A key with an open alert cannot get a new check until the alert is closed
+    (section 26.1). The alert is returned, so the caller can name it in the
+    answer.
+    """
+    for alert in alerts:
+        if alert.get("key_id") == key_id:
+            return alert
+    return None
 
 
 class AppHandler(BaseHTTPRequestHandler):
@@ -171,11 +195,12 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_error(404, "Not Found")
 
     def _save_setup(self):
-        """Store the key setup once, because the names and types are locked.
+        """Store the key setup once, because the names, types, and paths are locked.
 
         A new database has no key rows yet, so the first-run setup step is the
         only way they are written (section 23.2). The address path is part of the
-        setup and is locked with the rest (section 25.1).
+        setup and is locked with the rest, and no two keys may share one
+        (sections 25.1 and 26.2).
         """
         try:
             payload = self._read_json_body()
@@ -207,7 +232,12 @@ class AppHandler(BaseHTTPRequestHandler):
         self._send_json(201, {"configured": True, "keys": keys})
 
     def _save_health_check(self):
-        """Store one validated health check for a single selected key."""
+        """Store one validated health check for a single selected key.
+
+        A key with an open alert cannot get a new check, and the rule is enforced
+        here as well as in the form, so a direct API call cannot bypass it
+        (section 26.1).
+        """
         try:
             payload = self._read_json_body()
         except ValueError as error:
@@ -217,6 +247,15 @@ class AppHandler(BaseHTTPRequestHandler):
         database_path = get_database_path()
         try:
             keys = list_keys(database_path)
+            blocked = self._blocking_alert(payload, database_path)
+            if blocked is not None:
+                self._send_json(409, {
+                    "error": (
+                        f"This key has an open alert ({blocked['code']}). "
+                        "Close the alert before recording a new check."
+                    )
+                })
+                return
             # The wallet software choices are the settings list and the name of
             # every configured cloud key (section 25.4).
             software_names = list_wallet_software(database_path)
@@ -231,12 +270,28 @@ class AppHandler(BaseHTTPRequestHandler):
 
         self._send_json(201, {"id": health_check_id})
 
+    def _blocking_alert(self, payload, database_path):
+        """Return the open alert that blocks the submitted key, or None.
+
+        The key id is read straight from the payload, so the rule is applied
+        before the rest of the submission is validated and a blocked key always
+        answers ``409``. A payload without a usable key id is left to validation,
+        which reports it as a ``400`` (section 26.1).
+        """
+        entry = payload.get("key_check") if isinstance(payload, dict) else None
+        key_id = entry.get("key_id") if isinstance(entry, dict) else None
+        if isinstance(key_id, bool) or not isinstance(key_id, int):
+            return None
+        records = self._health_check_records(database_path)
+        acknowledgements = list_alert_acknowledgements(database_path)
+        return blocking_alert(collect_alerts(records, acknowledgements), key_id)
+
     def _save_key_settings(self):
         """Store the name of one key, and its address path while it is unlocked.
 
         The name is only a label. The address path is part of the key's identity,
-        so it may only be changed while the key has no saved check
-        (sections 25.1 and 25.2).
+        so it may only be changed while the key has no saved check, and it may
+        never belong to another key (sections 25.1, 25.2 and 26.2).
         """
         try:
             payload = self._read_json_body()
@@ -259,6 +314,11 @@ class AppHandler(BaseHTTPRequestHandler):
                 entry["key_id"], entry["name"], entry["address_path"], database_path
             )
             settings = self._settings_payload(database_path)
+        except DuplicateAddressPath as error:
+            # The path already belongs to another key, which the settings answer
+            # with 409 (section 26.2).
+            self._send_json(409, {"error": str(error)})
+            return
         except ValidationError as error:
             self._send_json(400, {"error": str(error)})
             return
@@ -272,7 +332,9 @@ class AppHandler(BaseHTTPRequestHandler):
         """Replace the whole wallet software list (section 25.4).
 
         The list is stored whole, so removing an entry never touches a saved
-        check: the selected software is kept as free text there.
+        check: the selected software is kept as free text there. Removing an
+        entry closes the alerts that software raised, because the failing
+        software is gone from the settings (section 26.7).
         """
         try:
             payload = self._read_json_body()
@@ -283,8 +345,10 @@ class AppHandler(BaseHTTPRequestHandler):
         database_path = get_database_path()
         try:
             keys = list_keys(database_path)
+            stored = list_wallet_software(database_path)
             names = validate_wallet_software(payload, keys)
             save_wallet_software(names, database_path)
+            closed = self._close_removed_software(stored, names, database_path)
             software = list_wallet_software(database_path)
         except ValidationError as error:
             self._send_json(400, {"error": str(error)})
@@ -293,13 +357,44 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json(500, {"error": "The wallet software list could not be saved"})
             return
 
-        self._send_json(200, {"wallet_software": software})
+        self._send_json(200, {
+            "wallet_software": software,
+            "acknowledged": [
+                {"code": code, "source": source} for code, source in closed
+            ],
+        })
+
+    def _close_removed_software(self, stored, names, database_path):
+        """Close the alerts of the wallet software that was removed.
+
+        A software alert is closed by removing the failing software from the
+        settings, which is exactly what the alert offers (section 26.7). The
+        stored acknowledgement carries the action name as its reason
+        (section 26.4).
+        """
+        kept = {name.casefold() for name in names}
+        removed = [name for name in stored if name.casefold() not in kept]
+        if not removed:
+            return []
+        records = self._health_check_records(database_path)
+        acknowledgements = list_alert_acknowledgements(database_path)
+        targets = software_alert_targets(records, acknowledgements, removed)
+        for code, source in targets:
+            save_alert_acknowledgement(
+                code,
+                source,
+                newest_alert_check_id(records, code, source),
+                REMOVAL_REASON,
+                database_path,
+            )
+        return targets
 
     def _rotate_key(self, key_id):
-        """Replace one key, keep or change its name, and close its alerts.
+        """Replace one key with a new one, keep or change its name, and close its alerts.
 
-        The type and the address path are locked, and no earlier check is
-        changed (section 25.2).
+        The rotation replaces the key, so it requires a new, unique address path:
+        the type is locked, the old path is refused, and no earlier check is
+        changed (sections 26.2 and 26.3).
         """
         try:
             payload = self._read_json_body()
@@ -325,7 +420,7 @@ class AppHandler(BaseHTTPRequestHandler):
             save_key_settings(
                 key["id"],
                 rotation["name"] or key["name"],
-                key["address_path"],
+                rotation["address_path"],
                 database_path,
             )
             for code, source in targets:
@@ -352,10 +447,11 @@ class AppHandler(BaseHTTPRequestHandler):
         })
 
     def _acknowledge_alert(self):
-        """Close one alert until a newer check for the same code and source.
+        """Close one alert with the action that belongs to it.
 
-        The acknowledgement stores the newest check that raised the alert, so a
-        newer check raises it again (section 25.3).
+        The action is stored as the reason, and the acknowledgement stores the
+        newest check that raised the alert, so a newer check for the same code
+        and source raises it again (sections 25.3 and 26.4).
         """
         try:
             payload = self._read_json_body()
@@ -378,12 +474,22 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json(500, {"error": "Alerts are unavailable"})
             return
 
-        active = any(
-            alert["code"] == entry["code"] and alert["source"] == entry["source"]
-            for alert in alerts
+        alert = next(
+            (
+                item for item in alerts
+                if item["code"] == entry["code"] and item["source"] == entry["source"]
+            ),
+            None,
         )
-        if not active:
+        if alert is None:
             self._send_json(404, {"error": "Alert not found"})
+            return
+        # The action has to belong to the alert, so a control that this alert does
+        # not offer cannot close it (section 26.4).
+        if entry["action"] not in alert["actions"]:
+            self._send_json(400, {
+                "error": f"{entry['action']} does not close this alert"
+            })
             return
 
         try:
@@ -391,7 +497,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 entry["code"],
                 entry["source"],
                 newest_alert_check_id(records, entry["code"], entry["source"]),
-                entry["reason"],
+                entry["action"],
                 database_path,
             )
         except STORAGE_ERRORS:
@@ -402,6 +508,7 @@ class AppHandler(BaseHTTPRequestHandler):
             "acknowledged": True,
             "code": entry["code"],
             "source": entry["source"],
+            "action": entry["action"],
         })
 
     def _send_setup(self):
@@ -478,7 +585,9 @@ class AppHandler(BaseHTTPRequestHandler):
         Every saved check is read, so a warning is never lost when a newer check
         for another key is saved. Identical alerts are merged by
         ``collect_alerts``, and acknowledged alerts are left out until a newer
-        check raises them again (sections 21 and 25.3).
+        check raises them again (sections 21 and 25.3). Every alert names the
+        actions that close it and the software it is about, when it is about one
+        (sections 26.4 and 26.7).
         """
         database_path = get_database_path()
         try:
