@@ -229,13 +229,27 @@ class KeySetupTests(unittest.TestCase):
                 validate_key_setup(payload)
 
     def test_the_address_path_is_required_for_every_key(self):
+        # ``entry()`` fills in the path of the key slot, so the value is set
+        # explicitly here: an empty, non-text or missing path is refused
+        # (section 25.1).
         for value in ("", "   ", None, 12):
+            first = entry(1, "ColdCard", "hardware")
+            first["address_path"] = value
             with self.assertRaises(ValidationError):
                 validate_key_setup({"keys": [
-                    entry(1, "ColdCard", "hardware", value),
+                    first,
                     entry(2, "Jade", "hardware"),
                     entry(3, "Nunchuk", "cloud"),
                 ]})
+
+        missing = entry(1, "ColdCard", "hardware")
+        del missing["address_path"]
+        with self.assertRaises(ValidationError):
+            validate_key_setup({"keys": [
+                missing,
+                entry(2, "Jade", "hardware"),
+                entry(3, "Nunchuk", "cloud"),
+            ]})
 
     def test_an_over_long_address_path_is_rejected(self):
         with self.assertRaises(ValidationError):
