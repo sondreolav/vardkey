@@ -35,7 +35,8 @@ class HealthCheckFormTests(unittest.TestCase):
         eyebrows = re.findall(r'<p class="eyebrow">([^<]+)</p>', html)
 
         # The page heading comes first, and the form is renumbered with
-        # 04 / Standards gone (section 24.3).
+        # 04 / Standards gone (section 24.3). The blocked-keys note adds no
+        # section of its own (section 26.1).
         self.assertEqual(
             eyebrows,
             [
@@ -267,6 +268,33 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("updateSoftwareVersionValue", script)
         self.assertNotIn('key.type === "hardware"\n    && previous', script)
 
+    def test_form_marks_the_keys_that_an_open_alert_blocks(self):
+        html = read_static("health-check.html")
+        script = read_static("health-check.js")
+        # The form names the alert that stands in the way, the action that closes
+        # it, and the keys that are still free (section 26.1).
+        self.assertIn('id="blocked-keys-note"', html)
+        self.assertIn('id="blocked-keys-list"', html)
+        self.assertIn("Open the dashboard to close the alerts", html)
+        self.assertIn("A blocked key is marked in the list and cannot be selected", html)
+        self.assertIn("/api/alerts", script)
+        self.assertIn("blockingAlerts", script)
+        self.assertIn("blockedKeyIds", script)
+        self.assertIn("renderBlockedKeysNote", script)
+        self.assertIn("blocked by an open alert", script)
+        self.assertIn("option.disabled = true", script)
+        self.assertIn("Close it with:", script)
+        self.assertIn("Keys that can still be checked:", script)
+        self.assertIn("No key can be checked until an alert is closed.", script)
+        # The action that closes an alert has its own wording (section 26.4).
+        self.assertIn("ACTION_LABELS", script)
+        self.assertIn('rotate: "Rotate key"', script)
+        self.assertIn('replace_hardware: "Replace hardware"', script)
+        self.assertIn('ignore: "Ignore alert"', script)
+        self.assertIn('contact_updated: "Contact details updated"', script)
+        # The server refuses the submission as well, so the form and the API agree.
+        self.assertIn("open alert and cannot be checked until", script)
+
     def test_dashboard_shows_every_alert_with_its_check_date(self):
         script = read_static("app.js")
         styles = read_static("styles.css")
@@ -274,19 +302,61 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("alert.checked_at", script)
         self.assertIn(".alert-origin", styles)
 
+    def test_dashboard_key_card_shows_an_open_alert(self):
+        script = read_static("app.js")
+        styles = read_static("styles.css")
+        # A key with an open alert shows a message instead of its ordinary status
+        # (section 26.5).
+        self.assertIn("alertsForKey", script)
+        self.assertIn('status.className = "status status-alert"', script)
+        self.assertIn("Needs action", script)
+        self.assertIn("cannot be checked until", script)
+        self.assertIn("createKeyAlertNote", script)
+        self.assertIn("Close it with:", script)
+        self.assertIn("#alerts-list", script)
+        self.assertIn("Open the alert list", script)
+        self.assertIn(".status-alert", styles)
+        self.assertIn(".key-alert-note", styles)
+        self.assertIn(".key-alert-message", styles)
+        self.assertIn(".key-alert-detail", styles)
+
     def test_dashboard_offers_the_closing_action_of_every_alert(self):
         script = read_static("app.js")
-        # Every alert names the actions that close it, and each action asks for a
-        # confirmation from the user (section 25.3).
+        # Every alert names the actions that close it, and each action has its own
+        # button text and confirmation step (section 26.4).
         self.assertIn("alert.actions", script)
         self.assertIn("alert.key_id", script)
-        self.assertIn("Rotate key", script)
+        self.assertIn("ACTION_LABELS", script)
+        self.assertIn('rotate: "Rotate key"', script)
+        self.assertIn('replace_hardware: "Replace hardware"', script)
+        self.assertIn('remove_software: "Remove software"', script)
+        self.assertIn('ignore: "Ignore alert"', script)
+        self.assertIn('contact_updated: "Contact details updated"', script)
+        self.assertIn("ACTION_CONFIRMATIONS", script)
+        self.assertIn("I have replaced the hardware wallet and restored the same seed on the new device.", script)
+        self.assertIn("I have updated the contact details in my external documentation.", script)
+        self.assertIn("createConfirmControl", script)
         self.assertIn("/settings?rotate=", script)
-        self.assertIn("Close alert", script)
-        self.assertIn("Confirm close", script)
-        self.assertIn("Reason for closing this alert", script)
         self.assertIn("/api/alerts/acknowledge", script)
         self.assertIn("acknowledgeAlert", script)
+        # The removed generic acknowledgement is gone.
+        self.assertNotIn("Close alert", script)
+        self.assertNotIn("Confirm close", script)
+        self.assertNotIn("Reason for closing this alert", script)
+        self.assertNotIn("acknowledge: ", script)
+
+    def test_dashboard_removes_the_failing_software_from_the_settings(self):
+        script = read_static("app.js")
+        # Removing the failing software closes a software alert, and the alert
+        # points at the right settings entry (section 26.7).
+        self.assertIn("/api/settings", script)
+        self.assertIn("walletSoftware", script)
+        self.assertIn("createRemoveSoftwareControl", script)
+        self.assertIn("removeSoftware", script)
+        self.assertIn("/api/settings/wallet-software", script)
+        self.assertIn("from the settings", script)
+        self.assertIn("Open the settings", script)
+        self.assertIn("walletSoftware.length > 1", script)
 
     def test_dashboard_sends_to_the_key_setup_when_it_is_missing(self):
         script = read_static("app.js")
@@ -333,17 +403,23 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn('id="save-software"', html)
         self.assertIn('id="rotate-keys"', html)
 
-    def test_the_settings_page_warns_about_moving_the_funds(self):
+    def test_the_settings_page_warns_about_moving_the_funds_and_changing_the_path(self):
         html = read_static("settings.html")
         # Rotating a key creates a new wallet, so the funds have to be moved
-        # (section 25.2).
+        # (section 25.2), and the key is a new one, so its path has to change
+        # (section 26.3).
         self.assertIn("Rotating a key creates a new wallet", html)
         self.assertIn("Move your funds from the old multisig setup to the new one", html)
         self.assertIn("Do not discard the old keys", html)
+        self.assertIn("The address path must change", html)
+        self.assertIn("Every key needs its own new path", html)
         self.assertIn('id="rotation-replaced"', html)
-        self.assertIn('id="rotation-path-unchanged"', html)
         self.assertIn("I confirm that each selected key has been replaced", html)
-        self.assertIn("I confirm that the address path of each selected key is unchanged", html)
+        # The unchanged-path confirmation is gone (section 26.3).
+        self.assertNotIn('id="rotation-path-unchanged"', html)
+        self.assertNotIn("address path of each selected key is unchanged", html)
+        # Removing an entry closes the alerts that software raised (section 26.7).
+        self.assertIn("Removing an entry also closes the alerts that software raised", html)
 
     def test_the_settings_script_stores_the_list_whole_and_rotates(self):
         script = read_static("settings.js")
@@ -355,7 +431,6 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("collectSoftware", script)
         self.assertIn("collectRotation", script)
         self.assertIn("keep_name", script)
-        self.assertIn("address_path_unchanged", script)
         self.assertIn("replaced", script)
         # The address path is locked as soon as the key has a saved check, and the
         # name may always be changed (sections 25.1 and 25.2).
@@ -363,6 +438,21 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("pathInput.disabled", script)
         # A link from the dashboard pre-selects the key it points at.
         self.assertIn("requestedRotation", script)
+        # The rotation records a new, unique address path (sections 26.2 and 26.3).
+        self.assertIn("rotation-path", script)
+        self.assertIn("New address path", script)
+        self.assertIn("rotation_path_", script)
+        self.assertIn("address_path: pathInput ? pathInput.value.trim() : \"\"", script)
+        self.assertIn("address_path: entry.address_path", script)
+        self.assertIn("Write the new address path of every selected key", script)
+        # The name field starts on the name the key has now (section 26.3).
+        self.assertIn("makeTextInput(key.name, 60)", script)
+        # The removed confirmation is gone.
+        self.assertNotIn("address_path_unchanged", script)
+        self.assertNotIn("rotationPathUnchanged", script)
+        # Removing an entry closes the alerts that software raised (section 26.7).
+        self.assertIn("acknowledged", script)
+        self.assertIn("raised by the removed software were closed", script)
 
     def test_history_shows_a_note_when_no_security_status_was_recorded(self):
         script = read_static("history.js")
@@ -393,6 +483,14 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn(".field-grid[hidden]", styles)
         self.assertIn(".form-section[hidden]", styles)
 
+    def test_stylesheet_separates_the_rotation_note_from_the_list(self):
+        html = read_static("settings.html")
+        styles = read_static("styles.css")
+        # Only the spacing between the warning note and the rotation list changes
+        # (section 26.6).
+        self.assertIn('class="form-stack rotation-list"', html)
+        self.assertIn(".rotation-list { margin-top: 22px; }", styles)
+
     def test_stylesheet_covers_the_new_elements(self):
         styles = read_static("styles.css")
         for rule in (
@@ -401,6 +499,8 @@ class HealthCheckFormTests(unittest.TestCase):
             ".software-row",
             ".alert-actions",
             ".topbar-actions",
+            ".status-alert",
+            ".key-alert-note",
         ):
             self.assertIn(rule, styles)
 
