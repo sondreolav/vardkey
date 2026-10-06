@@ -47,8 +47,17 @@
             <p class="eyebrow">02 / Key</p>
             <h2 id="key-checks-title">Key check</h2>
           </div>
+          <!-- A key with an open alert cannot get a new check until the alert is
+               closed, and the note names the alert, the action that closes it, and
+               the keys that are free (section 26.1). -->
+          <div class="warning-note" id="blocked-keys-note" role="note" hidden>
+            <p><strong>One or more keys have an open alert.</strong> A key with an open alert cannot get a new check until the alert is closed, because the alert is closed by the user and not by a newer check.</p>
+            <ul id="blocked-keys-list"></ul>
+            <p><a class="back-link" href="/">Open the dashboard to close the alerts</a></p>
+          </div>
           <label class="field"><span>Key being checked</span><select id="key-select" name="key_id" required><option value="">Select a key</option></select></label>
           <p class="field-help">One submission records one key. The other keys keep their own next check date.</p>
+          <p class="field-help">A blocked key is marked in the list and cannot be selected. The other keys can still be checked.</p>
           <p class="field-help">The recorded address path is compared with the path stored for the key, and the result is recorded automatically.</p>
           <div id="key-check" class="form-stack"><p class="empty-state">Loading key profiles…</p></div>
           <!-- The warning appears when the recorded address path does not match the
