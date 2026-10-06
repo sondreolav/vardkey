@@ -245,7 +245,7 @@ Alle lagra kontrollar blir lesne (§21). Kva som kan lukke eit varsel, står i �
 - [ ] Kvar varselkode har ei fast sett av handlingar, kvar med sin eigen knappetekst og eige stadfestingssteg. Den generiske kvitteringa er fjerna (§26.4).
 - [ ] `hardware_failure` har `rotate` og `replace_hardware`, og ingen generisk kvittering (§26.4).
 - [ ] `software_incompatible` blir lukka ved at den feilande programvara blir fjerna frå innstillingane (§26.4, §26.7).
-- [ ] `security_compromised` med nøkkel som kjelde kan berre lukkast med rotering (§26.4).
+- [ ] `security_compromised` har ingen `ignore`, korkje med nøkkel eller programvare som kjelde (§26.4).
 
 ---
 
@@ -604,13 +604,13 @@ Bakgrunnen for 26.1: samanslåinga i §21 held fram, så eit varsel frå ein gam
 - [ ] Innstillingane avviser det same, med `409`.
 - [ ] Rotering avviser det same, med `400` (§26.3).
 - [ ] Samanlikninga skjer etter `strip` og utan omsyn til store og små bokstavar, slik at to stiar som berre skil seg i bokstavstorleik tel som like.
-- [ ] Ei eldre testdatabase kan ha to nøklar med same sti, sidan §25 tillét det. Appen skal ikkje krasje: innstillingane viser kva nøklar som kolliderer, og ein ny kontroll for ein slik nøkkel blir avvist med ei melding om at stien må endrast først. Korleis dette skal handsamast må stadfestast med brukaren (§26.8).
+- [x] Ingen omsyn til ein eldre database med to like stiar. Brukaren slettar `data`-mappa og gjer oppsettet på nytt, så eit slikt duplikat kan ikkje oppstå.
 - [ ] `README.md`, `TODO.md` og `ai-note.md` skal oppdaterast.
 
 ## 26.3 Rotering gir ein ny adressesti
 
 - [ ] Målet med rotering er å byte ut nøkkelen med ein annan. Nøkkelen held same nøkkelnummer.
-- [ ] Namnet kan haldast eller endrast. Tekstfeltet i innstillingane er førehandsfylt med namnet nøkkelen har no.
+- [ ] Namnet kan haldast eller endrast. Tekstfeltet i innstillingane er førehandsutfylt med namnet nøkkelen har no.
 - [ ] Adressestien **må** bytast. Brukaren skriv inn ein ny sti, som må vere unik (§26.2). Den gamle stien blir avvist, og ein tom verdi blir avvist.
 - [ ] `POST /api/keys/<id>/rotate` tek `replaced`, `keep_name`, `name` og den nye `address_path`. Stadfestinga `address_path_unchanged` er fjerna.
 - [ ] Rotering oppdaterer nøkkelraden, lukkar varsla nøkkelen sjølv har heva, og gjer inga endring i tidlegare kontrollar.
@@ -634,14 +634,14 @@ Bakgrunnen for 26.1: samanslåinga i §21 held fram, så eit varsel frå ein gam
 | `security_vulnerable` | nøkkel | `rotate`, `ignore` |
 | `security_vulnerable` | programvare | `remove_software`, `ignore` |
 | `security_compromised` | nøkkel | `rotate` |
-| `security_compromised` | programvare | `remove_software`, `ignore` |
+| `security_compromised` | programvare | `remove_software` |
 | `contact_info_unconfirmed` | kontaktinfo | `contact_updated` |
 
 - [ ] `hardware_failure` mistar den generiske kvitteringa, fordi `replace_hardware` gjer den same jobben: brukaren stadfestar at hardware-walleten er bytt ut med ein ny, med same seed lasta inn. Nøkkelen og adressestien er uendra.
 - [ ] Knappeteksten for `replace_hardware` blir til dømes `Replace hardware`, med stadfestinga «I have replaced the hardware wallet and restored the same seed on the new device.»
 - [ ] `software_incompatible` mistar den generiske kvitteringa, fordi `remove_software` lukkar varselet (§26.7).
 - [ ] `security_vulnerable` med nøkkel som kjelde kan roterast eller ignorerast, og ignoreringa krev eit stadfestingssteg.
-- [ ] `security_compromised` med nøkkel som kjelde kan berre roterast, og har inga ignorering.
+- [ ] `security_compromised` har ingen `ignore`, korkje med nøkkel eller programvare som kjelde. Med nøkkel som kjelde kan han berre roterast, og med programvare som kjelde berre lukkast ved å fjerne programvara.
 - [ ] `contact_info_unconfirmed` blir lukka med `contact_updated`, med stadfestinga «I have updated the contact details in my external documentation.»
 - [ ] Eit varsel utan handlingar er ein feil i koden, og ein test skal dekkje det.
 
@@ -659,18 +659,15 @@ Bakgrunnen for 26.1: samanslåinga i §21 held fram, så eit varsel frå ein gam
 ## 26.7 Varselet om programvare-inkompatibilitet
 
 - [ ] `software_incompatible` får ei melding som forklarer at den valde programvara ikkje lenger støttar hardwaren, og ei lenkje til innstillingane, der brukaren kan leggje til ei anna programvare.
-- [ ] Programvara som fekk varselet blir fjerna frå lista når brukaren har lagd til ei ny. Å fjerne ho lukkar varselet.
-- [ ] Er ho det einaste elementet i lista, må brukaren leggje til ei ny programvare først, sidan lista aldri kan bli tom (§25.4). Meldinga skal seie det.
-- [ ] Er det andre element i lista, får brukaren ein knapp som fjernar den feilande programvara, og varselet blir borte med ho.
-- [ ] Det same gjeld `security_vulnerable` og `security_compromised` når kjelda er programvara: same melding, same lenkje og same fjerning.
-- [ ] Varselet må oppgje kva programvare som fekk resultatet, slik at lenkja og fjerninga peikar på rett element.
-- [ ] Tilrådd mekanisme: varselet blir undertrykt medan den feilande programvara ikkje lenger står i lista, sidan det er tilstanden brukaren ser. Å lagre ei kvittering i staden er òg mogleg, men då må han haldast i samsvar med lista.
+- [ ] Varselet blir lukka ved at brukaren fjernar den feilande programvara i innstillingane, etter at ei ny er lagd til.
+- [ ] Er ho det einaste elementet i lista, må brukaren leggje til ei ny programvare først, sidan lista aldri kan bli tom (§25.4). Meldinga skal seie det, og lenkja skal føre til innstillingane.
+- [ ] Er det andre element i lista, får brukaren ein enkel knapp i sjølve varselet som fjernar den feilande programvara, og varselet blir borte med ho.
+- [ ] Det same gjeld `security_vulnerable` når kjelda er programvara: same melding, same lenkje og same fjerning.
+- [ ] Varselet må oppgje kva programvare som fekk resultatet, slik at lenkja, knappen og fjerninga peikar på rett element.
 - [ ] Å fjerne eit listeelement rører ikkje lagra kontrollar, sidan `wallet_software` i `health_checks` er fri tekst.
 
-## 26.8 Ope spørsmål, testar og dokumentasjon
+## 26.8 Testar og dokumentasjon
 
-- [ ] Stadfest med brukaren korleis ein eldre database med to like adressestiar skal handsamast (§26.2).
-- [ ] Stadfest med brukaren om `ignore` òg skal gjelde for `security_compromised` med programvare som kjelde (§26.4).
-- [ ] Stadfest med brukaren kva mekanisme som skal lukke `software_incompatible` når programvara blir fjerna (§26.7).
-- [ ] Testar for alle punkta over, i tillegg til dei som alt står i §16.
-- [ ] `README.md`, `TODO.md` og `ai-note.md` skal oppdaterast når dette er implementert.
+- [x] §26.8 er svara på 04.10.2026: ingen omsyn til eldre databasar (§26.2), ingen `ignore` på `security_compromised` (§26.4), og `software_incompatible` lukkast ved å fjerne programvara i innstillingane (§26.7).
+- [x] Testar: alt som er implementert i §26 skal ha testar. Funksjonalitet som blir fjerna skal ikkje testast.
+- [x] Dokumentasjon: `README.md`, `TODO.md` og `ai-note.md` skal oppdaterast når §26 er ferdig, eller undervegs dersom arbeidet blir delt opp.
