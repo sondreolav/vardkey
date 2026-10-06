@@ -3,6 +3,7 @@
 import unittest
 
 from validation import (
+    DuplicateAddressPath,
     ValidationError,
     next_check_due,
     validate_acknowledgement,
@@ -14,20 +15,29 @@ from validation import (
 )
 
 
-# The address path the keys are configured with (section 25.1).
+# The address path each key slot is configured with (sections 25.1 and 26.2).
 ADDRESS_PATH = "m/48'/0'/0'/2'"
+SECOND_ADDRESS_PATH = "m/48'/1'/0'/2'"
+THIRD_ADDRESS_PATH = "m/48'/2'/0'/2'"
+# A new, unique path a rotation can record (section 26.3).
+NEW_ADDRESS_PATH = "m/48'/7'/0'/2'"
+SLOT_PATHS = {
+    1: ADDRESS_PATH,
+    2: SECOND_ADDRESS_PATH,
+    3: THIRD_ADDRESS_PATH,
+}
 KEYS = (
     {"id": 1, "key_number": 1, "name": "SeedSigner", "type": "hardware", "address_path": ADDRESS_PATH},
-    {"id": 2, "key_number": 2, "name": "Blockstream Jade", "type": "hardware", "address_path": ADDRESS_PATH},
-    {"id": 3, "key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": ADDRESS_PATH},
+    {"id": 2, "key_number": 2, "name": "Blockstream Jade", "type": "hardware", "address_path": SECOND_ADDRESS_PATH},
+    {"id": 3, "key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": THIRD_ADDRESS_PATH},
 )
 # A setup with the cloud key in the first slot, renamed hardware keys, and a
 # different address path per key, to show that the comparison is per key and that
 # the type decides the checks and never the key number.
 RENAMED_KEYS = (
     {"id": 1, "key_number": 1, "name": "Coinbase", "type": "cloud", "address_path": ADDRESS_PATH},
-    {"id": 2, "key_number": 2, "name": "ColdCard", "type": "hardware", "address_path": "m/48'/1'/0'/2'"},
-    {"id": 3, "key_number": 3, "name": "Jade", "type": "hardware", "address_path": "m/48'/2'/0'/2'"},
+    {"id": 2, "key_number": 2, "name": "ColdCard", "type": "hardware", "address_path": SECOND_ADDRESS_PATH},
+    {"id": 3, "key_number": 3, "name": "Jade", "type": "hardware", "address_path": THIRD_ADDRESS_PATH},
 )
 # The wallet software list the settings hold (section 25.4).
 SOFTWARE_NAMES = ("Sparrow Wallet",)
@@ -38,13 +48,22 @@ def key_for(key_number, keys=KEYS):
     return next(entry for entry in keys if entry["key_number"] == key_number)
 
 
-def entry(key_number, name, key_type, address_path=ADDRESS_PATH):
-    """Return one key of a setup payload."""
+def path_for(key_number):
+    """Return the address path of a key slot, so a setup never repeats one."""
+    return SLOT_PATHS.get(key_number, ADDRESS_PATH)
+
+
+def entry(key_number, name, key_type, address_path=None):
+    """Return one key of a setup payload.
+
+    The address path defaults to the path of that key slot, so a valid setup
+    keeps one path per key unless a test asks for another one (section 26.2).
+    """
     return {
         "key_number": key_number,
         "name": name,
         "type": key_type,
-        "address_path": address_path,
+        "address_path": path_for(key_number) if address_path is None else address_path,
     }
 
 
@@ -226,16 +245,39 @@ class KeySetupTests(unittest.TestCase):
                 entry(3, "Nunchuk", "cloud"),
             ]})
 
-    def test_two_keys_may_share_an_address_path(self):
-        # The three keys of one multisig setup normally share their derivation
-        # path, so the path is not unique (section 25.1).
+    def test_two_keys_may_not_share_an_address_path(self):
+        # The address path is part of the identity of a key, so no two keys may
+        # share one, and the message names the key that already has it
+        # (section 26.2).
+        with self.assertRaises(ValidationError) as context:
+            validate_key_setup({"keys": [
+                entry(1, "ColdCard", "hardware", ADDRESS_PATH),
+                entry(2, "Jade", "hardware", ADDRESS_PATH),
+                entry(3, "Nunchuk", "cloud"),
+            ]})
+
+        self.assertIn("key 1: ColdCard", str(context.exception))
+
+    def test_the_path_comparison_ignores_case_and_spacing(self):
+        for value in (f"  {ADDRESS_PATH}  ", ADDRESS_PATH.upper()):
+            with self.assertRaises(ValidationError):
+                validate_key_setup({"keys": [
+                    entry(1, "ColdCard", "hardware", ADDRESS_PATH),
+                    entry(2, "Jade", "hardware", value),
+                    entry(3, "Nunchuk", "cloud"),
+                ]})
+
+    def test_each_key_keeps_its_own_path(self):
         result = validate_key_setup({"keys": [
             entry(1, "ColdCard", "hardware"),
             entry(2, "Jade", "hardware"),
             entry(3, "Nunchuk", "cloud"),
         ]})
 
-        self.assertEqual([item["address_path"] for item in result], [ADDRESS_PATH] * 3)
+        self.assertEqual(
+            [item["address_path"] for item in result],
+            [ADDRESS_PATH, SECOND_ADDRESS_PATH, THIRD_ADDRESS_PATH],
+        )
 
 
 class ValidationTests(unittest.TestCase):
@@ -539,7 +581,7 @@ class ValidationTests(unittest.TestCase):
 
         own_path = validate(sample_payload(key_number=2, keys=RENAMED_KEYS), RENAMED_KEYS)
         self.assertEqual(
-            own_path["key_check"]["address_path"], "m/48'/1'/0'/2'"
+            own_path["key_check"]["address_path"], SECOND_ADDRESS_PATH
         )
         self.assertEqual(own_path["key_check"]["address_path_verified"], "OK")
 
@@ -706,7 +748,7 @@ class KeySettingsTests(unittest.TestCase):
                 )
 
         result = validate_key_settings(
-            {"key_id": 3, "name": "Nunchuk", "address_path": ADDRESS_PATH}, KEYS
+            {"key_id": 3, "name": "Nunchuk", "address_path": THIRD_ADDRESS_PATH}, KEYS
         )
         self.assertEqual(result["name"], "Nunchuk")
 
@@ -716,6 +758,30 @@ class KeySettingsTests(unittest.TestCase):
                 validate_key_settings(
                     {"key_id": 1, "name": "ColdCard", "address_path": value}, KEYS
                 )
+
+    def test_a_path_that_another_key_already_has_is_rejected(self):
+        # The settings answer a duplicate path with 409, so the error is kept
+        # apart from the other validation errors (section 26.2).
+        with self.assertRaises(DuplicateAddressPath) as context:
+            validate_key_settings(
+                {"key_id": 2, "name": "Jade", "address_path": ADDRESS_PATH}, KEYS
+            )
+
+        self.assertIn("key 1: SeedSigner", str(context.exception))
+
+    def test_the_comparison_ignores_case_and_spacing(self):
+        for value in (f"  {ADDRESS_PATH}  ", ADDRESS_PATH.upper()):
+            with self.assertRaises(DuplicateAddressPath):
+                validate_key_settings(
+                    {"key_id": 2, "name": "Jade", "address_path": value}, KEYS
+                )
+
+    def test_a_key_may_keep_its_own_path(self):
+        result = validate_key_settings(
+            {"key_id": 2, "name": "Jade", "address_path": SECOND_ADDRESS_PATH}, KEYS
+        )
+
+        self.assertEqual(result["address_path"], SECOND_ADDRESS_PATH)
 
     def test_a_missing_or_wrong_payload_is_rejected(self):
         for payload in ({}, [], {"key_id": 1}, {"name": "ColdCard"}):
@@ -771,10 +837,15 @@ class WalletSoftwareTests(unittest.TestCase):
 class RotationTests(unittest.TestCase):
     def test_keeping_the_name_needs_no_name(self):
         result = validate_rotation(
-            {"replaced": True, "address_path_unchanged": True, "keep_name": True}, KEYS, 1
+            {"replaced": True, "keep_name": True, "address_path": NEW_ADDRESS_PATH}, KEYS, 1
         )
 
-        self.assertEqual(result, {"key_id": 1, "keep_name": True, "name": None})
+        self.assertEqual(result, {
+            "key_id": 1,
+            "keep_name": True,
+            "name": None,
+            "address_path": NEW_ADDRESS_PATH,
+        })
 
     def test_changing_the_name_requires_a_unique_non_empty_name(self):
         for name in ("", "   ", None, 12, "x" * 61, "Nunchuk", "nunchuk"):
@@ -782,9 +853,9 @@ class RotationTests(unittest.TestCase):
                 validate_rotation(
                     {
                         "replaced": True,
-                        "address_path_unchanged": True,
                         "keep_name": False,
                         "name": name,
+                        "address_path": NEW_ADDRESS_PATH,
                     },
                     KEYS,
                     1,
@@ -793,26 +864,32 @@ class RotationTests(unittest.TestCase):
         result = validate_rotation(
             {
                 "replaced": True,
-                "address_path_unchanged": True,
                 "keep_name": False,
                 "name": "  ColdCard  ",
+                "address_path": NEW_ADDRESS_PATH,
             },
             KEYS,
             1,
         )
-        self.assertEqual(result, {"key_id": 1, "keep_name": False, "name": "ColdCard"})
+        self.assertEqual(result, {
+            "key_id": 1,
+            "keep_name": False,
+            "name": "ColdCard",
+            "address_path": NEW_ADDRESS_PATH,
+        })
 
-    def test_the_two_confirmations_are_required(self):
-        for field in ("replaced", "address_path_unchanged"):
-            for value in (None, False, 0, 1, "yes", "true"):
-                payload = {
-                    "replaced": True,
-                    "address_path_unchanged": True,
-                    "keep_name": True,
-                }
-                payload[field] = value
-                with self.assertRaises(ValidationError):
-                    validate_rotation(payload, KEYS, 1)
+    def test_the_replacement_must_be_confirmed(self):
+        for value in (None, False, 0, 1, "yes", "true"):
+            with self.assertRaises(ValidationError):
+                validate_rotation(
+                    {
+                        "replaced": value,
+                        "keep_name": True,
+                        "address_path": NEW_ADDRESS_PATH,
+                    },
+                    KEYS,
+                    1,
+                )
 
     def test_keep_name_must_be_a_boolean(self):
         for value in (None, "yes", 1, 0, ""):
@@ -820,38 +897,90 @@ class RotationTests(unittest.TestCase):
                 validate_rotation(
                     {
                         "replaced": True,
-                        "address_path_unchanged": True,
                         "keep_name": value,
+                        "address_path": NEW_ADDRESS_PATH,
                     },
                     KEYS,
                     1,
                 )
 
+    def test_a_new_address_path_is_required(self):
+        # The rotation replaces the key, so the path has to change, and an empty
+        # value is refused (section 26.3).
+        for value in (None, "", "   ", 12, "m/" + "x" * 200):
+            with self.assertRaises(ValidationError):
+                validate_rotation(
+                    {
+                        "replaced": True,
+                        "keep_name": True,
+                        "address_path": value,
+                    },
+                    KEYS,
+                    1,
+                )
+
+        with self.assertRaises(ValidationError):
+            validate_rotation({"replaced": True, "keep_name": True}, KEYS, 1)
+
+    def test_the_stored_path_is_refused_as_the_new_one(self):
+        # The key is a new one, so its old path may not be recorded again
+        # (section 26.3).
+        for value in (ADDRESS_PATH, f"  {ADDRESS_PATH}  ", ADDRESS_PATH.upper()):
+            with self.assertRaises(ValidationError):
+                validate_rotation(
+                    {
+                        "replaced": True,
+                        "keep_name": True,
+                        "address_path": value,
+                    },
+                    KEYS,
+                    1,
+                )
+
+    def test_a_path_that_another_key_already_has_is_rejected(self):
+        with self.assertRaises(DuplicateAddressPath):
+            validate_rotation(
+                {
+                    "replaced": True,
+                    "keep_name": True,
+                    "address_path": ADDRESS_PATH,
+                },
+                KEYS,
+                2,
+            )
+
     def test_an_unknown_key_is_rejected(self):
         for key_id in (99, None, "1", True):
             with self.assertRaises(ValidationError):
                 validate_rotation(
-                    {"replaced": True, "address_path_unchanged": True, "keep_name": True},
+                    {
+                        "replaced": True,
+                        "keep_name": True,
+                        "address_path": NEW_ADDRESS_PATH,
+                    },
                     KEYS,
                     key_id,
                 )
 
-    def test_the_type_and_the_path_are_never_part_of_the_rotation(self):
-        # The type is locked and the path must be confirmed as unchanged, so
-        # neither is read from the payload (section 25.2).
+    def test_the_type_is_never_part_of_the_rotation(self):
+        # The type is locked and is never read from the payload (section 25.2).
         result = validate_rotation(
             {
                 "replaced": True,
-                "address_path_unchanged": True,
                 "keep_name": True,
+                "address_path": NEW_ADDRESS_PATH,
                 "type": "cloud",
-                "address_path": "m/48'/9'/0'/2'",
             },
             KEYS,
             1,
         )
 
-        self.assertEqual(result, {"key_id": 1, "keep_name": True, "name": None})
+        self.assertEqual(result, {
+            "key_id": 1,
+            "keep_name": True,
+            "name": None,
+            "address_path": NEW_ADDRESS_PATH,
+        })
 
 
 class AcknowledgementTests(unittest.TestCase):
@@ -859,13 +988,13 @@ class AcknowledgementTests(unittest.TestCase):
         result = validate_acknowledgement({
             "code": "address_path_mismatch",
             "source": "  Key 1: SeedSigner  ",
-            "reason": "  The key was replaced  ",
+            "action": "ignore",
         })
 
         self.assertEqual(result, {
             "code": "address_path_mismatch",
             "source": "Key 1: SeedSigner",
-            "reason": "The key was replaced",
+            "action": "ignore",
         })
 
     def test_an_unknown_or_removed_code_is_rejected(self):
@@ -876,40 +1005,41 @@ class AcknowledgementTests(unittest.TestCase):
                 validate_acknowledgement({
                     "code": code,
                     "source": "Key 1: SeedSigner",
-                    "reason": "Done",
+                    "action": "ignore",
                 })
 
-    def test_the_source_and_the_reason_are_required(self):
-        for field in ("source", "reason"):
-            for value in ("", "   ", None, 12):
-                payload = {
+    def test_only_a_closing_action_is_accepted(self):
+        # A rotation goes through the rotation endpoint, because it requires a new
+        # address path, and the removed generic acknowledgement is gone
+        # (sections 26.3 and 26.4).
+        for action in ("rotate", "acknowledge", "ROTATE", "UNKNOWN", "", None, 12):
+            with self.assertRaises(ValidationError):
+                validate_acknowledgement({
                     "code": "key_unavailable",
                     "source": "Key 1: SeedSigner",
-                    "reason": "Done",
-                }
-                payload[field] = value
-                with self.assertRaises(ValidationError):
-                    validate_acknowledgement(payload)
+                    "action": action,
+                })
 
-            payload = {"code": "key_unavailable", "source": "Key 1: SeedSigner", "reason": "Done"}
-            del payload[field]
-            with self.assertRaises(ValidationError):
-                validate_acknowledgement(payload)
-
-    def test_over_long_text_is_rejected(self):
-        with self.assertRaises(ValidationError):
-            validate_acknowledgement({
+        for action in ("replace_hardware", "remove_software", "ignore", "contact_updated"):
+            result = validate_acknowledgement({
                 "code": "key_unavailable",
                 "source": "Key 1: SeedSigner",
-                "reason": "x" * 2001,
+                "action": action,
             })
+            self.assertEqual(result["action"], action)
 
+    def test_the_source_is_required(self):
+        for value in ("", "   ", None, 12, "x" * 201):
+            with self.assertRaises(ValidationError):
+                validate_acknowledgement({
+                    "code": "key_unavailable",
+                    "source": value,
+                    "action": "ignore",
+                })
+
+        payload = {"code": "key_unavailable", "action": "ignore"}
         with self.assertRaises(ValidationError):
-            validate_acknowledgement({
-                "code": "key_unavailable",
-                "source": "x" * 201,
-                "reason": "Done",
-            })
+            validate_acknowledgement(payload)
 
     def test_a_missing_or_wrong_payload_is_rejected(self):
         for payload in ({}, [], {"code": "key_unavailable"}):
