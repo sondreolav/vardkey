@@ -4,13 +4,15 @@ Helsesjekk is a local web application for recording annual checks of a fixed 2-o
 
 ## Current status
 
-The English dashboard shows the three key profiles, the latest saved check dates, and every active follow-up alert. Each key card shows its own last check date and next due date, and the summary cards above the alerts show the earliest upcoming date and any key that has passed its due date. The annual health-check form records the checklist for **one selected key per submission** and saves it to a local SQLite database, and `/history` lists saved checks with a read-only detail view. `GET /api/export` returns every saved check as a CSV download. `/settings` holds the key names, the wallet software list, and the key rotation. The StartOS package is not implemented yet. The application does not claim that any device or backup has been tested.
+The English dashboard shows the three key profiles, the latest saved check dates, and every active follow-up alert. Each key card shows its own last check date and next due date, and the summary cards above the alerts show the earliest upcoming date and any key that has passed its due date. A key that has an open alert shows a clear message that it needs action and how many alerts are open, instead of its ordinary status. The annual health-check form records the checklist for **one selected key per submission** and saves it to a local SQLite database, and `/history` lists saved checks with a read-only detail view. `GET /api/export` returns every saved check as a CSV download. `/settings` holds the key names, the wallet software list, and the key rotation. The StartOS package is not implemented yet. The application does not claim that any device or backup has been tested.
 
 The form is in six sections, in this order: 01 Schedule, 02 Key, 03 Compatibility, 04 External research, 05 Contact confirmation, 06 Notes.
 
-The key setup is configured once, on a new database, at `/setup`: the user gives each of the three key slots a name, a type (`hardware` or `cloud`), and an **address path**. The name is a label that the settings can change later. The type and the address path are locked once the setup is saved, and together they are the identity of the key.
+The key setup is configured once, on a new database, at `/setup`: the user gives each of the three key slots a name, a type (`hardware` or `cloud`), and an **address path**. The name is a label that the settings can change later. The type and the address path are locked once the setup is saved, and together they are the identity of the key. **No two keys may share an address path.**
 
 Each key has its own next-check date, calculated on the server as one calendar year after the check date (29 February is clamped to 28 February). The date is not editable in the form, and a submission for one key never changes another key's interval.
+
+**A key with an open alert cannot be checked.** The form marks the blocked keys, names the alert that stands in the way, the action that closes it, and the keys that are still free, and it links to the dashboard. The server enforces the same rule, so a direct API call cannot bypass it, and the key becomes available again as soon as its alert is closed. The blocking applies to that key only.
 
 `Availability` is the first question in the form and is required. When a key is not available, the rest of the check cannot be recorded, so the form hides the software compatibility and the security statuses and submits only the availability, the key note, the contact confirmation, and the overall comment. That single submission is a complete result and raises the follow-up alert.
 
@@ -45,12 +47,12 @@ python3 -m unittest discover -s tests
 | GET | `/api/key-status` | Returns each key with the dates of its newest saved check. |
 | GET | `/api/settings` | Returns the keys with their address paths and the wallet software list. |
 | POST | `/api/settings/keys` | Stores the name of one key, and its address path while it is unlocked. |
-| POST | `/api/settings/wallet-software` | Stores the whole wallet software list. |
-| POST | `/api/keys/<id>/rotate` | Rotates one key and closes the alerts it raised. |
+| POST | `/api/settings/wallet-software` | Stores the whole wallet software list, and closes the alerts of a removed name. |
+| POST | `/api/keys/<id>/rotate` | Rotates one key with a new address path and closes the alerts it raised. |
 | GET | `/api/health-checks` | Returns saved check summaries, newest first, including the checked key numbers. |
 | GET | `/api/health-checks/<id>` | Returns one saved check with its related rows. |
 | GET | `/api/alerts` | Returns the merged follow-up alerts of every saved check. |
-| POST | `/api/alerts/acknowledge` | Acknowledges one alert, so it stays hidden until a newer check raises it. |
+| POST | `/api/alerts/acknowledge` | Closes one alert with the action that belongs to it. |
 | GET | `/api/export` | Returns every saved key check as a CSV download. |
 | POST | `/api/health-checks` | Validates and stores one check for one selected key. |
 
@@ -61,12 +63,14 @@ python3 -m unittest discover -s tests
 ```json
 {"keys": [
   {"key_number": 1, "name": "ColdCard", "type": "hardware", "address_path": "m/48'/0'/0'/2'"},
-  {"key_number": 2, "name": "Blockstream Jade", "type": "hardware", "address_path": "m/48'/0'/0'/2'"},
-  {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": "m/48'/0'/0'/2'"}
+  {"key_number": 2, "name": "Blockstream Jade", "type": "hardware", "address_path": "m/48'/1'/0'/2'"},
+  {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": "m/48'/2'/0'/2'"}
 ]}
 ```
 
-A name that is empty, a name that repeats another name (compared without regard to case), a type other than `hardware` or `cloud`, an address path that is empty or longer than 200 characters, a missing key number, or a key number outside 1–3 is rejected with `400`. Two keys may share an address path, because the three keys of one multisig setup normally use the same derivation path. A database that already holds a setup is answered with `409`, because the type and the address path are locked. A database that holds only part of a setup is answered with `500` and is never treated as a new installation.
+A name that is empty, a name that repeats another name (compared without regard to case), a type other than `hardware` or `cloud`, an address path that is empty or longer than 200 characters, a missing key number, or a key number outside 1–3 is rejected with `400`.
+
+**Every key needs its own address path.** A path that another key already has is rejected with `400`, and the message names the key that has it. The comparison ignores surrounding whitespace and letter case, so two paths that differ only in case count as the same one. A database that already holds a setup is answered with `409`, because the type and the address path are locked. A database that holds only part of a setup is answered with `500` and is never treated as a new installation.
 
 `GET /api/setup` returns `{"configured": false, "keys": []}` on a new database, and `{"configured": true, "keys": [...]}` once the setup is stored.
 
@@ -91,7 +95,7 @@ A name that is empty, a name that repeats another name (compared without regard 
 {"key_id": 1, "name": "ColdCard", "address_path": "m/48'/0'/0'/2'"}
 ```
 
-The name is only a label and may be changed at any time; it must be non-empty, at most 60 characters, and must not repeat another key's name. The type is never part of the payload. The address path is part of the key's identity, so it may only be changed while the key has **no saved check**: sending the stored path again is accepted, while a different path for a key that already has a check is answered with `409`. The answer is the same payload as `GET /api/settings`. An unknown key, an empty name, or a missing address path is a `400`.
+The name is only a label and may be changed at any time; it must be non-empty, at most 60 characters, and must not repeat another key's name. The type is never part of the payload. The address path is part of the key's identity, so it may only be changed while the key has **no saved check**: sending the stored path again is accepted, while a different path for a key that already has a check is answered with `409`. A path that another key already has is also answered with `409`, and the message names the key that has it. The answer is the same payload as `GET /api/settings`. An unknown key, an empty name, or a missing address path is a `400`.
 
 `POST /api/settings/wallet-software` stores the whole list, not one entry at a time:
 
@@ -99,17 +103,27 @@ The name is only a label and may be changed at any time; it must be non-empty, a
 {"wallet_software": ["Sparrow Wallet", "BlueWallet"]}
 ```
 
-The list must hold at least one name, every name must be non-empty and at most 60 characters, no name may repeat another one (compared without regard to case), and a name that a configured cloud key already provides is refused, because that key offers its own name as a choice. A new database starts with `Sparrow Wallet` as its only entry, so a hardware key has a choice from the first check on. The entry may be replaced once another name has been added, but the list may never be emptied. Removing a name never changes a saved check, because `health_checks` keeps the selected software as free text.
+The list must hold at least one name, every name must be non-empty and at most 60 characters, no name may repeat another one (compared without regard to case), and a name that a configured cloud key already provides is refused, because that key offers its own name as a choice. A new database starts with `Sparrow Wallet` as its only entry, so a hardware key has a choice from the first check on. The entry may be replaced once another name has been added, but the list may never be emptied.
+
+Removing a name never changes a saved check, because `health_checks` keeps the selected software as free text. **Removing a name does close the alerts that software raised**, which is how a `software_incompatible` or a software-sourced `security_vulnerable` alert is closed. The answer therefore names the alerts that were closed:
+
+```json
+{"wallet_software": ["Sparrow Wallet"], "acknowledged": [{"code": "software_incompatible", "source": "BlueWallet"}]}
+```
 
 ## Key rotation
 
 `POST /api/keys/<id>/rotate` records that a key has been replaced by a new one:
 
 ```json
-{"replaced": true, "address_path_unchanged": true, "keep_name": true, "name": ""}
+{"replaced": true, "keep_name": true, "name": "", "address_path": "m/48'/7'/0'/2'"}
 ```
 
-Both confirmations must be `true`, and `keep_name` must be `true` or `false`. When the name changes, `name` must be non-empty and must not repeat another key's name. The type and the address path are locked and are never part of the payload. The rotation updates the key row and acknowledges the alerts that this key's own checks raised and that a replacement resolves. It changes no earlier check: the history shows the name the key has now, while the recorded results stay as they were.
+`replaced` must be `true`, and `keep_name` must be `true` or `false`. When the name changes, `name` must be non-empty and must not repeat another key's name.
+
+**The address path must change.** The rotation replaces the key, so the key is a new one and the path is part of its identity: the new path is required, the stored path is refused, and a path that another key already has is refused, all with `400`. An empty value is a `400` as well. The comparison ignores surrounding whitespace and letter case. The type is locked and is never part of the payload.
+
+The rotation updates the key row and acknowledges the alerts that this key's own checks raised and that a replacement resolves. It changes no earlier check: the history shows the name the key has now, while the recorded results stay as they were.
 
 The answer is the settings payload plus the acknowledged alerts:
 
@@ -117,14 +131,15 @@ The answer is the settings payload plus the acknowledged alerts:
 {"settings": {"keys": [], "wallet_software": []}, "acknowledged": [{"code": "key_unavailable", "source": "Key 2: Blockstream Jade"}]}
 ```
 
-A rotation of an unknown key is a `404`, and a payload without the two confirmations is a `400`.
+A rotation of an unknown key is a `404`, and a payload without the confirmation or without a new path is a `400`.
 
-**Rotating a key creates a new wallet.** The funds have to be moved from the old multisig setup to the new one, and the new setup has to be verified, before it is relied on. The old keys and the old seed backups must not be discarded until the funds have been moved and confirmed. The settings page states this before the rotation can be confirmed.
+**Rotating a key creates a new wallet.** The funds have to be moved from the old multisig setup to the new one, and the new setup has to be verified, before it is relied on. The old keys and the old seed backups must not be discarded until the funds have been moved and confirmed. The settings page states this before the rotation can be confirmed, and it states why the path has to change.
 
 ## Health check
 
 `POST /api/health-checks` accepts JSON and records exactly one configured key:
 
+- **A key with an open alert is refused with `409`.** The key cannot get a new check until the alert is closed, and the rule is enforced on the server, so a direct API call cannot bypass it. The blocking applies to that key only, and the answer names the alert that stands in the way. The check runs before the rest of the validation, so a blocked key always answers `409`.
 - `key_check` is one object with the selected `key_id` and `available`. `available` is required and is `1` (yes) or `0` (no).
 - `address_path` is the path the user read from the key. The server compares it with the path stored for that key, after stripping both, and records the result in `address_path_verified`: equal gives `OK`, different gives `PROBLEM`. The client never sends the verification result, and a submitted one is ignored.
 - A recorded path that does not match makes the key **uncheckable**, which is treated exactly like a key that was not available: `address_path`, the key note, the contact confirmation, and the overall comment are stored, while the hardware, the software, and the security results stay empty, `wallet_software` becomes `NULL`, and `software_compatibility_status` becomes `NOT_ASSESSED`. Sending software or security results with a mismatched path is a `400`, not something dropped silently. The check raises the critical `address_path_mismatch` alert. A key that was not available records no path at all, so no mismatch is reported for it.
@@ -167,43 +182,60 @@ Stored `0`/`1` values are written as `No`/`Yes`, matching the history view. That
 `GET /api/alerts` returns `[]` when no check has been saved, and otherwise the follow-up alerts of **every** saved check:
 
 ```json
-{"code": "address_path_mismatch", "severity": "critical", "source": "Key 1: ColdCard", "message": "The recorded address path does not match this key. Replace the key before continuing; the remaining checks for this key cannot be recorded.", "actions": ["rotate"], "key_id": 1, "check_id": 12, "checked_at": "2026-10-01"}
+{"code": "software_incompatible", "severity": "critical", "source": "Sparrow Wallet", "message": "This wallet software no longer supports the hardware. Add another wallet software in the settings, then remove this one to close the alert.", "actions": ["remove_software"], "software": "Sparrow Wallet", "key_id": null, "check_id": 12, "checked_at": "2026-10-01"}
 ```
 
-`check_id` and `checked_at` name the saved check an alert came from, so the dashboard can show where a warning originated. `actions` names the actions that close the alert, and `key_id` names the key when the source is a key. Identical alerts (same `code` and `source`) are merged, and only the newest one is listed, with its own date. Critical alerts come first, then the newest check first inside each severity.
+`check_id` and `checked_at` name the saved check an alert came from, so the dashboard can show where a warning originated. `actions` names the actions that close the alert, `key_id` names the key when the source is a key, and `software` names the wallet software the alert is about, so the settings link and the removal point at the right entry. Identical alerts (same `code` and `source`) are merged, and only the newest one is listed, with its own date. Critical alerts come first, then the newest check first inside each severity.
 
-An alert is therefore not cleared by a newer check that raises nothing: it stays visible until the user acknowledges it or rotates the key, and an acknowledged alert comes back when a newer check raises the same code and source again.
+An alert is therefore not cleared by a newer check that raises nothing: it stays visible until the user closes it with the action that belongs to it, and a closed alert comes back when a newer check raises the same code and source again. **A key with an open alert cannot get a new check at all** until the alert is closed.
 
 A key alert names the key by its number and its configured name, so an alert always matches the key it came from. The name in the alert is the name the key has now, which the settings may change.
 
 The alerts and the actions that close them:
 
-| `code` | Severity | Raised by | Closed by |
-| --- | --- | --- | --- |
-| `key_unavailable` | critical | `available` = No | Rotating the key |
-| `address_path_mismatch` | critical | `address_path_verified` = `PROBLEM` | Rotating the key |
-| `hardware_failure` | critical | `Hardware works` = No | Rotating the key, or closing the alert |
-| `seed_backup_problem` | critical | Seed backup `PROBLEM` | Rotating the key |
-| `software_incompatible` | critical | `software_compatibility_status` = `PROBLEM` | Closing the alert, after alternative software has been added in the settings |
-| `security_vulnerable` | critical | Security status `VULNERABLE` | A key source may be rotated or closed; a software source is closed |
-| `security_compromised` | critical | Security status `COMPROMISED` | A key source must be rotated; a software source is closed |
-| `contact_info_unconfirmed` | info | Contact confirmation `Needs external update` | Closing the alert, once the records are updated externally |
+| `code` | Severity | Source | Raised by | Actions |
+| --- | --- | --- | --- | --- |
+| `key_unavailable` | critical | key | `available` = No | `rotate` |
+| `address_path_mismatch` | critical | key | `address_path_verified` = `PROBLEM` | `rotate` |
+| `hardware_failure` | critical | key | `Hardware works` = No | `rotate`, `replace_hardware` |
+| `seed_backup_problem` | critical | key | Seed backup `PROBLEM` | `rotate` |
+| `software_incompatible` | critical | software | `software_compatibility_status` = `PROBLEM` | `remove_software` |
+| `security_vulnerable` | critical | key | Security status `VULNERABLE` | `rotate`, `ignore` |
+| `security_vulnerable` | critical | software | Security status `VULNERABLE` | `remove_software`, `ignore` |
+| `security_compromised` | critical | key | Security status `COMPROMISED` | `rotate` |
+| `security_compromised` | critical | software | Security status `COMPROMISED` | `remove_software` |
+| `contact_info_unconfirmed` | info | contact | Contact confirmation `Needs external update` | `contact_updated` |
 
-The source of a security alert is the provider. When that provider is the key's own configured name, the key is the source and a rotation closes the alert; otherwise the provider is the software the key runs with, and a replacement does not resolve it.
+The source of a security alert is the provider. When that provider is the key's own configured name, the key is the source and a rotation closes the alert; otherwise the provider is the software the key runs with, so the alert names it and is closed by removing it from the settings.
+
+`rotate` is performed in the settings, because a rotation requires a new address path, and the alert links there. The other actions are carried out where the alert is shown, and each of them has its own button text and its own confirmation step:
+
+- `replace_hardware` records that a new hardware wallet has been set up with the same seed, so the key and the address path stay the same. The confirmation reads: *I have replaced the hardware wallet and restored the same seed on the new device.*
+- `remove_software` removes the failing wallet software from the settings list, which is what closes the alert. When the failing name is the only entry, the user has to add a replacement first, because the list may never be empty, and the alert offers a link to the settings instead.
+- `ignore` closes an alert without a replacement. It is never offered for `security_compromised`.
+- `contact_updated` closes the contact alert, after the details have been updated externally. The confirmation reads: *I have updated the contact details in my external documentation.*
+
+Every alert carries at least one action, so a key is never locked without a way out. An alert without an action is a bug in the code, not a state the user can reach.
 
 A value that has not been assessed (`NOT_ASSESSED` or empty) never raises an alert, so "not assessed" is never confused with a negative result. An unavailable key raises one critical alert only, because the remaining checks for the key could not be performed. The old cloud health rule and the old address verification rule are gone: the two cloud fields they read no longer exist, and the mismatch has its own code.
 
 The application only reports these alerts. It never performs the follow-up actions itself, and it never contacts providers or AI services.
 
-### Acknowledging an alert
+### Closing an alert
 
-`POST /api/alerts/acknowledge` closes one alert, identified by its code and its source:
+`POST /api/alerts/acknowledge` closes one alert, identified by its code and its source, with the action that belongs to it:
 
 ```json
-{"code": "address_path_mismatch", "source": "Key 1: ColdCard", "reason": "The key was replaced"}
+{"code": "hardware_failure", "source": "Key 1: ColdCard", "action": "replace_hardware"}
 ```
 
-A reason is required. The acknowledgement stores the newest check that raised the alert at that moment, so the alert stays hidden until a **newer check** for the same code and source raises it again; a newer check always has a higher id, so it reappears whatever date it carries. A pair that is not among the current alerts is a `404`, a bad payload is a `400`, and a stored acknowledgement answers `201`. Every action that closes an alert requires a confirmation from the user, and the app never performs the action itself.
+The action is stored as the reason, so the saved record says which action closed the alert. Only the actions the endpoint itself performs are accepted: `replace_hardware`, `remove_software`, `ignore`, and `contact_updated`. `rotate` is not one of them, because a rotation goes through `POST /api/keys/<id>/rotate` and requires a new address path; the removed generic acknowledgement is gone as well. An action that the alert does not offer is a `400`, an unknown code or action is a `400`, and a pair that is not among the current alerts is a `404`. A stored acknowledgement answers `201` and names the action:
+
+```json
+{"acknowledged": true, "code": "hardware_failure", "source": "Key 1: ColdCard", "action": "replace_hardware"}
+```
+
+The acknowledgement stores the newest check that raised the alert at that moment, so the alert stays hidden until a **newer check** for the same code and source raises it again; a newer check always has a higher id, so it reappears whatever date it carries. Every action that closes an alert requires a confirmation from the user, and the app never performs the action itself.
 
 ## Development
 
@@ -215,7 +247,9 @@ Stored status values are English. The seed backup result is `OK` or `PROBLEM`; s
 
 The provider and the wallet software are the configured key name and the selected software, so those columns hold free text. The database does not limit them to the products that shipped with the first version, and the wallet software choices come from the settings list and the configured cloud keys.
 
-The address path is a public derivation path and holds no secret. It is part of a key's identity, so the setup records it, the check form compares the recorded path with it, and the settings may only change it while the key has no saved check.
+The address path is a public derivation path and holds no secret. It is part of a key's identity, so the setup records it, the check form compares the recorded path with it, the settings may only change it while the key has no saved check, and no two keys may share one. The comparison ignores surrounding whitespace and letter case, and the rule lives in the validation layer, which is what the `400` and `409` answers are built on.
+
+An alert names the actions that close it, and the acknowledgement stores the action name in `reason`. The actions are fixed per alert code and source, so no alert can be closed by an action it does not offer, and no alert can be left without one.
 
 The schema is version 10. `keys.address_path`, the `wallet_software` table, and the `alert_acknowledgements` table were added, and the two derived cloud results were dropped from `key_checks`. The application is still under development, so no data migration is written for an older database: delete the `data` folder and configure the setup again. Databases created by earlier versions are still migrated on startup where the older migrations exist:
 
@@ -230,3 +264,5 @@ The schema is version 10. `keys.address_path`, the `wallet_software` table, and 
 Because `health_checks` is a parent table with foreign keys from the child tables, the migration disables foreign keys for the transaction, checks them with `PRAGMA foreign_key_check` before committing, and rolls back if anything is wrong. Older records keep rendering in the history.
 
 Making the rest of a check optional for an unavailable key, and for a key whose address path does not match, needs no migration: `wallet_software` is already nullable, and the security results live in their own table. A record with no such rows simply renders and exports as empty.
+
+The address path uniqueness and the alert actions need no migration either: both are enforced where they are used, and a database with a duplicate path is refused by the API rather than by a constraint, so an old database can still be opened.
