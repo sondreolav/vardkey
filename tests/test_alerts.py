@@ -3,12 +3,19 @@
 import unittest
 
 from alerts import (
-    ACKNOWLEDGE,
+    ALERT_ACTIONS,
     ALERT_CODES,
+    CONTACT_UPDATED,
+    CRITICAL,
+    IGNORE,
+    REMOVE_SOFTWARE,
+    REPLACE_HARDWARE,
     ROTATE,
+    _alert,
     build_alerts,
     collect_alerts,
     rotation_alert_targets,
+    software_alert_targets,
 )
 
 
@@ -16,7 +23,8 @@ def clean_record(key_number=1, name="SeedSigner", key_type="hardware"):
     """Return a saved check for one key whose results need no follow-up.
 
     The provider list is fixed, so a test that needs another provider has to
-    replace one of the entries itself.
+    replace one of the entries itself. The software the check recorded is
+    "Sparrow Wallet", so a software alert can name it (section 26.7).
     """
     entry = {
         "key_id": key_number,
@@ -33,6 +41,7 @@ def clean_record(key_number=1, name="SeedSigner", key_type="hardware"):
     return {
         "checked_at": "2026-10-01",
         "next_check_due": "2027-10-01",
+        "wallet_software": "Sparrow Wallet",
         "software_compatibility_status": "OK",
         "contact_info_verified": "Confirmed current",
         "key_checks": [entry],
@@ -55,6 +64,59 @@ def dated_record(check_id, checked_at, **overrides):
 def key_profile(key_number=1, name="SeedSigner"):
     """Return the configured key profile a record belongs to."""
     return {"id": key_number, "key_number": key_number, "name": name}
+
+
+# One change per alert rule, so the rule sweep below covers every code.
+def _unavailable(record):
+    record["key_checks"][0]["available"] = 0
+
+
+def _mismatch(record):
+    record["key_checks"][0]["address_path_verified"] = "PROBLEM"
+
+
+def _hardware_failure(record):
+    record["key_checks"][0]["hardware_works"] = 0
+
+
+def _seed_backup(record):
+    record["key_checks"][0]["seed_backup_verified"] = "PROBLEM"
+
+
+def _software_incompatible(record):
+    record["software_compatibility_status"] = "PROBLEM"
+
+
+def _vulnerable_key(record):
+    record["ai_security_checks"][0]["status"] = "VULNERABLE"
+
+
+def _vulnerable_software(record):
+    record["ai_security_checks"][1]["status"] = "VULNERABLE"
+
+
+def _compromised_key(record):
+    record["ai_security_checks"][0]["status"] = "COMPROMISED"
+
+
+def _compromised_software(record):
+    record["ai_security_checks"][1]["status"] = "COMPROMISED"
+
+
+def _contact_unconfirmed(record):
+    record["contact_info_verified"] = "Needs external update"
+
+
+RULE_CASES = (
+    ("key_unavailable", _unavailable),
+    ("address_path_mismatch", _mismatch),
+    ("hardware_failure", _hardware_failure),
+    ("seed_backup_problem", _seed_backup),
+    ("software_incompatible", _software_incompatible),
+    ("security_vulnerable", _vulnerable_key),
+    ("security_compromised", _compromised_key),
+    ("contact_info_unconfirmed", _contact_unconfirmed),
+)
 
 
 class AlertTests(unittest.TestCase):
@@ -154,14 +216,19 @@ class AlertTests(unittest.TestCase):
         )
         self.assertEqual({alert["source"] for alert in alerts}, {"Key 1: SeedSigner"})
 
-    def test_incompatible_software_suggests_an_alternative(self):
+    def test_incompatible_software_names_the_software_and_asks_for_its_removal(self):
         record = clean_record()
-        record["software_compatibility_status"] = "PROBLEM"
+        _software_incompatible(record)
 
         alerts = build_alerts(record)
 
         self.assertEqual(self.codes(record), ["software_incompatible"])
-        self.assertEqual(alerts[0]["source"], "Software compatibility")
+        # The alert names the software that produced the result, so the settings
+        # link and the removal point at the right entry (section 26.7).
+        self.assertEqual(alerts[0]["source"], "Sparrow Wallet")
+        self.assertEqual(alerts[0]["software"], "Sparrow Wallet")
+        self.assertEqual(alerts[0]["actions"], [REMOVE_SOFTWARE])
+        self.assertIn("settings", alerts[0]["message"])
 
     def test_a_vulnerable_security_status_must_be_followed_up(self):
         record = clean_record()
@@ -265,31 +332,6 @@ class AlertTests(unittest.TestCase):
             ["key_unavailable", "security_vulnerable", "contact_info_unconfirmed"],
         )
 
-    def test_every_alert_names_the_actions_that_close_it(self):
-        record = clean_record()
-        record["key_checks"][0]["available"] = 0
-        record["software_compatibility_status"] = "PROBLEM"
-        record["contact_info_verified"] = "Needs external update"
-
-        alerts = build_alerts(record)
-
-        self.assertEqual(
-            {alert["code"]: alert["actions"] for alert in alerts},
-            {
-                "key_unavailable": [ROTATE],
-                "software_incompatible": [ACKNOWLEDGE],
-                "contact_info_unconfirmed": [ACKNOWLEDGE],
-            },
-        )
-
-    def test_a_hardware_failure_may_be_rotated_or_closed(self):
-        record = clean_record()
-        record["key_checks"][0]["hardware_works"] = 0
-
-        alerts = build_alerts(record)
-
-        self.assertEqual(alerts[0]["actions"], [ROTATE, ACKNOWLEDGE])
-
     def test_a_key_alert_names_the_key_it_came_from(self):
         record = clean_record(key_number=2, name="Blockstream Jade")
         record["key_checks"][0]["available"] = 0
@@ -309,18 +351,162 @@ class AlertTests(unittest.TestCase):
 
         # A compromised key must be replaced, so closing is not enough there.
         self.assertEqual(alerts["SeedSigner"]["key_id"], 1)
-        self.assertEqual(alerts["SeedSigner"]["actions"], [ROTATE])
+        self.assertIsNone(alerts["SeedSigner"]["software"])
         # A problem in the software is not resolved by replacing the key.
         self.assertIsNone(alerts["Sparrow Wallet"]["key_id"])
-        self.assertEqual(alerts["Sparrow Wallet"]["actions"], [ACKNOWLEDGE])
+        self.assertEqual(alerts["Sparrow Wallet"]["software"], "Sparrow Wallet")
 
-    def test_a_key_named_vulnerable_security_status_may_be_rotated_or_closed(self):
+
+class AlertActionTests(unittest.TestCase):
+    """Every alert code has its own closing actions (section 26.4)."""
+
+    def test_the_agreed_actions_are_offered_for_each_code_and_source(self):
+        cases = (
+            ("key_unavailable", _unavailable, "Key 1: SeedSigner", [ROTATE]),
+            ("address_path_mismatch", _mismatch, "Key 1: SeedSigner", [ROTATE]),
+            ("hardware_failure", _hardware_failure, "Key 1: SeedSigner", [ROTATE, REPLACE_HARDWARE]),
+            ("seed_backup_problem", _seed_backup, "Key 1: SeedSigner", [ROTATE]),
+            ("software_incompatible", _software_incompatible, "Sparrow Wallet", [REMOVE_SOFTWARE]),
+            ("security_vulnerable", _vulnerable_key, "SeedSigner", [ROTATE, IGNORE]),
+            ("security_vulnerable", _vulnerable_software, "Sparrow Wallet", [REMOVE_SOFTWARE, IGNORE]),
+            ("security_compromised", _compromised_key, "SeedSigner", [ROTATE]),
+            ("security_compromised", _compromised_software, "Sparrow Wallet", [REMOVE_SOFTWARE]),
+            ("contact_info_unconfirmed", _contact_unconfirmed, "Contact information", [CONTACT_UPDATED]),
+        )
+        for code, change, source, actions in cases:
+            record = clean_record()
+            change(record)
+            alerts = {alert["source"]: alert for alert in build_alerts(record)}
+
+            self.assertIn(source, alerts, f"{code} did not raise an alert for {source}")
+            self.assertEqual(alerts[source]["code"], code)
+            self.assertEqual(alerts[source]["actions"], actions)
+
+    def test_a_hardware_failure_is_rotated_or_replaced(self):
+        # Replacing the hardware wallet keeps the key and the address path, so the
+        # generic acknowledgement is gone (section 26.4).
         record = clean_record()
-        record["ai_security_checks"][0]["status"] = "VULNERABLE"
+        _hardware_failure(record)
 
         alerts = build_alerts(record)
 
-        self.assertEqual(alerts[0]["actions"], [ROTATE, ACKNOWLEDGE])
+        self.assertEqual(alerts[0]["actions"], [ROTATE, REPLACE_HARDWARE])
+
+    def test_a_key_named_vulnerable_security_status_may_be_rotated_or_ignored(self):
+        record = clean_record()
+        _vulnerable_key(record)
+
+        alerts = build_alerts(record)
+
+        self.assertEqual(alerts[0]["actions"], [ROTATE, IGNORE])
+
+    def test_a_compromised_key_or_software_can_never_be_ignored(self):
+        for change, source in (
+            (_compromised_key, "SeedSigner"),
+            (_compromised_software, "Sparrow Wallet"),
+        ):
+            record = clean_record()
+            change(record)
+            alert = {entry["source"]: entry for entry in build_alerts(record)}[source]
+
+            self.assertNotIn(IGNORE, alert["actions"])
+
+    def test_a_software_alert_without_a_recorded_name_offers_the_settings_only(self):
+        # A saved check that predates the software column has no name to point at,
+        # so the alert keeps a stable source and no removal target (section 26.7).
+        record = clean_record()
+        record["wallet_software"] = None
+        _software_incompatible(record)
+
+        alerts = build_alerts(record)
+
+        self.assertEqual(alerts[0]["source"], "Software compatibility")
+        self.assertIsNone(alerts[0]["software"])
+        self.assertEqual(alerts[0]["actions"], [REMOVE_SOFTWARE])
+
+
+class AlertGuardTests(unittest.TestCase):
+    """An alert without an action would lock a key with no way out (section 26.1)."""
+
+    def test_an_alert_without_an_action_is_a_bug(self):
+        with self.assertRaises(ValueError):
+            _alert("hardware_failure", CRITICAL, "Key 1: SeedSigner", "message", ())
+
+    def test_every_alert_rule_produces_at_least_one_action(self):
+        covered = set()
+        for code, change in RULE_CASES:
+            record = clean_record()
+            change(record)
+
+            alerts = build_alerts(record)
+
+            self.assertEqual([alert["code"] for alert in alerts], [code])
+            for alert in alerts:
+                self.assertTrue(alert["actions"], f"{alert['code']} offers no action")
+                self.assertTrue(set(alert["actions"]) <= ALERT_ACTIONS)
+            covered.add(code)
+
+        # The sweep really covers every code the app can raise.
+        self.assertEqual(covered, set(ALERT_CODES))
+
+
+class SoftwareAlertTargetsTests(unittest.TestCase):
+    """Removing a wallet software closes the alerts that software raised (section 26.7)."""
+
+    def test_removing_the_failing_software_closes_its_alert(self):
+        record = dated_record(1, "2026-10-01")
+        _software_incompatible(record)
+
+        targets = software_alert_targets([record], [], ["Sparrow Wallet"])
+
+        self.assertEqual(targets, [("software_incompatible", "Sparrow Wallet")])
+
+    def test_removing_another_software_closes_nothing(self):
+        record = dated_record(1, "2026-10-01")
+        _software_incompatible(record)
+
+        self.assertEqual(software_alert_targets([record], [], ["BlueWallet"]), [])
+
+    def test_the_name_comparison_ignores_case_and_spacing(self):
+        record = dated_record(1, "2026-10-01")
+        _software_incompatible(record)
+
+        targets = software_alert_targets([record], [], ["  sparrow wallet  "])
+
+        self.assertEqual(targets, [("software_incompatible", "Sparrow Wallet")])
+
+    def test_removing_a_software_closes_a_software_named_security_alert(self):
+        record = dated_record(1, "2026-10-01")
+        _vulnerable_software(record)
+
+        targets = software_alert_targets([record], [], ["Sparrow Wallet"])
+
+        self.assertEqual(targets, [("security_vulnerable", "Sparrow Wallet")])
+
+    def test_removing_a_software_does_not_close_a_key_alert(self):
+        # A key alert is about the key, not about the software, even when the
+        # names happen to be the same (sections 26.4 and 26.7).
+        unavailable = dated_record(1, "2026-10-01")
+        _unavailable(unavailable)
+        vulnerable = dated_record(1, "2026-10-01")
+        _vulnerable_key(vulnerable)
+
+        self.assertEqual(software_alert_targets([unavailable], [], ["SeedSigner"]), [])
+        self.assertEqual(software_alert_targets([vulnerable], [], ["SeedSigner"]), [])
+
+    def test_an_acknowledged_software_alert_is_not_returned_again(self):
+        record = dated_record(1, "2026-10-01")
+        _software_incompatible(record)
+        acknowledgements = [{
+            "code": "software_incompatible",
+            "source": "Sparrow Wallet",
+            "check_id": 1,
+            "acknowledged_at": "2026-10-02T09:00:00",
+        }]
+
+        targets = software_alert_targets([record], acknowledgements, ["Sparrow Wallet"])
+
+        self.assertEqual(targets, [])
 
 
 class CollectAlertsTests(unittest.TestCase):
@@ -500,8 +686,8 @@ class CollectAlertsTests(unittest.TestCase):
     def test_an_alert_survives_a_quiet_newer_check_until_it_is_closed(self):
         # Only the newest alert of a code and source pair is kept, so a newer
         # check that raises nothing does not clear an older alert. The alert is
-        # closed by the user, either by acknowledging it or by rotating the key
-        # (sections 21 and 25.3).
+        # closed by the user, with the action that belongs to it (sections 21,
+        # 25.3 and 26.4).
         older = dated_record(1, "2026-10-01")
         older["key_checks"][0]["available"] = 0
         newer = dated_record(2, "2027-10-01")
@@ -511,8 +697,8 @@ class CollectAlertsTests(unittest.TestCase):
         self.assertEqual(self.codes(alerts), ["key_unavailable"])
         self.assertEqual(alerts[0]["check_id"], 1)
 
-        # Acknowledging it hides it, and it stays hidden because no newer check
-        # raises it again.
+        # Closing it hides it, and it stays hidden because no newer check raises
+        # it again.
         acknowledged = [{
             "code": "key_unavailable",
             "source": "Key 1: SeedSigner",
@@ -524,7 +710,7 @@ class CollectAlertsTests(unittest.TestCase):
 
 
 class RotationAlertTargetsTests(unittest.TestCase):
-    """A rotation closes the alerts its own key raised (section 25.3)."""
+    """A rotation closes the alerts its own key raised (sections 25.3 and 26.4)."""
 
     def test_a_rotation_closes_the_key_alerts(self):
         record = dated_record(1, "2026-10-01")
@@ -551,7 +737,7 @@ class RotationAlertTargetsTests(unittest.TestCase):
 
     def test_a_rotation_does_not_close_a_software_named_security_alert(self):
         # A problem in the software the key runs with is not resolved by
-        # replacing the key (section 25.3).
+        # replacing the key (sections 25.3 and 26.4).
         record = dated_record(1, "2026-10-01")
         record["ai_security_checks"][1]["status"] = "VULNERABLE"
 
