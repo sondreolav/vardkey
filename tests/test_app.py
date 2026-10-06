@@ -538,19 +538,25 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual(alerts[0]["check_id"], older_id)
 
     def test_alerts_api_merges_identical_alerts_and_keeps_the_newest(self):
-        older = unavailable_payload(self.key_profiles()[1])
+        # A second check for a key with an open alert would be blocked
+        # (section 26.1), so the informational contact alert is used here: it
+        # carries no key and never blocks one.
+        key = self.key_profiles()[1]
+        older = sample_payload(key)
         older["checked_at"] = "2026-01-01"
+        older["contact_info_verified"] = "Needs external update"
         older_id = self.post_health_check(older)
 
-        newer = unavailable_payload(self.key_profiles()[1])
+        newer = sample_payload(key)
         newer["checked_at"] = "2027-01-01"
+        newer["contact_info_verified"] = "Needs external update"
         newer_id = self.post_health_check(newer)
 
         alerts = self.get_alerts()
 
         self.assertNotEqual(older_id, newer_id)
         self.assertEqual(len(alerts), 1)
-        self.assertEqual(alerts[0]["code"], "key_unavailable")
+        self.assertEqual(alerts[0]["code"], "contact_info_unconfirmed")
         self.assertEqual(alerts[0]["check_id"], newer_id)
         self.assertEqual(alerts[0]["checked_at"], "2027-01-01")
 
