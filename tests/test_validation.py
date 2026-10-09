@@ -5,6 +5,7 @@ import unittest
 from validation import (
     DuplicateAddressPath,
     ValidationError,
+    WalletSoftwareNameInUse,
     next_check_due,
     validate_acknowledgement,
     validate_health_check,
@@ -729,8 +730,8 @@ class KeySettingsTests(unittest.TestCase):
         self.assertEqual(result, {"key_id": 1, "name": "ColdCard", "address_path": ADDRESS_PATH})
 
     def test_the_type_is_never_part_of_the_settings(self):
-        # The type is locked and cannot be changed through the settings
-        # (section 25.2).
+        # The type is part of the identity of a key, so only a rotation may
+        # change it, and the settings never read it (sections 25.2 and 28).
         result = validate_key_settings(
             {"key_id": 1, "name": "ColdCard", "address_path": ADDRESS_PATH, "type": "cloud"},
             KEYS,
@@ -858,6 +859,7 @@ class RotationTests(unittest.TestCase):
             "key_id": 1,
             "keep_name": True,
             "name": None,
+            "type": "hardware",
             "address_path": NEW_ADDRESS_PATH,
         })
 
@@ -889,6 +891,7 @@ class RotationTests(unittest.TestCase):
             "key_id": 1,
             "keep_name": False,
             "name": "ColdCard",
+            "type": "hardware",
             "address_path": NEW_ADDRESS_PATH,
         })
 
@@ -976,25 +979,167 @@ class RotationTests(unittest.TestCase):
                     key_id,
                 )
 
-    def test_the_type_is_never_part_of_the_rotation(self):
-        # The type is locked and is never read from the payload (section 25.2).
-        result = validate_rotation(
+    def test_the_type_is_kept_when_it_is_left_out(self):
+        # The type is part of the identity of a key, and the setup locks it, so
+        # a rotation that says nothing about it keeps the type the key has
+        # (section 28).
+        hardware = validate_rotation(
+            {"replaced": True, "keep_name": True, "address_path": NEW_ADDRESS_PATH}, KEYS, 1
+        )
+        cloud = validate_rotation(
+            {"replaced": True, "keep_name": True, "address_path": NEW_ADDRESS_PATH}, KEYS, 3
+        )
+
+        self.assertEqual(hardware["type"], "hardware")
+        self.assertEqual(cloud["type"], "cloud")
+
+    def test_the_replacement_may_carry_the_other_type(self):
+        # The rotation replaces the key, so the replacement may be the other type
+        # (section 28).
+        to_cloud = validate_rotation(
             {
                 "replaced": True,
                 "keep_name": True,
-                "address_path": NEW_ADDRESS_PATH,
                 "type": "cloud",
+                "address_path": NEW_ADDRESS_PATH,
             },
             KEYS,
             1,
         )
+        to_hardware = validate_rotation(
+            {
+                "replaced": True,
+                "keep_name": True,
+                "type": "hardware",
+                "address_path": NEW_ADDRESS_PATH,
+            },
+            KEYS,
+            3,
+        )
 
-        self.assertEqual(result, {
-            "key_id": 1,
-            "keep_name": True,
-            "name": None,
-            "address_path": NEW_ADDRESS_PATH,
-        })
+        self.assertEqual(to_cloud["type"], "cloud")
+        self.assertEqual(to_hardware["type"], "hardware")
+
+    def test_an_unknown_type_is_rejected(self):
+        for value in ("", "  ", "usb", "Cloud", 12, True):
+            with self.assertRaises(ValidationError):
+                validate_rotation(
+                    {
+                        "replaced": True,
+                        "keep_name": True,
+                        "type": value,
+                        "address_path": NEW_ADDRESS_PATH,
+                    },
+                    KEYS,
+                    1,
+                )
+
+    def test_a_key_that_becomes_a_cloud_key_needs_a_free_name(self):
+        # A cloud key offers its own name as a wallet software choice, and the
+        # settings list holds the other choices, so the same name cannot be both,
+        # and the rotation is refused (sections 25.4 and 28).
+        for names in (
+            ("SeedSigner",),
+            ("seedsigner",),
+            ("  SeedSigner  ",),
+            ("Sparrow Wallet", "SeedSigner"),
+        ):
+            with self.assertRaises(WalletSoftwareNameInUse):
+                validate_rotation(
+                    {
+                        "replaced": True,
+                        "keep_name": True,
+                        "type": "cloud",
+                        "address_path": NEW_ADDRESS_PATH,
+                    },
+                    KEYS,
+                    1,
+                    names,
+                )
+
+        # Without the list there is nothing to collide with, and a name the list
+        # does not hold is accepted.
+        self.assertEqual(
+            validate_rotation(
+                {
+                    "replaced": True,
+                    "keep_name": True,
+                    "type": "cloud",
+                    "address_path": NEW_ADDRESS_PATH,
+                },
+                KEYS,
+                1,
+            )["type"],
+            "cloud",
+        )
+        self.assertEqual(
+            validate_rotation(
+                {
+                    "replaced": True,
+                    "keep_name": True,
+                    "type": "cloud",
+                    "address_path": NEW_ADDRESS_PATH,
+                },
+                KEYS,
+                1,
+                ("BlueWallet",),
+            )["type"],
+            "cloud",
+        )
+
+    def test_the_new_name_is_the_one_that_has_to_be_free(self):
+        # The check reads the name the replacement ends up with, so a new name
+        # that the list already holds is refused as well (section 28).
+        with self.assertRaises(WalletSoftwareNameInUse) as context:
+            validate_rotation(
+                {
+                    "replaced": True,
+                    "keep_name": False,
+                    "name": "BlueWallet",
+                    "type": "cloud",
+                    "address_path": NEW_ADDRESS_PATH,
+                },
+                KEYS,
+                1,
+                ("BlueWallet",),
+            )
+
+        self.assertIn("BlueWallet", str(context.exception))
+
+    def test_a_cloud_key_may_not_be_renamed_to_a_taken_software_name(self):
+        # A key that stays a cloud key offers its own name, so the same rule
+        # holds there, and the list entry has to be removed first
+        # (sections 25.4 and 28).
+        with self.assertRaises(WalletSoftwareNameInUse):
+            validate_rotation(
+                {
+                    "replaced": True,
+                    "keep_name": False,
+                    "name": "BlueWallet",
+                    "type": "cloud",
+                    "address_path": NEW_ADDRESS_PATH,
+                },
+                KEYS,
+                3,
+                ("BlueWallet",),
+            )
+
+    def test_a_cloud_key_that_becomes_a_hardware_key_keeps_its_name(self):
+        # A hardware key name is not a wallet software choice, so the list may
+        # hold it and nothing collides (sections 25.4 and 28).
+        result = validate_rotation(
+            {
+                "replaced": True,
+                "keep_name": True,
+                "type": "hardware",
+                "address_path": NEW_ADDRESS_PATH,
+            },
+            KEYS,
+            3,
+            ("Nunchuk",),
+        )
+
+        self.assertEqual(result["type"], "hardware")
 
 
 class AcknowledgementTests(unittest.TestCase):
