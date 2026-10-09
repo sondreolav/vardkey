@@ -37,6 +37,7 @@ from export import build_csv
 from validation import (
     DuplicateAddressPath,
     ValidationError,
+    WalletSoftwareNameInUse,
     validate_acknowledgement,
     validate_health_check,
     validate_key_settings,
@@ -327,7 +328,9 @@ class AppHandler(BaseHTTPRequestHandler):
 
         The name is only a label. The address path is part of the key's identity,
         so it may only be changed while the key has no saved check, and it may
-        never belong to another key (sections 25.1, 25.2 and 26.2).
+        never belong to another key (sections 25.1, 25.2 and 26.2). The type is
+        never part of the payload, because only a rotation replaces the key
+        (section 28).
         """
         try:
             payload = self._read_json_body()
@@ -432,10 +435,11 @@ class AppHandler(BaseHTTPRequestHandler):
         """Replace one key with a new one, keep or change its name, and close its alerts.
 
         The rotation replaces the key, so it requires a new, unique address path:
-        the type is locked, the old path is refused, and no earlier check is
-        changed (sections 26.2 and 26.3). The acknowledgement carries the key, so
-        a rotation that changes the name still keeps the closed alerts closed
-        (section 27).
+        the old path is refused, and no earlier check is changed (sections 26.2
+        and 26.3). The replacement may also carry the other type, because a
+        rotation is what replaces the key, and the type is part of its identity
+        (section 28). The acknowledgement carries the key, so a rotation that
+        changes the name still keeps the closed alerts closed (section 27).
         """
         try:
             payload = self._read_json_body()
@@ -454,7 +458,11 @@ class AppHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            rotation = validate_rotation(payload, keys, key_id)
+            # A key that becomes a cloud key may not take a name the wallet
+            # software list already holds, so the rotation needs the list
+            # (sections 25.4 and 28).
+            software_names = list_wallet_software(database_path)
+            rotation = validate_rotation(payload, keys, key_id, software_names)
             key = next(entry for entry in keys if entry["id"] == rotation["key_id"])
             cloud_names = cloud_key_names(keys)
             records = self._health_check_records(database_path)
@@ -464,6 +472,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 rotation["name"] or key["name"],
                 rotation["address_path"],
                 database_path,
+                key_type=rotation["type"],
             )
             for code, source in targets:
                 save_alert_acknowledgement(
@@ -475,6 +484,12 @@ class AppHandler(BaseHTTPRequestHandler):
                     database_path,
                 )
             settings = self._settings_payload(database_path)
+        except WalletSoftwareNameInUse as error:
+            # The replacement would be a cloud key under a name the wallet
+            # software list already holds, which the rotation answers with 409
+            # (section 28).
+            self._send_json(409, {"error": str(error)})
+            return
         except ValidationError as error:
             self._send_json(400, {"error": str(error)})
             return
