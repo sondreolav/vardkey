@@ -402,18 +402,23 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("lockForm", script)
         self.assertIn("/settings", script)
 
-    def test_the_settings_page_has_the_three_sections(self):
+    def test_the_settings_page_has_the_two_sections(self):
         html = read_static("settings.html")
         self.assertIn('<html lang="en">', html)
         self.assertIn("Never enter seed phrases", html)
         eyebrows = re.findall(r'<p class="eyebrow">([^<]+)</p>', html)
-        self.assertEqual(eyebrows, ["Settings", "01 / Keys", "02 / Wallet software", "03 / Key rotation"])
-        self.assertIn('id="keys-list"', html)
+        # The key names, the address paths and the type are changed in the
+        # rotation section, so the page has no separate keys section
+        # (section 28).
+        self.assertEqual(eyebrows, ["Settings", "01 / Wallet software", "02 / Key rotation"])
+        self.assertNotIn("01 / Keys", html)
+        self.assertNotIn('id="keys-list"', html)
         self.assertIn('id="wallet-software-list"', html)
         self.assertIn('id="rotation-list"', html)
         self.assertIn('id="add-software"', html)
         self.assertIn('id="save-software"', html)
-        self.assertIn('id="rotate-keys"', html)
+        self.assertIn('id="save-keys"', html)
+        self.assertIn("Save keys", html)
 
     def test_the_settings_page_warns_about_moving_the_funds_and_changing_the_path(self):
         html = read_static("settings.html")
@@ -433,7 +438,7 @@ class HealthCheckFormTests(unittest.TestCase):
         # Removing an entry closes the alerts that software raised (section 26.7).
         self.assertIn("Removing an entry also closes the alerts that software raised", html)
 
-    def test_the_settings_script_stores_the_list_whole_and_rotates(self):
+    def test_the_settings_script_stores_the_list_whole_and_saves_the_keys(self):
         script = read_static("settings.js")
         self.assertIn("/api/settings/keys", script)
         self.assertIn("/api/settings/wallet-software", script)
@@ -441,9 +446,13 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("rotate", script)
         self.assertIn("wallet_software", script)
         self.assertIn("collectSoftware", script)
-        self.assertIn("collectRotation", script)
+        # One action saves both the renamed keys and the rotated ones, and the
+        # confirmation is only asked for when something is rotated (section 28).
+        self.assertIn("collectKeys", script)
+        self.assertIn("saveKeys", script)
         self.assertIn("keep_name", script)
         self.assertIn("replaced", script)
+        self.assertIn("rotationReplaced.checked", script)
         # The address path is locked as soon as the key has a saved check, and the
         # name may always be changed (sections 25.1 and 25.2).
         self.assertIn("has_checks", script)
@@ -452,13 +461,18 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("requestedRotation", script)
         # The rotation records a new, unique address path (sections 26.2 and 26.3).
         self.assertIn("rotation-path", script)
-        self.assertIn("New address path", script)
         self.assertIn("rotation_path_", script)
-        self.assertIn("address_path: pathInput ? pathInput.value.trim() : \"\"", script)
         self.assertIn("address_path: entry.address_path", script)
-        self.assertIn("Write the new address path of every selected key", script)
+        self.assertIn("Write the new address path of every key you mark for rotation", script)
         # The name field starts on the name the key has now (section 26.3).
         self.assertIn("makeTextInput(key.name, 60)", script)
+        # The type is only offered together with a rotation, because a type change
+        # means the key is a new one (section 28).
+        self.assertIn("rotation-type", script)
+        self.assertIn("makeSelect", script)
+        self.assertIn('["hardware", "Hardware"]', script)
+        self.assertIn("type: entry.type", script)
+        self.assertIn("typeSelect.disabled", script)
         # The removed confirmation is gone.
         self.assertNotIn("address_path_unchanged", script)
         self.assertNotIn("rotationPathUnchanged", script)
