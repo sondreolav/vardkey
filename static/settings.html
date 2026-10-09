@@ -22,7 +22,7 @@
         <div>
           <p class="eyebrow">Settings</p>
           <h1>Settings</h1>
-          <p class="intro">The key names, the wallet software list, and the key rotation. Each section saves on its own.</p>
+          <p class="intro">The wallet software list and the keys. Each section saves on its own.</p>
         </div>
       </div>
 
@@ -32,18 +32,9 @@
 
       <p class="workflow-note" id="settings-status" role="status"></p>
 
-      <section class="form-section" aria-labelledby="settings-keys-title">
-        <div class="form-section-heading">
-          <p class="eyebrow">01 / Keys</p>
-          <h2 id="settings-keys-title">Keys</h2>
-        </div>
-        <p class="field-help">The name is only a label, so it can be changed at any time. The type and the address path are the identity of the key: the type is locked, and the address path can only be changed while the key has no saved check. No two keys may share an address path.</p>
-        <div id="keys-list" class="form-stack"><p class="empty-state">Loading keys…</p></div>
-      </section>
-
       <section class="form-section" aria-labelledby="settings-software-title">
         <div class="form-section-heading">
-          <p class="eyebrow">02 / Wallet software</p>
+          <p class="eyebrow">01 / Wallet software</p>
           <h2 id="settings-software-title">Wallet software</h2>
         </div>
         <p class="field-help">Every entry is a wallet software choice for the keys you check. The list is saved as a whole, so add an entry before you remove the last one. A name that already comes from a cloud key is not needed here, and names must be unique.</p>
@@ -59,19 +50,20 @@
 
       <section class="form-section" aria-labelledby="settings-rotation-title">
         <div class="form-section-heading">
-          <p class="eyebrow">03 / Key rotation</p>
+          <p class="eyebrow">02 / Key rotation</p>
           <h2 id="settings-rotation-title">Key rotation</h2>
         </div>
-        <p class="field-help">A rotation records that a key has been replaced by a new one, keeps or changes its name, and closes the alerts that the key raised. The type is locked, and no earlier check is changed.</p>
-        <p class="field-help">The address path must change, because the key is a new one and the path is part of its identity. Every key needs its own new path, and no two keys may share one.</p>
+        <p class="field-help">This is where the keys themselves are changed. The name is only a label, so it can be changed here on its own. A rotation records that a key has been replaced by a new one, keeps or changes its name, may give the replacement the other type, and closes the alerts that the key raised. No earlier check is changed.</p>
+        <p class="field-help">The address path is part of the identity of a key. It can be changed here while the key has no saved check, and a rotation always records a new one: it must differ from the stored one, and no other key may already use it.</p>
+        <p class="field-help">The type is part of the identity too, so the setup locks it. Changing it means the key is a new one, which is why it is only offered together with a rotation. A key that becomes a cloud key offers its own name as a wallet software choice, so a name the list above already holds has to be removed first.</p>
         <div class="warning-note" role="note">
           <p><strong>Rotating a key creates a new wallet.</strong> Move your funds from the old multisig setup to the new one, and verify that the new setup works, before you rely on it.</p>
           <p>Do not discard the old keys or the old seed backups until the funds have been moved and confirmed. Losing access to the old setup before the move can mean losing the bitcoin.</p>
         </div>
         <div id="rotation-list" class="form-stack rotation-list"><p class="empty-state">Loading keys…</p></div>
-        <label class="field checkbox-field"><input id="rotation-replaced" type="checkbox"><span>I confirm that each selected key has been replaced by a new key or hardware wallet</span></label>
+        <label class="field checkbox-field"><input id="rotation-replaced" type="checkbox"><span>I confirm that each key marked for rotation has been replaced by a new key or hardware wallet</span></label>
         <div class="form-actions">
-          <button class="primary-button active-button" id="rotate-keys" type="button">Rotate selected keys</button>
+          <button class="primary-button active-button" id="save-keys" type="button">Save keys</button>
         </div>
         <p class="workflow-note" id="rotation-status" role="status"></p>
       </section>
