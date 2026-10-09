@@ -33,6 +33,11 @@ alert acknowledgements have their own payloads (sections 25.2, 25.3, 25.4 and
 and an acknowledgement records the action that closed the alert instead of a free
 reason (sections 26.3 and 26.4).
 
+The type is part of the identity of a key, and the setup locks it. A rotation
+replaces the key with a new one, so the replacement may carry the other type, and
+a key that becomes a cloud key may not take a name the wallet software list
+already holds (section 28).
+
 The BIP327/SLIP39 results are gone, together with the rest of that function
 (section 24.2).
 """
@@ -67,6 +72,16 @@ class DuplicateAddressPath(ValidationError):
     The settings answer this with ``409``, while the setup and the rotation
     answer ``400`` (section 26.2), so the two are kept apart here instead of
     being told apart by their message text.
+    """
+
+
+class WalletSoftwareNameInUse(ValidationError):
+    """Raised when a rotation would make a key a cloud key under a taken name.
+
+    A cloud key offers its own name as a wallet software choice, and the settings
+    list holds the other choices, so the same name cannot be both. The rotation
+    answers this with ``409``, like a locked or duplicate address path, and the
+    user has to remove the list entry first (sections 25.4 and 28).
     """
 
 
@@ -194,8 +209,9 @@ def validate_key_settings(payload, keys):
 
     The name is only a label and may be changed at any time; the address path is
     part of the key's identity and may only be changed while the key has no saved
-    check, which the caller decides (sections 25.1 and 25.2). A path that another
-    key already has is refused (section 26.2).
+    check, which the caller decides (sections 25.1 and 25.2). The type is never
+    part of the payload: it only changes when the key is rotated (section 28). A
+    path that another key already has is refused (section 26.2).
     """
     if not isinstance(payload, dict):
         raise ValidationError("payload must be a JSON object")
@@ -251,14 +267,19 @@ def validate_wallet_software(payload, keys):
     return names
 
 
-def validate_rotation(payload, keys, key_id):
+def validate_rotation(payload, keys, key_id, software_names=()):
     """Return the confirmed rotation of one key.
 
     The user confirms that the key has been replaced, chooses whether the name
-    stays or changes, and records the new address path. The path must change,
-    because the rotation replaces the key and the path is its identity, and it
-    must not belong to another key (sections 26.2 and 26.3). The type is locked
-    and is never part of the payload.
+    stays or changes, records the new address path, and may pick the other type
+    for the replacement (section 28). The path must change, because the rotation
+    replaces the key and the path is its identity, and it must not belong to
+    another key (sections 26.2 and 26.3).
+
+    ``software_names`` is the wallet software list from the settings, which the
+    type change needs: a key that becomes a cloud key offers its own name as a
+    wallet software choice, so a name the list already holds is refused with
+    ``WalletSoftwareNameInUse`` (sections 25.4 and 28).
     """
     if not isinstance(payload, dict):
         raise ValidationError("payload must be a JSON object")
@@ -280,6 +301,10 @@ def validate_rotation(payload, keys, key_id):
         ):
             raise ValidationError("key names must be unique")
 
+    # The replacement may carry the other type, and the name it ends up with is
+    # the one the wallet software list has to stay clear of (section 28).
+    key_type = _rotation_type(payload.get("type"), key, name or key["name"], software_names)
+
     address_path = _required_path(payload.get("address_path"), "address_path")
     if address_path.casefold() == (key.get("address_path") or "").strip().casefold():
         raise ValidationError(
@@ -290,6 +315,7 @@ def validate_rotation(payload, keys, key_id):
         "key_id": key["id"],
         "keep_name": keep_name,
         "name": name,
+        "type": key_type,
         "address_path": address_path,
     }
 
@@ -317,6 +343,33 @@ def validate_acknowledgement(payload):
     if action not in CLOSING_ACTIONS:
         raise ValidationError("action is not a closing action for an alert")
     return {"code": code, "source": source, "action": action}
+
+
+def _rotation_type(value, key, name, software_names):
+    """Return the type the key has after the rotation.
+
+    The type is part of the identity of the key, so the setup locks it and only a
+    rotation, which replaces the key with a new one, may pick the other one. A
+    value that is left out keeps the type the key has now (section 28).
+
+    A key that ends up as a cloud key offers its own name as a wallet software
+    choice, and the settings list holds the other choices, so the same name
+    cannot be both: a name the list already holds is refused, and the user has to
+    remove that entry first (section 25.4).
+    """
+    if value is None:
+        return key["type"]
+    if value not in KEY_TYPES:
+        raise ValidationError("key type must be hardware or cloud")
+    if value == "cloud":
+        folded = name.casefold()
+        for entry in software_names:
+            if entry.strip().casefold() == folded:
+                raise WalletSoftwareNameInUse(
+                    f"the wallet software list already holds the name {name}; "
+                    "remove that entry before this key becomes a cloud key"
+                )
+    return value
 
 
 def _key_name(value):
