@@ -4,7 +4,7 @@ Helsesjekk is a local web application for recording annual checks of a fixed 2-o
 
 ## Current status
 
-The English dashboard shows the three key profiles, the latest saved check dates, and every active follow-up alert. Each key card shows its own last check date and next due date, and the summary cards above the alerts show the earliest upcoming date and any key that has passed its due date. A key that has an open alert shows a clear message that it needs action and how many alerts are open, instead of its ordinary status. The annual health-check form records the checklist for **one selected key per submission** and saves it to a local SQLite database, and `/history` lists saved checks with a read-only detail view. `GET /api/export` returns every saved check as a CSV download. `/settings` holds the key names, the wallet software list, and the key rotation. The StartOS package is not implemented yet. The application does not claim that any device or backup has been tested.
+The English dashboard shows the three key profiles, the latest saved check dates, and every active follow-up alert. Each key card shows its own last check date and next due date, and the summary cards above the alerts show the earliest upcoming date and any key that has passed its due date. A key that has an open alert shows a clear message that it needs action and how many alerts are open, in addition to its dates, which stay visible. The annual health-check form records the checklist for **one selected key per submission** and saves it to a local SQLite database, and `/history` lists saved checks with a read-only detail view that also shows the follow-up that was closed on the check. `GET /api/export` returns every saved check as a CSV download, with the follow-up that was closed in the last column. `/settings` holds the key names, the wallet software list, and the key rotation. The StartOS package is not implemented yet. The application does not claim that any device or backup has been tested.
 
 The form is in six sections, in this order: 01 Schedule, 02 Key, 03 Compatibility, 04 External research, 05 Contact confirmation, 06 Notes.
 
@@ -12,7 +12,7 @@ The key setup is configured once, on a new database, at `/setup`: the user gives
 
 Each key has its own next-check date, calculated on the server as one calendar year after the check date (29 February is clamped to 28 February). The date is not editable in the form, and a submission for one key never changes another key's interval.
 
-**A key with an open alert cannot be checked.** The form marks the blocked keys, names the alert that stands in the way, the action that closes it, and the keys that are still free, and it links to the dashboard. The server enforces the same rule, so a direct API call cannot bypass it, and the key becomes available again as soon as its alert is closed. The blocking applies to that key only.
+**A key with an open alert cannot be checked.** The form marks the blocked keys, names the alert that stands in the way, the action that closes it, and the keys that are still free, and it links to the dashboard. The server enforces the same rule, so a direct API call cannot bypass it, and the key becomes available again as soon as its alert is closed. The blocking applies to that key only, and it also covers the informational contact alert, which belongs to its key like every other key alert.
 
 `Availability` is the first question in the form and is required. When a key is not available, the rest of the check cannot be recorded, so the form hides the software compatibility and the security statuses and submits only the availability, the key note, the contact confirmation, and the overall comment. That single submission is a complete result and raises the follow-up alert.
 
@@ -50,7 +50,7 @@ python3 -m unittest discover -s tests
 | POST | `/api/settings/wallet-software` | Stores the whole wallet software list, and closes the alerts of a removed name. |
 | POST | `/api/keys/<id>/rotate` | Rotates one key with a new address path and closes the alerts it raised. |
 | GET | `/api/health-checks` | Returns saved check summaries, newest first, including the checked key numbers. |
-| GET | `/api/health-checks/<id>` | Returns one saved check with its related rows. |
+| GET | `/api/health-checks/<id>` | Returns one saved check with its related rows and the closures it has. |
 | GET | `/api/alerts` | Returns the merged follow-up alerts of every saved check. |
 | POST | `/api/alerts/acknowledge` | Closes one alert with the action that belongs to it. |
 | GET | `/api/export` | Returns every saved key check as a CSV download. |
@@ -105,11 +105,13 @@ The name is only a label and may be changed at any time; it must be non-empty, a
 
 The list must hold at least one name, every name must be non-empty and at most 60 characters, no name may repeat another one (compared without regard to case), and a name that a configured cloud key already provides is refused, because that key offers its own name as a choice. A new database starts with `Sparrow Wallet` as its only entry, so a hardware key has a choice from the first check on. The entry may be replaced once another name has been added, but the list may never be emptied.
 
-Removing a name never changes a saved check, because `health_checks` keeps the selected software as free text. **Removing a name does close the alerts that software raised**, which is how a `software_incompatible` or a software-sourced `security_vulnerable` alert is closed. The answer therefore names the alerts that were closed:
+Removing a name never changes a saved check, because `health_checks` keeps the selected software as free text. **Removing a name does close the alerts that software raised**, which is how a software-sourced `software_incompatible` or `security_vulnerable` alert is closed. The answer therefore names the alerts that were closed:
 
 ```json
 {"wallet_software": ["Sparrow Wallet"], "acknowledged": [{"code": "software_incompatible", "source": "BlueWallet"}]}
 ```
+
+A cloud key name can never be removed this way, because the validation refuses it. When the recorded software of a check is a cloud key name, the alert belongs to the checked key instead and is closed by replacing the hardware, so the removal is not offered for it.
 
 ## Key rotation
 
@@ -123,7 +125,7 @@ Removing a name never changes a saved check, because `health_checks` keeps the s
 
 **The address path must change.** The rotation replaces the key, so the key is a new one and the path is part of its identity: the new path is required, the stored path is refused, and a path that another key already has is refused, all with `400`. An empty value is a `400` as well. The comparison ignores surrounding whitespace and letter case. The type is locked and is never part of the payload.
 
-The rotation updates the key row and acknowledges the alerts that this key's own checks raised and that a replacement resolves. It changes no earlier check: the history shows the name the key has now, while the recorded results stay as they were.
+The rotation updates the key row and acknowledges the alerts that this key's own checks raised and that a replacement resolves. The acknowledgement stores the key it belongs to, so a rotation that changes the name still keeps the closed alerts closed. It changes no earlier check: the history shows the name the key has now, while the recorded results stay as they were.
 
 The answer is the settings payload plus the acknowledged alerts:
 
@@ -139,7 +141,7 @@ A rotation of an unknown key is a `404`, and a payload without the confirmation 
 
 `POST /api/health-checks` accepts JSON and records exactly one configured key:
 
-- **A key with an open alert is refused with `409`.** The key cannot get a new check until the alert is closed, and the rule is enforced on the server, so a direct API call cannot bypass it. The blocking applies to that key only, and the answer names the alert that stands in the way. The check runs before the rest of the validation, so a blocked key always answers `409`.
+- **A key with an open alert is refused with `409`.** The key cannot get a new check until the alert is closed, and the rule is enforced on the server, so a direct API call cannot bypass it. The blocking applies to that key only, it covers the informational contact alert as well, and the answer names the alert that stands in the way. The check runs before the rest of the validation, so a blocked key always answers `409`.
 - `key_check` is one object with the selected `key_id` and `available`. `available` is required and is `1` (yes) or `0` (no).
 - `address_path` is the path the user read from the key. The server compares it with the path stored for that key, after stripping both, and records the result in `address_path_verified`: equal gives `OK`, different gives `PROBLEM`. The client never sends the verification result, and a submitted one is ignored.
 - A recorded path that does not match makes the key **uncheckable**, which is treated exactly like a key that was not available: `address_path`, the key note, the contact confirmation, and the overall comment are stored, while the hardware, the software, and the security results stay empty, `wallet_software` becomes `NULL`, and `software_compatibility_status` becomes `NOT_ASSESSED`. Sending software or security results with a mismatched path is a `400`, not something dropped silently. The check raises the critical `address_path_mismatch` alert. A key that was not available records no path at all, so no mismatch is reported for it.
@@ -175,6 +177,8 @@ Unknown statuses, unknown key ids, a missing `available`, a missing `hardware_wo
 
 One row is one key check. The `Check id` column identifies the submission a row belongs to, so records saved before section 19 (up to three keys in one submission) stay grouped. The `Security status` column has more than one value per submission, so those values are joined into a single cell as `Label: value; Label: value`.
 
+The last column, `Follow-up closed`, lists the follow-up that was closed on that check, as `code: action (YYYY-MM-DD)` in one cell, joined the same way. Only a closure that belongs to a key is listed, so a rotation, a replaced hardware, an updated contact, and an ignored key alert are shown, while a software alert that was removed or ignored is left out.
+
 Stored `0`/`1` values are written as `No`/`Yes`, matching the history view. That covers `Available` and `Hardware works`. Status values are written exactly as stored, including the contact confirmation, which is `Confirmed current` or `Needs external update`. The `Address path verified` column holds the result the server derived from the comparison. The two derived cloud columns are gone, because a cloud key records only its availability. Empty values are written as empty cells, so a check that recorded only an unavailable key leaves the software and security columns empty. Text that contains a comma, a quote, or a semicolon is quoted and escaped by the standard CSV rules, so the file can be opened directly in a spreadsheet.
 
 ## Alerts
@@ -185,9 +189,9 @@ Stored `0`/`1` values are written as `No`/`Yes`, matching the history view. That
 {"code": "software_incompatible", "severity": "critical", "source": "Sparrow Wallet", "message": "This wallet software no longer supports the hardware. Add another wallet software in the settings, then remove this one to close the alert.", "actions": ["remove_software"], "software": "Sparrow Wallet", "key_id": null, "check_id": 12, "checked_at": "2026-10-01"}
 ```
 
-`check_id` and `checked_at` name the saved check an alert came from, so the dashboard can show where a warning originated. `actions` names the actions that close the alert, `key_id` names the key when the source is a key, and `software` names the wallet software the alert is about, so the settings link and the removal point at the right entry. Identical alerts (same `code` and `source`) are merged, and only the newest one is listed, with its own date. Critical alerts come first, then the newest check first inside each severity.
+`check_id` and `checked_at` name the saved check an alert came from, so the dashboard can show where a warning originated. `actions` names the actions that close the alert, `key_id` names the key when the alert belongs to a key, and `software` names the wallet software the alert is about, so the settings link and the removal point at the right entry. Identical alerts (same `code` and `source`) are merged, and only the newest one is listed, with its own date. Critical alerts come first, then the newest check first inside each severity.
 
-An alert is therefore not cleared by a newer check that raises nothing: it stays visible until the user closes it with the action that belongs to it, and a closed alert comes back when a newer check raises the same code and source again. **A key with an open alert cannot get a new check at all** until the alert is closed.
+An alert is therefore not cleared by a newer check that raises nothing: it stays visible until the user closes it with the action that belongs to it, and a closed alert comes back when a newer check raises the same code and source again. An alert that belongs to a key is identified by its key instead, so renaming a key does not reopen a closed alert. **A key with an open alert cannot get a new check at all** until the alert is closed.
 
 A key alert names the key by its number and its configured name, so an alert always matches the key it came from. The name in the alert is the name the key has now, which the settings may change.
 
@@ -199,14 +203,19 @@ The alerts and the actions that close them:
 | `address_path_mismatch` | critical | key | `address_path_verified` = `PROBLEM` | `rotate` |
 | `hardware_failure` | critical | key | `Hardware works` = No | `rotate`, `replace_hardware` |
 | `seed_backup_problem` | critical | key | Seed backup `PROBLEM` | `rotate` |
+| `software_incompatible` | critical | key | `software_compatibility_status` = `PROBLEM`, and the recorded software is a configured cloud key name | `replace_hardware` |
 | `software_incompatible` | critical | software | `software_compatibility_status` = `PROBLEM` | `remove_software` |
 | `security_vulnerable` | critical | key | Security status `VULNERABLE` | `rotate`, `ignore` |
 | `security_vulnerable` | critical | software | Security status `VULNERABLE` | `remove_software`, `ignore` |
 | `security_compromised` | critical | key | Security status `COMPROMISED` | `rotate` |
 | `security_compromised` | critical | software | Security status `COMPROMISED` | `remove_software` |
-| `contact_info_unconfirmed` | info | contact | Contact confirmation `Needs external update` | `contact_updated` |
+| `contact_info_unconfirmed` | info | key | Contact confirmation `Needs external update` | `contact_updated` |
 
 The source of a security alert is the provider. When that provider is the key's own configured name, the key is the source and a rotation closes the alert; otherwise the provider is the software the key runs with, so the alert names it and is closed by removing it from the settings.
+
+`software_incompatible` has two forms. When the recorded software is a name from the settings list, the software is the source, the alert names it, and it is closed by removing that entry. When the recorded software is the name of a configured cloud key, that name can never be removed from the settings, so the alert belongs to the checked key, names it, and is closed by replacing the hardware instead.
+
+The contact alert belongs to the checked key and names it, so it blocks that key until the user has closed it, even though its severity is `info`.
 
 `rotate` is performed in the settings, because a rotation requires a new address path, and the alert links there. The other actions are carried out where the alert is shown, and each of them has its own button text and its own confirmation step:
 
@@ -235,7 +244,9 @@ The action is stored as the reason, so the saved record says which action closed
 {"acknowledged": true, "code": "hardware_failure", "source": "Key 1: ColdCard", "action": "replace_hardware"}
 ```
 
-The acknowledgement stores the newest check that raised the alert at that moment, so the alert stays hidden until a **newer check** for the same code and source raises it again; a newer check always has a higher id, so it reappears whatever date it carries. Every action that closes an alert requires a confirmation from the user, and the app never performs the action itself.
+The acknowledgement stores the newest check that raised the alert at that moment, so the alert stays hidden until a **newer check** for the same code and source raises it again; a newer check always has a higher id, so it reappears whatever date it carries. It also stores the key the alert belonged to, and an alert that belongs to a key is hidden by its key, so a rename does not open a closed alert again. Every action that closes an alert requires a confirmation from the user, and the app never performs the action itself.
+
+The history detail view and the CSV export list the closures that belong to a key, with the action and the date. A closure of a software alert is left out, because it belongs to the settings list rather than to the checked key.
 
 ## Development
 
@@ -249,9 +260,9 @@ The provider and the wallet software are the configured key name and the selecte
 
 The address path is a public derivation path and holds no secret. It is part of a key's identity, so the setup records it, the check form compares the recorded path with it, the settings may only change it while the key has no saved check, and no two keys may share one. The comparison ignores surrounding whitespace and letter case, and the rule lives in the validation layer, which is what the `400` and `409` answers are built on.
 
-An alert names the actions that close it, and the acknowledgement stores the action name in `reason`. The actions are fixed per alert code and source, so no alert can be closed by an action it does not offer, and no alert can be left without one.
+An alert names the actions that close it, and the acknowledgement stores the action name in `reason`. The actions are fixed per alert code and source, so no alert can be closed by an action it does not offer, and no alert can be left without one. An acknowledgement also stores the key the alert belonged to, so an alert that belongs to a key stays closed across a rename, and the closures that belong to a key can be listed in the history and the export.
 
-The schema is version 10. `keys.address_path`, the `wallet_software` table, and the `alert_acknowledgements` table were added, and the two derived cloud results were dropped from `key_checks`. The application is still under development, so no data migration is written for an older database: delete the `data` folder and configure the setup again. Databases created by earlier versions are still migrated on startup where the older migrations exist:
+The schema is version 11. `keys.address_path`, the `wallet_software` table, and the `alert_acknowledgements` table were added, the two derived cloud results were dropped from `key_checks`, and `alert_acknowledgements.key_id` was added. The application is still under development, so no data migration is written for an older database: delete the `data` folder and configure the setup again. Databases created by earlier versions are still migrated on startup where the older migrations exist:
 
 - The removed columns are dropped, and the old boolean verification flags become `OK`/`PROBLEM`.
 - The Norwegian security status values become the English ones.
@@ -260,6 +271,7 @@ The schema is version 10. `keys.address_path`, the `wallet_software` table, and 
 - The fixed `device` column, the fixed product and provider lists, and the fixed wallet-software list are dropped, because the configured key name and the selected software replace them.
 - The `tool_checks` table is dropped, together with the BIP327/SLIP39 results it held. It is a child table, so the drop needs no rebuild of a parent table, and the rest of the history is kept.
 - The two derived cloud results are dropped from `key_checks`, and a key that predates the address path starts with an empty one.
+- `alert_acknowledgements.key_id` is added to a database that predates version 11. An acknowledgement written before the change has no key, and the older contact alert used the source `Contact information`, which no longer matches; an acknowledgement from before the change is therefore not carried over, and the alert it closed is raised again. No data migration is written for it, because the database is a test database.
 
 Because `health_checks` is a parent table with foreign keys from the child tables, the migration disables foreign keys for the transaction, checks them with `PRAGMA foreign_key_check` before committing, and rolls back if anything is wrong. Older records keep rendering in the history.
 
