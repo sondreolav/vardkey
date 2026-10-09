@@ -68,6 +68,17 @@ class ExportTests(unittest.TestCase):
             values = dict(zip(HEADERS, rows[1]))
             self.assertEqual(values["Contact details confirmed"], value)
 
+    def test_the_follow_up_closed_column_is_last_and_reads_back(self):
+        # The closures that belong to a key are joined into the last column,
+        # like the security statuses (section 27).
+        joined = "key_unavailable: rotate (2026-10-05); hardware_failure: replace_hardware (2026-10-06)"
+        rows = parse(build_csv([{"closed_alerts": joined}]))
+        values = dict(zip(HEADERS, rows[1]))
+
+        self.assertEqual(HEADERS[-1], "Follow-up closed")
+        self.assertEqual(dict(COLUMNS)["closed_alerts"], "Follow-up closed")
+        self.assertEqual(values["Follow-up closed"], joined)
+
     def test_text_with_separators_is_quoted_and_read_back(self):
         comment = 'note, with "quotes"; and more'
         rows = parse(build_csv([{"key_comments": comment}]))
