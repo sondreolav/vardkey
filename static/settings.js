@@ -1,6 +1,5 @@
 "use strict";
 
-const keysList = document.querySelector("#keys-list");
 const softwareList = document.querySelector("#wallet-software-list");
 const softwareStatus = document.querySelector("#software-status");
 const addSoftwareButton = document.querySelector("#add-software");
@@ -8,7 +7,7 @@ const saveSoftwareButton = document.querySelector("#save-software");
 const rotationList = document.querySelector("#rotation-list");
 const rotationStatus = document.querySelector("#rotation-status");
 const rotationReplaced = document.querySelector("#rotation-replaced");
-const rotateButton = document.querySelector("#rotate-keys");
+const saveKeysButton = document.querySelector("#save-keys");
 const settingsStatus = document.querySelector("#settings-status");
 
 // The key the dashboard asked to rotate, if any (section 25.2).
@@ -16,6 +15,9 @@ let requestedRotation = new URLSearchParams(window.location.search).get("rotate"
 
 // The keys with their address paths and the wallet software list (section 25.4).
 let settings = { keys: [], wallet_software: [] };
+
+// The two types a key can have (section 23.3).
+const typeOptions = [["hardware", "Hardware"], ["cloud", "Cloud"]];
 
 function emptyState(text) {
   const message = document.createElement("p");
@@ -43,6 +45,18 @@ function makeTextInput(value = "", maxLength = 60) {
   return input;
 }
 
+function makeSelect(options, selected) {
+  const select = document.createElement("select");
+  for (const [value, label] of options) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    option.selected = value === selected;
+    select.append(option);
+  }
+  return select;
+}
+
 function makeCheckbox(className, text, checked = false) {
   const label = document.createElement("label");
   label.className = "field checkbox-field";
@@ -56,92 +70,8 @@ function makeCheckbox(className, text, checked = false) {
   return label;
 }
 
-function makeStatusLine() {
-  const status = document.createElement("p");
-  status.className = "workflow-note";
-  status.setAttribute("role", "status");
-  return status;
-}
-
 function alertCountText(count) {
   return count === 1 ? "1 alert" : `${count} alerts`;
-}
-
-function renderKeys() {
-  keysList.replaceChildren();
-  if (!settings.keys.length) {
-    keysList.append(emptyState(
-      "No key setup is stored yet. Open the key setup to configure the three keys.",
-    ));
-    return;
-  }
-  for (const key of settings.keys) {
-    keysList.append(keyCard(key));
-  }
-}
-
-function keyCard(key) {
-  const card = document.createElement("fieldset");
-  card.className = "check-card";
-  const legend = document.createElement("legend");
-  legend.textContent = `Key ${key.key_number}: ${key.type === "cloud" ? "Cloud key" : "Hardware key"}`;
-  card.append(legend);
-
-  const nameInput = makeTextInput(key.name);
-  card.append(makeField("Name", `key_${key.key_number}_name`, nameInput));
-
-  const pathInput = makeTextInput(key.address_path || "", 200);
-  // The address path is part of the key's identity, so it is locked once the key
-  // has a saved check (section 25.1).
-  pathInput.disabled = Boolean(key.has_checks);
-  card.append(makeField("Address path", `key_${key.key_number}_address_path`, pathInput));
-
-  const help = document.createElement("p");
-  help.className = "field-help";
-  help.textContent = key.has_checks
-    ? "The address path is locked because this key already has a saved check. The name can still be changed."
-    : "The address path can be changed until this key has its first saved check. The type is locked, and no two keys may share an address path.";
-  card.append(help);
-
-  const status = makeStatusLine();
-  const save = document.createElement("button");
-  save.type = "button";
-  save.className = "primary-button active-button";
-  save.textContent = "Save key";
-  save.addEventListener("click", () => saveKey(key, nameInput, pathInput, status, save));
-
-  const actions = document.createElement("div");
-  actions.className = "form-actions";
-  actions.append(save);
-  card.append(actions, status);
-  return card;
-}
-
-async function saveKey(key, nameInput, pathInput, status, button) {
-  button.disabled = true;
-  status.textContent = "Saving…";
-  try {
-    const response = await fetch("/api/settings/keys", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({
-        key_id: key.id,
-        name: nameInput.value.trim(),
-        address_path: pathInput.value.trim(),
-      }),
-    });
-    if (!response.ok) {
-      const detail = await response.json().catch(() => ({}));
-      throw new Error(detail.error || "The key settings could not be saved.");
-    }
-    settings = await response.json();
-    renderKeys();
-    renderRotation();
-    settingsStatus.textContent = `Key ${key.key_number} saved.`;
-  } catch (error) {
-    status.textContent = error.message;
-    button.disabled = false;
-  }
 }
 
 function softwareRow(name) {
@@ -222,6 +152,8 @@ function renderRotation() {
 function rotationCard(key) {
   const card = document.createElement("fieldset");
   card.className = "check-card";
+  card.dataset.keyId = String(key.id);
+
   const legend = document.createElement("legend");
   legend.textContent = `Key ${key.key_number}: ${key.name}`;
   card.append(legend);
@@ -233,8 +165,17 @@ function rotationCard(key) {
   checkbox.checked = requestedRotation === String(key.id);
   card.append(select);
 
-  // The name is only a label, so the field starts on the name the key has now
-  // (section 26.3).
+  // The type is part of the identity of a key, and the setup locks it. A
+  // rotation replaces the key with a new one, so the replacement may carry the
+  // other type, and the choice is only offered together with a rotation
+  // (section 28).
+  const typeSelect = makeSelect(typeOptions, key.type);
+  typeSelect.className = "rotation-type";
+  card.append(makeField("Type", `rotation_type_${key.id}`, typeSelect));
+
+  // The name is only a label, so the field starts on the name the key has now,
+  // and a name that is changed without a rotation is saved on its own
+  // (sections 25.2 and 26.3).
   const nameInput = makeTextInput(key.name, 60);
   nameInput.className = "rotation-name";
   nameInput.disabled = true;
@@ -272,77 +213,126 @@ function rotationCard(key) {
 
   card.append(makeField("New name", `rotation_name_${key.id}_value`, nameInput));
 
-  // The rotation replaces the key, so the address path has to change, and every
-  // key needs its own path (sections 26.2 and 26.3).
-  const pathInput = makeTextInput("", 200);
+  // The address path is part of the identity of a key. It can be changed while
+  // the key has no saved check, and a rotation always records a new one
+  // (sections 25.1 and 26.3).
+  const pathInput = makeTextInput(key.has_checks ? "" : key.address_path || "", 200);
   pathInput.className = "rotation-path";
-  pathInput.disabled = true;
-  card.append(makeField("New address path", `rotation_path_${key.id}`, pathInput));
+  card.append(makeField("Address path", `rotation_path_${key.id}`, pathInput));
 
   const help = document.createElement("p");
   help.className = "field-help";
-  help.textContent = "The new path must differ from the stored one, and no other key may already use it.";
+  help.textContent = key.has_checks
+    ? "This key already has a saved check, so its path is locked. Mark it for rotation to record a new one, which must differ from the stored one and be free."
+    : "The path can be changed here until this key has its first saved check. A rotation must record a new one, which differs from the stored one and is free.";
   card.append(help);
 
+  function syncRotationFields() {
+    const rotating = checkbox.checked;
+    // The type and the path are only asked for the keys the user actually
+    // rotates, so a disabled field is never in the way.
+    typeSelect.disabled = !rotating;
+    pathInput.disabled = !rotating && Boolean(key.has_checks);
+  }
+
   checkbox.addEventListener("change", () => {
-    // The path is only asked for the keys the user actually rotates, so a
-    // disabled field is never in the way.
-    pathInput.disabled = !checkbox.checked;
+    syncRotationFields();
     if (checkbox.checked) {
       pathInput.focus();
     }
   });
-  if (checkbox.checked) {
-    pathInput.disabled = false;
-  }
+  syncRotationFields();
   return card;
 }
 
-function collectRotation() {
+function collectKeys() {
   const entries = [];
   for (const card of rotationList.querySelectorAll(".check-card")) {
-    const checkbox = card.querySelector(".rotation-select");
-    if (!checkbox || !checkbox.checked) {
+    const keyId = Number(card.dataset.keyId);
+    const key = settings.keys.find((entry) => entry.id === keyId);
+    if (!key) {
       continue;
     }
+    const rotating = card.querySelector(".rotation-select").checked;
     const change = card.querySelector(".rotation-change");
     const nameInput = card.querySelector(".rotation-name");
+    const typeSelect = card.querySelector(".rotation-type");
     const pathInput = card.querySelector(".rotation-path");
     const keepName = !(change && change.checked);
+    const name = keepName ? key.name : nameInput.value.trim();
+    const storedPath = key.address_path || "";
+    // A key that is not rotated keeps its stored path, because only a key that
+    // has no saved check can change it here (section 25.1).
+    const path = !rotating && key.has_checks ? storedPath : pathInput.value.trim();
     entries.push({
-      key_id: Number(checkbox.dataset.keyId),
+      key_id: keyId,
+      key_number: key.key_number,
+      rotating,
       keep_name: keepName,
-      name: keepName ? "" : nameInput.value.trim(),
-      address_path: pathInput ? pathInput.value.trim() : "",
+      name: keepName ? "" : name,
+      type: typeSelect ? typeSelect.value : key.type,
+      address_path: path,
+      changed: name !== key.name || path !== storedPath,
     });
   }
   return entries;
 }
 
-async function rotateSelected() {
-  const entries = collectRotation();
-  if (!entries.length) {
-    rotationStatus.textContent = "Select at least one key to rotate.";
+async function saveKeys() {
+  const entries = collectKeys();
+  const rotations = entries.filter((entry) => entry.rotating);
+  const changes = entries.filter((entry) => !entry.rotating && entry.changed);
+
+  if (!rotations.length && !changes.length) {
+    rotationStatus.textContent = "Nothing to save. Change a name, or mark a key for rotation.";
     return;
   }
-  // The key is a new one, so its address path has to change (section 26.3).
-  if (entries.some((entry) => !entry.address_path)) {
-    rotationStatus.textContent = "Write the new address path of every selected key. The key is a new one, so its path must change.";
+  // A rotation records a new key, so its address path has to change
+  // (section 26.3).
+  if (rotations.some((entry) => !entry.address_path)) {
+    rotationStatus.textContent = "Write the new address path of every key you mark for rotation. The key is a new one, so its path must change.";
     return;
   }
-  // Every action that closes an alert requires a confirmation from the user, and
-  // the app never performs the action itself (sections 25.2 and 26.4).
-  if (!rotationReplaced.checked) {
-    rotationStatus.textContent = "Confirm that the selected keys have been replaced by new keys or hardware wallets.";
+  // A rotation replaces a key, and the app never performs the action itself
+  // (sections 25.2 and 26.4).
+  if (rotations.length && !rotationReplaced.checked) {
+    rotationStatus.textContent = "Confirm that the keys you marked have been replaced by new keys or hardware wallets.";
     return;
   }
 
-  rotateButton.disabled = true;
-  rotationStatus.textContent = "Rotating…";
+  saveKeysButton.disabled = true;
+  rotationStatus.textContent = "Saving…";
+
+  const renamed = [];
   const rotated = [];
   const failed = [];
   const closed = [];
-  for (const entry of entries) {
+
+  // A name that is only changed, and the path of a key that has no saved check,
+  // go through the settings endpoint (sections 25.1 and 25.2).
+  for (const entry of changes) {
+    try {
+      const response = await fetch("/api/settings/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          key_id: entry.key_id,
+          name: entry.name,
+          address_path: entry.address_path,
+        }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(detail.error || "The key settings could not be saved.");
+      }
+      settings = await response.json();
+      renamed.push(entry.key_id);
+    } catch (error) {
+      failed.push(`Key ${entry.key_number}: ${error.message}`);
+    }
+  }
+
+  for (const entry of rotations) {
     try {
       const response = await fetch(`/api/keys/${entry.key_id}/rotate`, {
         method: "POST",
@@ -351,6 +341,7 @@ async function rotateSelected() {
           replaced: true,
           keep_name: entry.keep_name,
           name: entry.name,
+          type: entry.type,
           address_path: entry.address_path,
         }),
       });
@@ -363,23 +354,36 @@ async function rotateSelected() {
       rotated.push(entry.key_id);
       closed.push(...(result.acknowledged || []));
     } catch (error) {
-      failed.push(`Key ${entry.key_id}: ${error.message}`);
+      failed.push(`Key ${entry.key_number}: ${error.message}`);
     }
   }
 
   requestedRotation = null;
-  renderKeys();
   renderRotation();
   rotationReplaced.checked = false;
-  rotateButton.disabled = false;
+  saveKeysButton.disabled = false;
+  rotationStatus.textContent = saveSummary(renamed, rotated, closed, failed);
+}
 
-  const summary = rotated.length === 1 ? "1 key rotated." : `${rotated.length} keys rotated.`;
-  const closedNote = closed.length
-    ? ` The ${alertCountText(closed.length)} those keys raised were closed, and they come back only if a newer check raises them again.`
-    : "";
-  rotationStatus.textContent = failed.length
-    ? `${summary} ${failed.join(" ")}`
-    : `${summary}${closedNote}`;
+function saveSummary(renamed, rotated, closed, failed) {
+  const parts = [];
+  if (renamed.length) {
+    parts.push(renamed.length === 1 ? "1 name saved" : `${renamed.length} names saved`);
+  }
+  if (rotated.length) {
+    parts.push(rotated.length === 1 ? "1 key rotated" : `${rotated.length} keys rotated`);
+  }
+  if (!parts.length) {
+    parts.push("Nothing was saved");
+  }
+  let summary = `${parts.join(", ")}.`;
+  if (closed.length) {
+    summary += ` The ${alertCountText(closed.length)} those keys raised were closed, and they come back only if a newer check raises them again.`;
+  }
+  if (failed.length) {
+    summary += ` ${failed.join(" ")}`;
+  }
+  return summary;
 }
 
 function scrollToRotation() {
@@ -400,11 +404,10 @@ async function loadSettings() {
     settings = await response.json();
   } catch {
     settingsStatus.textContent = "The settings could not be loaded. Reload the page or contact the service administrator.";
-    keysList.replaceChildren();
-    rotationList.replaceChildren();
+    softwareList.replaceChildren(emptyState("The wallet software list could not be loaded."));
+    rotationList.replaceChildren(emptyState("The keys could not be loaded."));
     return;
   }
-  renderKeys();
   renderSoftware();
   renderRotation();
   scrollToRotation();
@@ -414,5 +417,5 @@ addSoftwareButton.addEventListener("click", () => {
   softwareList.append(softwareRow(""));
 });
 saveSoftwareButton.addEventListener("click", saveSoftware);
-rotateButton.addEventListener("click", rotateSelected);
+saveKeysButton.addEventListener("click", saveKeys);
 loadSettings();
