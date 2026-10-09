@@ -4,7 +4,8 @@ One row per key check. A submission records one key, so a new export has one row
 per submission; records saved before section 19 can have up to three rows that
 share a ``check_id``. The security statuses have more than one value per
 submission, so they are joined into a single cell as ``Label: value; Label:
-value``.
+value``. The closures that belong to a key are joined the same way, into the
+last column (section 27).
 
 Status values are written exactly as stored. The contact confirmation is one of
 the stored statuses (section 23.1), so it is written as text like every other
@@ -40,6 +41,7 @@ COLUMNS = (
     ("security_status", "Security status"),
     ("contact_info_verified", "Contact details confirmed"),
     ("comments", "Overall comments"),
+    ("closed_alerts", "Follow-up closed"),
 )
 HEADERS = tuple(header for _, header in COLUMNS)
 # Stored as 0/1 and written as No/Yes, matching the history view.
