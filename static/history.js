@@ -6,6 +6,18 @@ const detailTitle = document.querySelector("#history-detail-title");
 const detailBody = document.querySelector("#history-detail-body");
 const requestedId = new URLSearchParams(window.location.search).get("id");
 
+// The readable wording of every action that closes an alert (section 26.4). The
+// dashboard and the form carry the same map, and it is duplicated here on
+// purpose, so the history can show the action that was carried out
+// (section 27).
+const ACTION_LABELS = {
+  rotate: "Rotate key",
+  replace_hardware: "Replace hardware",
+  remove_software: "Remove software",
+  ignore: "Ignore alert",
+  contact_updated: "Contact details updated",
+};
+
 function display(value) {
   if (value === null || value === undefined || value === "") {
     return "—";
@@ -138,6 +150,23 @@ function securityTable(securityChecks) {
   );
 }
 
+function closedAlertsTable(closedAlerts) {
+  // The closures that belong to a key are shown with the code, the source, the
+  // action written out as a readable label, and the date (section 27).
+  if (!closedAlerts.length) {
+    return emptyNote("No follow-up was closed on this check.");
+  }
+  return dataTable(
+    ["Alert", "Source", "Action", "Closed"],
+    closedAlerts.map((entry) => [
+      entry.code,
+      entry.source,
+      ACTION_LABELS[entry.action] || entry.action,
+      entry.acknowledged_at,
+    ]),
+  );
+}
+
 function renderDetail(record) {
   detailTitle.textContent = `Check from ${record.checked_at}`;
   const fragment = document.createDocumentFragment();
@@ -152,6 +181,7 @@ function renderDetail(record) {
   }
 
   fragment.append(card("Security status", securityTable(record.ai_security_checks || [])));
+  fragment.append(card("Follow-up closed", closedAlertsTable(record.closed_alerts || [])));
 
   detailBody.replaceChildren(fragment);
   detailSection.hidden = false;
