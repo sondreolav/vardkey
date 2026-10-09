@@ -125,14 +125,17 @@ function createKeyCard(entry) {
   top.append(number, status);
   card.append(top, name, type);
 
+  // The dates stay visible with an open alert, so the card never hides the last
+  // check and the next due date of a key that only needs an informational
+  // follow-up (section 27).
+  const dates = document.createElement("dl");
+  dates.className = "key-dates";
+  appendDateRow(dates, "Last checked", entry.last_checked_at);
+  appendDateRow(dates, "Next check due", entry.next_check_due);
+  card.append(dates);
+
   if (open.length) {
     card.append(createKeyAlertNote(entry, open));
-  } else {
-    const dates = document.createElement("dl");
-    dates.className = "key-dates";
-    appendDateRow(dates, "Last checked", entry.last_checked_at);
-    appendDateRow(dates, "Next check due", entry.next_check_due);
-    card.append(dates);
   }
   return card;
 }
