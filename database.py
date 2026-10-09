@@ -628,20 +628,25 @@ def key_has_check(key_id, database_path="data/helsesjekk.sqlite3"):
     return count > 0
 
 
-def save_key_settings(key_id, name, address_path, database_path="data/helsesjekk.sqlite3"):
-    """Store the name and the address path of one key.
+def save_key_settings(key_id, name, address_path, database_path="data/helsesjekk.sqlite3", *, key_type=None):
+    """Store the name, the address path, and the type of one key.
 
-    The name is only a label, while the address path is part of the key's
-    identity (sections 25.1 and 25.2). Whether the path may change is decided by
-    the caller, which reads the key's saved checks from the same database.
+    The name is only a label, while the address path and the type are part of the
+    key's identity (sections 25.1, 25.2 and 28). Whether the path may change is
+    decided by the caller, which reads the key's saved checks from the same
+    database. ``key_type`` is only passed by a rotation, which replaces the key
+    with a new one and may pick the other type; the settings never change it, and
+    the stored type is kept when the argument is left out.
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.execute("PRAGMA foreign_keys = ON")
     try:
         with connection:
+            # COALESCE keeps the stored type when no new one is passed, so the
+            # settings and a rotation can share this one statement.
             cursor = connection.execute(
-                "UPDATE keys SET name = ?, address_path = ? WHERE id = ?",
-                (name, address_path, key_id),
+                "UPDATE keys SET name = ?, address_path = ?, type = COALESCE(?, type) WHERE id = ?",
+                (name, address_path, key_type, key_id),
             )
             if cursor.rowcount != 1:
                 raise ValueError(f"Key {key_id} does not exist")
