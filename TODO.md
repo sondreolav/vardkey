@@ -283,7 +283,7 @@ Minimumsendepunkt: `GET /health`, `GET /api/keys`, `GET /api/health-checks`, `GE
 - Eige oppsettsteg for namn, type og adressesti ved første oppstart.
 - Skjemaet viser kva nøklar som er sperra av eit ope varsel, og kva handling som lukkar det.
 - Eit påminningsvarsel før innsending når adressestien ikkje stemmer.
-- Innstillingsside med `01 / Wallet software` og `02 / Key rotation`, bygd for fleire tema seinare. Nøkkelnamnet, adressestien til ein nøkkel utan lagra kontroll, og roteringa med ny type blir alle endra i roteringsseksjonen.
+- Innstillingsside med `01 / Wallet software` og `02 / Key rotation`, bygd for fleire tema seinare. Nøkkelnamnet, adressestien til ein nøkkel utan lagra kontroll, og roteringa med ny type blir alle endra i roteringsseksjonen, og éin knapp lagrar alt. Det finst ikkje lenger ein eigen `01 / Keys`-seksjon.
 - Varselknappane har den teksten og det stadfestingssteget som høyrer til handlinga si, og varselet om programvare-inkompatibilitet peikar på innstillingane.
 - [ ] Sørg for at appen fungerer godt i vanleg StartOS-browser.
 
@@ -363,6 +363,7 @@ Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og 
 - [ ] Test at eit lukka varsel viser seg i historikken og i CSV-en, med handling og dato.
 - [ ] Test at eit kontaktvarsel gir `Needs action` og sperrar nøkkelen, og at nøkkelen blir ledig att ved `contact_updated`.
 - [ ] Test at `software_incompatible` med ei cloud-nøkkel-programvare gir `replace_hardware` på den kontrollerte nøkkelen, og at det same varselet frå innstillingslista held fram med `remove_software`.
+- [ ] Test at ein kan byte namn på ein nøkkel i roteringsseksjonen utan å rotere han, og at ei rotering krev stadfestingsboksen.
 - [ ] Test at ei rotering kan gi nøkkelen den andre typen, og at eit namn som wallet-programvare-lista alt har, blir avvist.
 
 **Merk:** dette er dei manuelle nettlesartestane dine. Alt som er implementert, er òg dekt av testsuiten, men punkta står opne til du har køyrt dei i nettlesaren.
@@ -459,16 +460,20 @@ Bakgrunnen: ei lukking vart alt lagra i `alert_acknowledgements`, men ingenting 
 
 ---
 
-# 28. Nøkkeltypen kan berre endrast ved ei rotering (implementert og verifisert)
+# 28. Nøkkeltypen kan berre endrast ved ei rotering, og nøkkelnamnet blir endra i roteringsseksjonen (implementert og verifisert)
 
 Avtalt 05.10.2026.
 
-Typen er ein del av identiteten til nøkkelen, saman med adressestien, så oppsettet låser han og innstillingane endrar han aldri. Ei rotering byter ut nøkkelen med ein ny, og berre der kan den andre typen veljast.
+Typen er ein del av identiteten til nøkkelen, saman med adressestien, så oppsettet låser han og innstillingane endrar han aldri. Ei rotering byter ut nøkkelen med ein ny, og berre der kan den andre typen veljast. Namnebytet flytta samstundes inn i roteringsseksjonen, slik at alt som gjeld nøkkelidentiteten ligg på éin stad.
 
 - `POST /api/keys/<id>/rotate` tek ein valfri `type` (`hardware`/`cloud`). Er han utelaten, held nøkkelen typen han har.
 - Ein nøkkel som blir ein cloud-nøkkel, byr på sitt eige namn som wallet-programvare. Wallet-programvare-lista kan ikkje innehalde eit namn som alt kjem frå ein cloud-nøkkel, så eit namn lista alt har, blir avvist med `409` (`WalletSoftwareNameInUse`), og meldinga seier kva oppføring som må fjernast først.
 - `POST /api/settings/keys` tek framleis berre namn og adressesti, aldri type.
-- Innstillingane har to seksjonar: `01 / Wallet software` og `02 / Key rotation`. Nøkkelnamnet blir endra i roteringsseksjonen på eige hand (via `/api/settings/keys`), adressestien til ein nøkkel utan lagra kontroll kan òg endrast der, og typen og den nye stien blir lagra saman med roteringa (via roteringsendepunktet). Éin `Save keys`-knapp lagrar alt.
+- Innstillingane har to seksjonar: `01 / Wallet software` og `02 / Key rotation`. Den gamle `01 / Keys`-seksjonen er fjerna, sidan namnebytet no høyrer til roteringsseksjonen.
+- I roteringsseksjonen kan brukaren byte namn på ein nøkkel åleine, utan å rotere han. Det går gjennom `POST /api/settings/keys`, krev inga stadfesting, og fungerer for alle nøklar.
+- Adressestien til ein nøkkel **utan** lagra kontroll kan òg endrast der, gjennom same endepunkt.
+- Ei rotering krev at nøkkelen blir markert med `Rotate this key` **og** at stadfestingsboksen «I confirm that each selected key has been replaced by a new key or hardware wallet» blir huka av. Då blir typen, den nye stien og namnet lagra gjennom roteringsendepunktet.
+- Knappen heiter `Save keys`, sidan han lagrar både namnebyte og roteringar i éin omgang, og han seier ifrå når det ikkje finst noko å lagre.
 
 ## Framtidig arbeid, ikkje no
 
