@@ -207,6 +207,12 @@ class ServerTestCase(unittest.TestCase):
             self.assertEqual(response.status, 200)
             return json.load(response)
 
+    def get_export_rows(self):
+        """Return the CSV export as parsed rows."""
+        with urlopen(f"{self.base_url}/api/export") as response:
+            body = response.read().decode("utf-8")
+        return list(csv.reader(io.StringIO(body)))
+
     def assert_rejected_at(self, path, payload, status=400):
         """Post a payload to one endpoint and expect an error status."""
         try:
@@ -373,6 +379,10 @@ class AppHandlerTests(ServerTestCase):
         # The contact confirmation is a status, not a yes/no flag (section 23.1).
         self.assertEqual(values["Contact details confirmed"], "Confirmed current")
         self.assertIn("SeedSigner: SECURE", values["Security status"])
+        # The new closure column is last, and an open check leaves it empty
+        # (section 27).
+        self.assertEqual(HEADERS[-1], "Follow-up closed")
+        self.assertEqual(values["Follow-up closed"], "")
         # The two derived cloud columns are gone (section 25.6).
         self.assertNotIn("Cloud health status", HEADERS)
         self.assertNotIn("Cloud provider operational", HEADERS)
@@ -380,10 +390,7 @@ class AppHandlerTests(ServerTestCase):
     def test_export_api_leaves_the_skipped_columns_empty(self):
         saved_id = self.post_health_check(unavailable_payload(self.key_profiles()[1]))
 
-        with urlopen(f"{self.base_url}/api/export") as response:
-            body = response.read().decode("utf-8")
-
-        rows = list(csv.reader(io.StringIO(body)))
+        rows = self.get_export_rows()
         values = dict(zip(HEADERS, rows[1]))
 
         self.assertEqual(values["Check id"], str(saved_id))
@@ -392,6 +399,22 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual(values["Wallet software"], "")
         self.assertEqual(values["Software compatibility"], "NOT_ASSESSED")
         self.assertEqual(values["Security status"], "")
+
+    def test_the_export_lists_the_closures_that_belong_to_a_key(self):
+        key = self.key_profiles()[1]
+        saved_id = self.post_health_check(unavailable_payload(key))
+        self.rotate(key["id"])
+
+        rows = self.get_export_rows()
+        values = dict(zip(HEADERS, rows[1]))
+
+        self.assertEqual(values["Check id"], str(saved_id))
+        # A closure is written as the code, the action and the date, in the last
+        # column (section 27).
+        self.assertRegex(
+            values["Follow-up closed"],
+            r"^key_unavailable: rotate \(\d{4}-\d{2}-\d{2}\)$",
+        )
 
     def test_health_check_form_is_served_in_english(self):
         with urlopen(f"{self.base_url}/health-check") as response:
@@ -538,14 +561,23 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual(alerts[0]["check_id"], older_id)
 
     def test_alerts_api_merges_identical_alerts_and_keeps_the_newest(self):
-        # A second check for a key with an open alert would be blocked
-        # (section 26.1), so the informational contact alert is used here: it
-        # carries no key and never blocks one.
+        # The contact alert now belongs to the checked key and blocks it, so the
+        # first alert is closed before the second check is recorded
+        # (section 27).
         key = self.key_profiles()[1]
         older = sample_payload(key)
         older["checked_at"] = "2026-01-01"
         older["contact_info_verified"] = "Needs external update"
         older_id = self.post_health_check(older)
+        alert = self.get_alerts()[0]
+        self.assertEqual(alert["code"], "contact_info_unconfirmed")
+
+        with self.post_acknowledgement({
+            "code": alert["code"],
+            "source": alert["source"],
+            "action": "contact_updated",
+        }) as response:
+            self.assertEqual(response.status, 201)
 
         newer = sample_payload(key)
         newer["checked_at"] = "2027-01-01"
@@ -596,6 +628,42 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual(alerts[0]["software"], "Sparrow Wallet")
         self.assertEqual(alerts[0]["actions"], ["remove_software"])
 
+    def test_a_cloud_key_software_is_replaced_instead_of_removed(self):
+        # A hardware key may run the software of the configured cloud key. That
+        # name can never be removed from the settings, so the alert belongs to the
+        # checked key and is closed by replacing the hardware (section 27).
+        key = self.key_profiles()[0]
+        payload = sample_payload(key, wallet_software="Nunchuk")
+        payload["software_compatibility_status"] = "PROBLEM"
+        saved_id = self.post_health_check(payload)
+
+        alert = self.get_alerts()[0]
+        self.assertEqual(alert["code"], "software_incompatible")
+        self.assertEqual(alert["key_id"], key["id"])
+        self.assertEqual(alert["source"], "Key 1: SeedSigner")
+        self.assertEqual(alert["actions"], ["replace_hardware"])
+        self.assertIsNone(alert["software"])
+
+        # The settings refuse the cloud key name, so the removal form cannot close
+        # the alert; the replacement action does.
+        self.assert_rejected_at("/api/settings/wallet-software", {"wallet_software": ["Nunchuk"]})
+        self.assertEqual(
+            [entry["code"] for entry in self.get_alerts()], ["software_incompatible"]
+        )
+
+        with self.post_acknowledgement({
+            "code": alert["code"],
+            "source": alert["source"],
+            "action": "replace_hardware",
+        }) as response:
+            self.assertEqual(response.status, 201)
+
+        self.assertEqual(self.get_alerts(), [])
+        # The saved check is untouched.
+        self.assertEqual(
+            self.get_record(saved_id)["software_compatibility_status"], "PROBLEM"
+        )
+
     def test_saved_health_check_can_be_read_back(self):
         key = self.key_profiles()[0]
         saved_id = self.post_health_check(sample_payload(key))
@@ -616,6 +684,35 @@ class AppHandlerTests(ServerTestCase):
             [entry["provider"] for entry in record["ai_security_checks"]],
             ["SeedSigner", "Sparrow Wallet"],
         )
+        # A check whose alerts are all still open has no closure (section 27).
+        self.assertEqual(record["closed_alerts"], [])
+
+    def test_the_history_detail_shows_a_key_closure_and_leaves_out_a_software_one(self):
+        key = self.key_profiles()[0]
+        with self.post_wallet_software(["Sparrow Wallet", "BlueWallet"]) as response:
+            self.assertEqual(response.status, 200)
+
+        payload = sample_payload(key, wallet_software="BlueWallet")
+        payload["key_check"]["hardware_works"] = 0
+        payload["software_compatibility_status"] = "PROBLEM"
+        saved_id = self.post_health_check(payload)
+        self.assertEqual(
+            sorted(alert["code"] for alert in self.get_alerts()),
+            ["hardware_failure", "software_incompatible"],
+        )
+
+        # Removing the failing software writes a closure without a key, and the
+        # rotation closes the key alert (sections 26.7 and 27).
+        with self.post_wallet_software(["Sparrow Wallet"]) as response:
+            self.assertEqual(response.status, 200)
+        self.rotate(key["id"])
+
+        closed = self.get_record(saved_id)["closed_alerts"]
+
+        self.assertEqual([entry["action"] for entry in closed], ["rotate"])
+        self.assertEqual(closed[0]["code"], "hardware_failure")
+        self.assertEqual(closed[0]["source"], "Key 1: SeedSigner")
+        self.assertTrue(closed[0]["acknowledged_at"])
 
     def test_each_key_can_be_posted_and_read_back(self):
         for key in self.key_profiles():
@@ -835,7 +932,8 @@ class AppHandlerTests(ServerTestCase):
             self.assert_rejected(payload)
 
     def test_the_contact_status_is_recorded_and_raises_an_informational_alert(self):
-        payload = sample_payload(self.key_profiles()[0])
+        key = self.key_profiles()[0]
+        payload = sample_payload(key)
         payload["contact_info_verified"] = "Needs external update"
         saved_id = self.post_health_check(payload)
 
@@ -846,7 +944,32 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual([alert["code"] for alert in alerts], ["contact_info_unconfirmed"])
         self.assertEqual(alerts[0]["severity"], "info")
         self.assertEqual(alerts[0]["check_id"], saved_id)
+        # The alert belongs to the checked key and names it (section 27).
+        self.assertEqual(alerts[0]["key_id"], key["id"])
+        self.assertEqual(alerts[0]["source"], "Key 1: SeedSigner")
         self.assertEqual(alerts[0]["actions"], ["contact_updated"])
+
+    def test_the_contact_alert_blocks_its_key_until_it_is_closed(self):
+        # The contact alert has severity info, but it belongs to the key, so it
+        # blocks the key like every other key alert (section 27).
+        key = self.key_profiles()[0]
+        payload = sample_payload(key)
+        payload["contact_info_verified"] = "Needs external update"
+        self.post_health_check(payload)
+        alert = self.get_alerts()[0]
+        self.assertEqual(alert["code"], "contact_info_unconfirmed")
+
+        self.assert_rejected(sample_payload(key), status=409)
+
+        with self.post_acknowledgement({
+            "code": alert["code"],
+            "source": alert["source"],
+            "action": "contact_updated",
+        }) as response:
+            self.assertEqual(response.status, 201)
+
+        self.assertEqual(self.get_alerts(), [])
+        self.post_health_check(sample_payload(key))
 
     def test_a_hardware_key_name_is_not_a_wallet_software_choice(self):
         # "Jade" is a hardware key in this setup, so it is never software.
@@ -952,10 +1075,7 @@ class RenamedSetupTests(ServerTestCase):
         key = self.key_profiles()[1]
         self.post_health_check(sample_payload(key))
 
-        with urlopen(f"{self.base_url}/api/export") as response:
-            body = response.read().decode("utf-8")
-
-        rows = list(csv.reader(io.StringIO(body)))
+        rows = self.get_export_rows()
         values = dict(zip(HEADERS, rows[1]))
 
         self.assertEqual(values["Key name"], "ColdCard")
@@ -1284,6 +1404,23 @@ class RotationApiTests(ServerTestCase):
             [{"code": "key_unavailable", "source": "Key 2: Blockstream Jade"}],
         )
         self.assertEqual(self.get_alerts(), [])
+
+    def test_a_rotation_with_a_new_name_keeps_the_alert_closed(self):
+        # The regression of section 27: the acknowledgement is written with the
+        # old name, and the alert used to come back because it was matched by its
+        # source. It is matched by its key now.
+        key = self.key_profiles()[1]
+        self.post_health_check(unavailable_payload(key))
+
+        body = self.rotate(key["id"], keep_name=False, name="Replacement")
+
+        self.assertEqual(
+            body["acknowledged"],
+            [{"code": "key_unavailable", "source": "Key 2: Blockstream Jade"}],
+        )
+        self.assertEqual(self.get_alerts(), [])
+        # The key is free again, so a new check can be recorded for it.
+        self.post_health_check(unavailable_payload(self.key_profiles()[1]))
 
     def test_a_rotation_leaves_the_other_keys_alone(self):
         other = self.key_profiles()[1]
