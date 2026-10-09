@@ -377,7 +377,9 @@ def _software_alerts(record, cloud_names):
     settings link, and the removal point at the right entry (section 26.7). When
     that software is the name of a configured cloud key, it can never be removed
     from the settings, so the alert belongs to the checked key and asks for a
-    replacement of the hardware instead (section 27).
+    replacement of the hardware instead (section 27). That form carries no
+    ``software``: there is no settings entry to remove, so a software removal
+    must not be able to close it.
     """
     if record.get("software_compatibility_status") != "PROBLEM":
         return []
@@ -395,7 +397,6 @@ def _software_alerts(record, cloud_names):
             _SOFTWARE_INCOMPATIBLE_KEY_MESSAGE,
             (REPLACE_HARDWARE,),
             key_check.get("key_id"),
-            software=software,
         )]
     return [_alert(
         "software_incompatible",
