@@ -320,6 +320,18 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn(".key-alert-message", styles)
         self.assertIn(".key-alert-detail", styles)
 
+    def test_dashboard_key_card_keeps_the_dates_with_an_open_alert(self):
+        script = read_static("app.js")
+        # The alert note comes in addition to the dates, not instead of them, so
+        # a key whose only alert is the informational contact one keeps its last
+        # check and its next due date (section 27).
+        self.assertIn('appendDateRow(dates, "Last checked", entry.last_checked_at)', script)
+        self.assertIn('appendDateRow(dates, "Next check due", entry.next_check_due)', script)
+        self.assertIn("card.append(dates);", script)
+        dates_index = script.index('appendDateRow(dates, "Next check due"')
+        note_index = script.index("card.append(createKeyAlertNote(entry, open))")
+        self.assertLess(dates_index, note_index)
+
     def test_dashboard_offers_the_closing_action_of_every_alert(self):
         script = read_static("app.js")
         # Every alert names the actions that close it, and each action has its own
@@ -476,6 +488,21 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertNotIn("Provider operational", script)
         self.assertNotIn("cloud_health_status", script)
         self.assertNotIn("cloud_provider_operational", script)
+
+    def test_history_shows_the_follow_up_that_was_closed(self):
+        script = read_static("history.js")
+        # A closure that belongs to a key is shown as a card, with the code, the
+        # source, the action written out, and the date (section 27).
+        self.assertIn("Follow-up closed", script)
+        self.assertIn("closed_alerts", script)
+        self.assertIn("closedAlertsTable", script)
+        self.assertIn("acknowledged_at", script)
+        self.assertIn("No follow-up was closed on this check.", script)
+        # The action labels are duplicated here, which is the existing pattern.
+        self.assertIn("ACTION_LABELS", script)
+        self.assertIn('rotate: "Rotate key"', script)
+        self.assertIn('replace_hardware: "Replace hardware"', script)
+        self.assertIn('contact_updated: "Contact details updated"', script)
 
     def test_stylesheet_makes_the_hidden_attribute_work_on_grid_containers(self):
         styles = read_static("styles.css")
