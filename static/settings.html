@@ -54,14 +54,14 @@
           <h2 id="settings-rotation-title">Key rotation</h2>
         </div>
         <p class="field-help">This is where the keys themselves are changed. The name is only a label, so it can be changed here on its own. A rotation records that a key has been replaced by a new one, keeps or changes its name, may give the replacement the other type, and closes the alerts that the key raised. No earlier check is changed.</p>
-        <p class="field-help">The address path is part of the identity of a key. It can be changed here while the key has no saved check, and a rotation always records a new one: it must differ from the stored one, and no other key may already use it.</p>
-        <p class="field-help">The type is part of the identity too, so the setup locks it. Changing it means the key is a new one, which is why it is only offered together with a rotation. A key that becomes a cloud key offers its own name as a wallet software choice, so a name the list above already holds has to be removed first.</p>
+        <p class="field-help">The address path is part of the identity of a key. It can be changed here while the key has no saved check. The address path must change when the key is rotated: every key needs its own new path, and no other key may already use it.</p>
+        <p class="field-help">The type is part of the identity too, so the setup locks it. Changing it means the key is a new one, which is why the choice is only offered together with a rotation. A key that becomes a cloud key offers its own name as a wallet software choice, so a name the list above already holds has to be removed first.</p>
         <div class="warning-note" role="note">
           <p><strong>Rotating a key creates a new wallet.</strong> Move your funds from the old multisig setup to the new one, and verify that the new setup works, before you rely on it.</p>
           <p>Do not discard the old keys or the old seed backups until the funds have been moved and confirmed. Losing access to the old setup before the move can mean losing the bitcoin.</p>
         </div>
         <div id="rotation-list" class="form-stack rotation-list"><p class="empty-state">Loading keys…</p></div>
-        <label class="field checkbox-field"><input id="rotation-replaced" type="checkbox"><span>I confirm that each key marked for rotation has been replaced by a new key or hardware wallet</span></label>
+        <label class="field checkbox-field"><input id="rotation-replaced" type="checkbox"><span>I confirm that each selected key has been replaced by a new key or hardware wallet</span></label>
         <div class="form-actions">
           <button class="primary-button active-button" id="save-keys" type="button">Save keys</button>
         </div>
