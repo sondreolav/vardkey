@@ -4,7 +4,7 @@ Helsesjekk is a local web application for recording annual checks of a fixed 2-o
 
 ## Current status
 
-The English dashboard shows the three key profiles, the latest saved check dates, and every active follow-up alert. Each key card shows its own last check date and next due date, and the summary cards above the alerts show the earliest upcoming date and any key that has passed its due date. A key that has an open alert shows a clear message that it needs action and how many alerts are open, in addition to its dates, which stay visible. The annual health-check form records the checklist for **one selected key per submission** and saves it to a local SQLite database, and `/history` lists saved checks with a read-only detail view that also shows the follow-up that was closed on the check. `GET /api/export` returns every saved check as a CSV download, with the follow-up that was closed in the last column. `/settings` holds the key names, the wallet software list, and the key rotation. The StartOS package is not implemented yet. The application does not claim that any device or backup has been tested.
+The English dashboard shows the three key profiles, the latest saved check dates, and every active follow-up alert. Each key card shows its own last check date and next due date, and the summary cards above the alerts show the earliest upcoming date and any key that has passed its due date. A key that has an open alert shows a clear message that it needs action and how many alerts are open, in addition to its dates, which stay visible. The annual health-check form records the checklist for **one selected key per submission** and saves it to a local SQLite database, and `/history` lists saved checks with a read-only detail view that also shows the follow-up that was closed on the check. `GET /api/export` returns every saved check as a CSV download, with the follow-up that was closed in the last column. `/settings` holds the wallet software list and the keys, where a name can be changed on its own and a key can be rotated into the other type. The StartOS package is not implemented yet. The application does not claim that any device or backup has been tested.
 
 The form is in six sections, in this order: 01 Schedule, 02 Key, 03 Compatibility, 04 External research, 05 Contact confirmation, 06 Notes.
 
@@ -89,13 +89,15 @@ A name that is empty, a name that repeats another name (compared without regard 
 
 `has_checks` tells the page whether the address path of a key is still editable.
 
+The settings page has two sections, `01 / Wallet software` and `02 / Key rotation`, and each saves on its own. The keys themselves are changed in the rotation section: the name of a key can be changed there on its own, the address path of a key that has no saved check can be changed with it, and the type and a new path are recorded together with a rotation.
+
 `POST /api/settings/keys` stores one key at a time:
 
 ```json
 {"key_id": 1, "name": "ColdCard", "address_path": "m/48'/0'/0'/2'"}
 ```
 
-The name is only a label and may be changed at any time; it must be non-empty, at most 60 characters, and must not repeat another key's name. The type is never part of the payload. The address path is part of the key's identity, so it may only be changed while the key has **no saved check**: sending the stored path again is accepted, while a different path for a key that already has a check is answered with `409`. A path that another key already has is also answered with `409`, and the message names the key that has it. The answer is the same payload as `GET /api/settings`. An unknown key, an empty name, or a missing address path is a `400`.
+The name is only a label and may be changed at any time; it must be non-empty, at most 60 characters, and must not repeat another key's name. The type is never part of the payload: it is part of the identity of the key, and only a rotation changes it (section 28). The address path is part of the identity too, so it may only be changed while the key has **no saved check**: sending the stored path again is accepted, while a different path for a key that already has a check is answered with `409`. A path that another key already has is also answered with `409`, and the message names the key that has it. The answer is the same payload as `GET /api/settings`. An unknown key, an empty name, or a missing address path is a `400`.
 
 `POST /api/settings/wallet-software` stores the whole list, not one entry at a time:
 
@@ -118,12 +120,14 @@ A cloud key name can never be removed this way, because the validation refuses i
 `POST /api/keys/<id>/rotate` records that a key has been replaced by a new one:
 
 ```json
-{"replaced": true, "keep_name": true, "name": "", "address_path": "m/48'/7'/0'/2'"}
+{"replaced": true, "keep_name": true, "name": "", "type": "cloud", "address_path": "m/48'/7'/0'/2'"}
 ```
 
 `replaced` must be `true`, and `keep_name` must be `true` or `false`. When the name changes, `name` must be non-empty and must not repeat another key's name.
 
-**The address path must change.** The rotation replaces the key, so the key is a new one and the path is part of its identity: the new path is required, the stored path is refused, and a path that another key already has is refused, all with `400`. An empty value is a `400` as well. The comparison ignores surrounding whitespace and letter case. The type is locked and is never part of the payload.
+**The address path must change.** The rotation replaces the key, so the key is a new one and the path is part of its identity: the new path is required, the stored path is refused, and a path that another key already has is refused, all with `400`. An empty value is a `400` as well. The comparison ignores surrounding whitespace and letter case.
+
+**The type may change here, and nowhere else.** The type is part of the identity of the key, so the setup locks it, and a rotation is what replaces the key with a new one (section 28). `type` is `hardware` or `cloud`, and leaving it out keeps the type the key has now. A key that ends up as a cloud key offers its own name as a wallet software choice, so a name the wallet software list already holds is refused with `409`, and the message names the entry that has to be removed first.
 
 The rotation updates the key row and acknowledges the alerts that this key's own checks raised and that a replacement resolves. The acknowledgement stores the key it belongs to, so a rotation that changes the name still keeps the closed alerts closed. It changes no earlier check: the history shows the name the key has now, while the recorded results stay as they were.
 
@@ -260,6 +264,8 @@ The provider and the wallet software are the configured key name and the selecte
 
 The address path is a public derivation path and holds no secret. It is part of a key's identity, so the setup records it, the check form compares the recorded path with it, the settings may only change it while the key has no saved check, and no two keys may share one. The comparison ignores surrounding whitespace and letter case, and the rule lives in the validation layer, which is what the `400` and `409` answers are built on.
 
+The type is part of the identity of a key too, so the setup locks it and the settings never change it. Only a rotation, which replaces the key with a new one, may pick the other type. A key that becomes a cloud key offers its own name as a wallet software choice, so a name the settings list already holds is refused with `409`: the same name cannot be both a cloud key and a settings entry, and the user has to remove that entry first. The rule lives in the validation layer as well.
+
 An alert names the actions that close it, and the acknowledgement stores the action name in `reason`. The actions are fixed per alert code and source, so no alert can be closed by an action it does not offer, and no alert can be left without one. An acknowledgement also stores the key the alert belonged to, so an alert that belongs to a key stays closed across a rename, and the closures that belong to a key can be listed in the history and the export.
 
 The schema is version 11. `keys.address_path`, the `wallet_software` table, and the `alert_acknowledgements` table were added, the two derived cloud results were dropped from `key_checks`, and `alert_acknowledgements.key_id` was added. The application is still under development, so no data migration is written for an older database: delete the `data` folder and configure the setup again. Databases created by earlier versions are still migrated on startup where the older migrations exist:
@@ -277,4 +283,4 @@ Because `health_checks` is a parent table with foreign keys from the child table
 
 Making the rest of a check optional for an unavailable key, and for a key whose address path does not match, needs no migration: `wallet_software` is already nullable, and the security results live in their own table. A record with no such rows simply renders and exports as empty.
 
-The address path uniqueness and the alert actions need no migration either: both are enforced where they are used, and a database with a duplicate path is refused by the API rather than by a constraint, so an old database can still be opened.
+The address path uniqueness, the type change on a rotation, and the alert actions need no migration either: all are enforced where they are used, and a database with a duplicate path is refused by the API rather than by a constraint, so an old database can still be opened.
