@@ -13,7 +13,7 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 - §1–§18 er kravspecen og gjeld som han står.
 - §19–§27 er korte samandrag av rundane. Alle reglane deira står i §1–§18; den fulle grunngjevinga ligg i git-historikken.
 - Eit punkt utan avkryssingsboks er implementert og verifisert. `[ ]` markerer det som står att.
-- **Status:** §1–§26 er implementerte og verifiserte, skjema versjon 10, testsuiten er grøn (319 testar). §27 er neste runde og er **ikkje starta**. §18 steg 9–12 (StartOS) er **ikkje starta**.
+- **Status:** §1–§27 er implementerte og verifiserte, skjema versjon 11, testsuiten er grøn (337 testar). §18 steg 9–12 (StartOS) er **ikkje starta**.
 
 ## Språkkrav
 
@@ -227,7 +227,7 @@ Alle lagra kontrollar blir lesne, ikkje berre den nyaste. Like varsel (same `cod
 - Gamle health checks blir aldri overskrivne.
 - Vis `Address path verified` som den utleidde verdien han er, og ikkje som eit brukarval.
 - Vis namnet nøkkelen har no, sidan namnet kan endrast i innstillingane.
-- [ ] (§27) Vis kva varsel som vart lukka på kontrollen, med kva handling og kva dato.
+- (§27) Vis kva varsel som vart lukka på kontrollen, med kva handling og kva dato.
 
 ---
 
@@ -239,13 +239,13 @@ Alle lagra kontrollar blir lesne, ikkje berre den nyaste. Like varsel (same `cod
 - Resultat med meir enn éin verdi per innsending ligg i éi celle som `SeedSigner: VULNERABLE; Sparrow Wallet: SECURE`.
 - Statusverdiane blir skrivne slik dei er lagra. `0`/`1` blir skrivne som `No`/`Yes`.
 - Nøkkelnamnet og nøkkeltypen kjem frå oppsettet, og namnet er namnet nøkkelen har no.
-- [ ] (§27) Ny kolonne heilt til slutt med varsla som vart lukka på kontrollen, med handling og dato.
+- (§27) Ny kolonne heilt til slutt med varsla som vart lukka på kontrollen, med handling og dato.
 
 ---
 
 # 11. Backend
 
-- SQLite med initialisering og migrering. Skjemaet er versjon 10, og blir versjon 11 i §27.
+- SQLite med initialisering og migrering. Skjemaet er versjon 11.
 - Lagring av nøklar, health checks, historikk og rapporteksport.
 - Varsellogikken (§7).
 - Health endpoint.
@@ -397,7 +397,7 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 - [ ] 11. Test restart og restore.
 - [ ] 12. Bygg endeleg `.s9pk` og gjer første release.
 
-**Merk:** §23–§26 kom inn etter steg 8 og er implementerte og verifiserte. §27 kjem òg før steg 9–12. Steg 9–12 er ikkje starta.
+**Merk:** §23–§27 kom inn etter steg 8 og er implementerte og verifiserte. Steg 9–12 er ikkje starta.
 
 **Testar:** køyr `python3 -m unittest discover -s tests`. Suiten skal vere grøn både på Linux og på Windows-kopien.
 
@@ -438,9 +438,9 @@ Ein nøkkel med eit ope varsel kan ikkje få ein ny kontroll før varselet er lu
 
 ---
 
-# 27. Varselhandlingar i historikk og CSV, kontaktvarselet og cloud-programvare
+# 27. Varselhandlingar i historikk og CSV, kontaktvarselet og cloud-programvare (implementert og verifisert)
 
-Avtalt 05.10.2026. **Ikkje starta.** Skjemaet går til versjon 11.
+Avtalt 05.10.2026. Skjemaet gjekk til versjon 11.
 
 Bakgrunnen: ei lukking blir alt lagra i `alert_acknowledgements` (`code`, `source`, `check_id`, `reason` = handlingsnamnet, `acknowledged_at`), men ingenting les tabellen. Brukaren kan difor ikkje sjå kva som vart lukka, når og med kva handling. I tillegg finst to hol: kontaktvarselet høyrer ikkje til nokon nøkkel, og `software_incompatible` tilbyr `remove_software` òg når «programvara» er namnet på ein cloud-nøkkel, som aldri kan fjernast frå innstillingane.
 
