@@ -18,6 +18,13 @@ the button, and the removal point at the right settings entry (section 26.7).
 leaves out the acknowledged ones, which is what the dashboard shows
 (sections 21 and 25.3).
 
+Two alerts belong to the checked key although they are not about the key itself
+(section 27). The contact alert is one of them, so it blocks the key until the
+user has updated the contact details externally. The other one is a wallet
+software that no longer supports the hardware, when that software is the name of
+a configured cloud key: such a name can never be removed from the settings, so
+that form of the alert asks for a new hardware wallet instead.
+
 An alert without an action is a bug, not a state the user can reach: the key
 would be locked with no way out (section 26.1). ``_alert`` therefore refuses to
 build one.
@@ -88,12 +95,22 @@ _SOFTWARE_INCOMPATIBLE_MESSAGE = (
     "This wallet software no longer supports the hardware. Add another wallet "
     "software in the settings, then remove this one to close the alert."
 )
+# When the wallet software is the name of a configured cloud key, it can never be
+# removed from the settings, so the alert asks for a new hardware wallet instead
+# (section 27).
+_SOFTWARE_INCOMPATIBLE_KEY_MESSAGE = (
+    "The wallet software for this key no longer supports the hardware. Replace "
+    "the hardware wallet and restore the same seed on the new device, then close "
+    "the alert."
+)
 _VULNERABLE_MESSAGE = (
     "Security status VULNERABLE: the firmware or security problem must be followed up."
 )
 _COMPROMISED_MESSAGE = "Security status COMPROMISED: follow the key loss procedure."
+# The contact alert belongs to the checked key and names it, so the message
+# points at that key (section 27).
 _CONTACT_MESSAGE = (
-    "The contact details for this key need an external update. "
+    "The contact details for {source} need an external update. "
     "Update them in your external documentation, then close this alert."
 )
 # A saved check that predates the software column has no name to point at, so the
@@ -104,11 +121,13 @@ _SOFTWARE_SOURCE = "Software compatibility"
 _CONTACT_NEEDS_UPDATE = "Needs external update"
 
 
-def build_alerts(record):
+def build_alerts(record, cloud_names=()):
     """Return the active alerts for one saved health check.
 
     Critical alerts are listed before informational ones; the order within each
-    severity follows the checklist order.
+    severity follows the checklist order. ``cloud_names`` holds the configured
+    names of the cloud keys, because such a name is also a wallet software choice
+    and can never be removed from the settings (section 27).
     """
     key_checks = record.get("key_checks") or ()
     key_ids = {}
@@ -120,7 +139,7 @@ def build_alerts(record):
     alerts = []
     for key_check in key_checks:
         alerts.extend(_key_alerts(key_check))
-    alerts.extend(_software_alerts(record))
+    alerts.extend(_software_alerts(record, cloud_names))
     for security_check in record.get("ai_security_checks") or ():
         alerts.extend(_security_alerts(security_check, key_ids))
     alerts.extend(_contact_alerts(record))
@@ -128,7 +147,7 @@ def build_alerts(record):
     return alerts
 
 
-def collect_alerts(records, acknowledgements=()):
+def collect_alerts(records, acknowledgements=(), cloud_names=()):
     """Return the merged alerts of every saved check, critical and newest first.
 
     Each alert carries the ``check_id`` and ``checked_at`` of the check it came
@@ -138,11 +157,13 @@ def collect_alerts(records, acknowledgements=()):
     first inside each severity.
 
     An acknowledged alert is left out until a newer check for the same code and
-    source raises it again (section 25.3).
+    source raises it again (section 25.3). An alert that belongs to a key is
+    identified by its key instead, so a rename does not open a closed alert again
+    (section 27).
     """
     tagged = []
     for record in records:
-        for alert in build_alerts(record):
+        for alert in build_alerts(record, cloud_names):
             tagged.append({
                 **alert,
                 "check_id": record.get("id"),
@@ -165,7 +186,7 @@ def collect_alerts(records, acknowledgements=()):
     return merged
 
 
-def rotation_alert_targets(records, key):
+def rotation_alert_targets(records, key, cloud_names=()):
     """Return the (code, source) pairs that rotating one key closes.
 
     A rotation closes the alerts that this key's own checks raised and that a
@@ -177,7 +198,7 @@ def rotation_alert_targets(records, key):
     for record in records:
         if not _record_covers_key(record, key):
             continue
-        for alert in build_alerts(record):
+        for alert in build_alerts(record, cloud_names):
             if alert["code"] not in ROTATION_CODES:
                 continue
             if alert["code"] in _SECURITY_CODES and alert.get("key_id") != key["id"]:
@@ -187,26 +208,48 @@ def rotation_alert_targets(records, key):
     return list(dict.fromkeys(targets))
 
 
-def software_alert_targets(records, acknowledgements, names):
-    """Return the (code, source) pairs that removing software closes.
+def software_alert_targets(records, acknowledgements, names, cloud_names=()):
+    """Return the (code, source, key_id) triples that removing software closes.
 
     Removing a wallet software from the settings closes the alerts the software
     itself raised: software that no longer supports the hardware, and a security
     status the software got (sections 26.4 and 26.7). Only the alerts that are
     still open are returned, so removing a name never writes an acknowledgement
-    for an alert that is already closed.
+    for an alert that is already closed. The key id is the key the alert belonged
+    to, and it is None for a software alert raised by the settings list
+    (section 27).
     """
-    folded = {
-        name.strip().casefold() for name in names if isinstance(name, str)
-    }
+    folded = _folded_names(names)
     targets = []
-    for alert in collect_alerts(records, acknowledgements):
+    for alert in collect_alerts(records, acknowledgements, cloud_names):
         software = alert.get("software")
         if not software or software.casefold() not in folded:
             continue
-        targets.append((alert["code"], alert["source"]))
-    # One entry per pair, so a name is closed once.
+        targets.append((alert["code"], alert["source"], alert.get("key_id")))
+    # One entry per triple, so a name is closed once.
     return list(dict.fromkeys(targets))
+
+
+def _folded_names(names):
+    """Return names compared without surrounding spaces or letter case."""
+    return {name.strip().casefold() for name in names or () if isinstance(name, str)}
+
+
+def _checked_key(record):
+    """Return the key check a record was made for, or None.
+
+    A record saved before section 19 can hold up to three key checks, one per
+    key. The first one is the key the submission was made for, which is the key
+    the contact question and the recorded wallet software belong to
+    (section 27).
+    """
+    key_checks = record.get("key_checks") or ()
+    return key_checks[0] if key_checks else None
+
+
+def _key_source(key_check):
+    """Return the label a key alert uses for one key."""
+    return f"Key {key_check.get('key_number')}: {key_check.get('name')}"
 
 
 def _record_covers_key(record, key):
@@ -220,15 +263,21 @@ def _record_covers_key(record, key):
 def _is_acknowledged(alert, acknowledgements):
     """Return True while an acknowledgement still covers this alert.
 
-    The acknowledgement stores the newest check that raised the alert when it was
-    closed, so a newer check, which always has a higher id, raises the alert
-    again (section 25.3).
+    An alert that belongs to a key is hidden by that key, so the name the key has
+    now cannot open a closed alert again. An alert without a key keeps matching
+    on its source (section 27). The acknowledgement stores the newest check that
+    raised the alert when it was closed, so a newer check, which always has a
+    higher id, raises the alert again (section 25.3).
     """
     check_id = alert.get("check_id")
+    key_id = alert.get("key_id")
     for acknowledgement in acknowledgements:
         if acknowledgement.get("code") != alert["code"]:
             continue
-        if acknowledgement.get("source") != alert["source"]:
+        if key_id is not None:
+            if acknowledgement.get("key_id") != key_id:
+                continue
+        elif acknowledgement.get("source") != alert["source"]:
             continue
         acknowledged_id = acknowledgement.get("check_id")
         if check_id is None or acknowledged_id is None:
@@ -274,7 +323,7 @@ def _key_alerts(key_check):
     closed by replacing the hardware wallet, because the key and its address path
     stay the same when the same seed is restored on a new device (section 26.4).
     """
-    source = f"Key {key_check.get('key_number')}: {key_check.get('name')}"
+    source = _key_source(key_check)
     key_id = key_check.get("key_id")
     if key_check.get("available") == 0:
         # The remaining checks for this key could not be performed.
@@ -321,15 +370,33 @@ def _key_alerts(key_check):
     return alerts
 
 
-def _software_alerts(record):
+def _software_alerts(record, cloud_names):
     """Return the alert for software that no longer supports the hardware.
 
     The source is the software that produced the result, so the alert, the
-    settings link, and the removal point at the right entry (section 26.7).
+    settings link, and the removal point at the right entry (section 26.7). When
+    that software is the name of a configured cloud key, it can never be removed
+    from the settings, so the alert belongs to the checked key and asks for a
+    replacement of the hardware instead (section 27).
     """
     if record.get("software_compatibility_status") != "PROBLEM":
         return []
     software = (record.get("wallet_software") or "").strip() or None
+    key_check = _checked_key(record)
+    if (
+        software is not None
+        and software.casefold() in _folded_names(cloud_names)
+        and key_check is not None
+    ):
+        return [_alert(
+            "software_incompatible",
+            CRITICAL,
+            _key_source(key_check),
+            _SOFTWARE_INCOMPATIBLE_KEY_MESSAGE,
+            (REPLACE_HARDWARE,),
+            key_check.get("key_id"),
+            software=software,
+        )]
     return [_alert(
         "software_incompatible",
         CRITICAL,
@@ -383,15 +450,23 @@ def _security_alerts(security_check, key_ids):
 def _contact_alerts(record):
     """Return the alert for contact details that need an external update.
 
-    Only the stored status is read; the app never stores contact details
-    (section 23.1).
+    The alert belongs to the checked key, so it blocks that key like every other
+    key alert, and the message names the key (section 27). Only the stored status
+    is read; the app never stores contact details (section 23.1).
     """
-    if record.get("contact_info_verified") == _CONTACT_NEEDS_UPDATE:
-        return [_alert(
-            "contact_info_unconfirmed",
-            INFO,
-            "Contact information",
-            _CONTACT_MESSAGE,
-            (CONTACT_UPDATED,),
-        )]
-    return []
+    if record.get("contact_info_verified") != _CONTACT_NEEDS_UPDATE:
+        return []
+    key_check = _checked_key(record)
+    if key_check is None:
+        # Without a key there is nothing the alert could belong to, so no alert
+        # is raised.
+        return []
+    source = _key_source(key_check)
+    return [_alert(
+        "contact_info_unconfirmed",
+        INFO,
+        source,
+        _CONTACT_MESSAGE.format(source=source),
+        (CONTACT_UPDATED,),
+        key_check.get("key_id"),
+    )]
