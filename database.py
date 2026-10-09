@@ -5,10 +5,10 @@ from pathlib import Path
 import sqlite3
 
 
-# Version 10 adds the key address path, the wallet software list, and the alert
-# acknowledgements, and drops the two derived cloud results from key_checks
-# (sections 25.1, 25.4 and 25.6).
-SCHEMA_VERSION = 10
+# Version 11 records the key an alert belonged to on its acknowledgement, so a
+# closed alert stays closed across a rename, and the closures can be shown in the
+# history and the export (section 27).
+SCHEMA_VERSION = 11
 # The app always supports exactly three key slots (section 23.2).
 KEY_COUNT = 3
 # A database without any wallet software entry starts with this one, so a
@@ -82,14 +82,16 @@ WALLET_SOFTWARE_TABLE = """
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
     """
-# One row per acknowledged alert. ``check_id`` is the newest check that raised
-# the alert when it was acknowledged, so a newer check for the same code and
-# source raises it again (section 25.3).
+# One row per acknowledged alert. ``key_id`` is the key the alert belonged to, or
+# NULL for a software alert raised by the settings list, and ``check_id`` is the
+# newest check that raised the alert when it was acknowledged, so a newer check
+# for the same code raises it again (sections 25.3 and 27).
 ALERT_ACKNOWLEDGEMENTS_TABLE = """
     CREATE TABLE IF NOT EXISTS {table} (
         id INTEGER PRIMARY KEY,
         code TEXT NOT NULL,
         source TEXT NOT NULL,
+        key_id INTEGER,
         check_id INTEGER,
         reason TEXT NOT NULL,
         acknowledged_at TEXT NOT NULL
@@ -104,12 +106,15 @@ TABLES = (
     ("alert_acknowledgements", ALERT_ACKNOWLEDGEMENTS_TABLE),
 )
 # The address path is part of the key's identity and is written by the setup
-# step (section 25.1). It is added to a database that predates version 10.
+# step (section 25.1). It is added to a database that predates version 10, and the
+# key of an acknowledgement is added to one that predates version 11
+# (section 27).
 OPTIONAL_COLUMNS = (
     ("keys", "address_path", "TEXT NOT NULL DEFAULT ''"),
     ("health_checks", "software_comments", "TEXT"),
     ("health_checks", "wallet_software", "TEXT"),
     ("health_checks", "software_version", "TEXT"),
+    ("alert_acknowledgements", "key_id", "INTEGER"),
 )
 INDEX_STATEMENTS = (
     (
@@ -679,24 +684,28 @@ def save_wallet_software(names, database_path="data/helsesjekk.sqlite3"):
         connection.close()
 
 
-def save_alert_acknowledgement(code, source, check_id, reason, database_path="data/helsesjekk.sqlite3"):
+def save_alert_acknowledgement(code, source, key_id, check_id, reason, database_path="data/helsesjekk.sqlite3"):
     """Store one acknowledged alert, so it stays hidden until it is raised again.
 
-    ``check_id`` is the newest check that raised the alert when it was
-    acknowledged. A newer check for the same code and source gets a higher id
-    and therefore raises the alert again (section 25.3).
+    ``key_id`` is the key the alert belonged to, or None for a software alert
+    raised by the settings list. An alert that belongs to a key is hidden by its
+    key, so a rename does not open it again (section 27). ``check_id`` is the
+    newest check that raised the alert when it was acknowledged. A newer check
+    for the same code gets a higher id and therefore raises the alert again
+    (section 25.3).
     """
     connection = sqlite3.connect(database_path, timeout=5)
     try:
         with connection:
             cursor = connection.execute(
                 """
-                INSERT INTO alert_acknowledgements (code, source, check_id, reason, acknowledged_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO alert_acknowledgements (code, source, key_id, check_id, reason, acknowledged_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     code,
                     source,
+                    key_id,
                     check_id,
                     reason,
                     datetime.now().isoformat(timespec="seconds"),
@@ -707,17 +716,25 @@ def save_alert_acknowledgement(code, source, check_id, reason, database_path="da
         connection.close()
 
 
-def list_alert_acknowledgements(database_path="data/helsesjekk.sqlite3"):
-    """Return every stored acknowledgement, newest first."""
+def list_alert_acknowledgements(database_path="data/helsesjekk.sqlite3", check_id=None):
+    """Return the stored acknowledgements, newest first.
+
+    ``check_id`` limits the result to the closures of one saved check, which is
+    what the history detail view reads (section 27).
+    """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
     try:
+        statement = (
+            "SELECT id, code, source, key_id, check_id, reason, acknowledged_at "
+            "FROM alert_acknowledgements"
+        )
+        parameters = ()
+        if check_id is not None:
+            statement += " WHERE check_id = ?"
+            parameters = (check_id,)
         rows = connection.execute(
-            """
-            SELECT id, code, source, check_id, reason, acknowledged_at
-            FROM alert_acknowledgements
-            ORDER BY id DESC
-            """
+            statement + " ORDER BY id DESC", parameters
         ).fetchall()
         return [dict(row) for row in rows]
     finally:
@@ -894,7 +911,8 @@ def list_export_rows(database_path="data/helsesjekk.sqlite3"):
     Every row is one key check. ``check_id`` identifies the submission it belongs
     to, so rows saved before section 19 (up to three keys in one submission) stay
     grouped. The per-provider security results are joined into a single text
-    cell, because they have more than one value per submission.
+    cell, because they have more than one value per submission, and so are the
+    closures that belong to a key (section 27).
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
@@ -917,8 +935,10 @@ def list_export_rows(database_path="data/helsesjekk.sqlite3"):
         ).fetchall()
         result = [dict(row) for row in rows]
         security = _grouped_values(connection, "ai_security_checks", "provider", "status")
+        closures = _grouped_closures(connection)
         for row in result:
             row["security_status"] = security.get(row["check_id"], "")
+            row["closed_alerts"] = closures.get(row["check_id"], "")
         return result
     finally:
         connection.close()
@@ -934,6 +954,33 @@ def _grouped_values(connection, table, label_column, value_column):
         entry = f"{row[label_column]}: {row[value_column]}"
         grouped.setdefault(row["health_check_id"], []).append(entry)
     return {check_id: "; ".join(values) for check_id, values in grouped.items()}
+
+
+def _grouped_closures(connection):
+    """Return {check_id: "code: action (date); ..."} for the closures per check.
+
+    Only the closures that belong to a key are listed, so a rotation, a replaced
+    hardware, an updated contact, and an ignored key alert are shown, while a
+    software alert that was removed or ignored is left out (section 27).
+    """
+    rows = connection.execute(
+        """
+        SELECT check_id, code, reason, acknowledged_at
+        FROM alert_acknowledgements
+        WHERE key_id IS NOT NULL AND check_id IS NOT NULL
+        ORDER BY id
+        """
+    ).fetchall()
+    grouped = {}
+    for row in rows:
+        entry = f"{row['code']}: {row['reason']} ({_short_date(row['acknowledged_at'])})"
+        grouped.setdefault(row["check_id"], []).append(entry)
+    return {check_id: "; ".join(values) for check_id, values in grouped.items()}
+
+
+def _short_date(value):
+    """Return the date part of a stored ISO timestamp."""
+    return (value or "")[:10]
 
 
 def get_health_check(health_check_id, database_path="data/helsesjekk.sqlite3"):
