@@ -167,6 +167,11 @@ class ServerTestCase(unittest.TestCase):
             self.assertEqual(response.status, 200)
             return json.load(response)
 
+    def get_key_status(self):
+        with urlopen(f"{self.base_url}/api/key-status") as response:
+            self.assertEqual(response.status, 200)
+            return json.load(response)
+
     def post_json(self, path, payload):
         request = Request(
             f"{self.base_url}{path}",
@@ -294,10 +299,8 @@ class AppHandlerTests(ServerTestCase):
                          ["SeedSigner", "Blockstream Jade", "Nunchuk"])
 
     def test_key_status_api_is_empty_before_anything_is_saved(self):
-        with urlopen(f"{self.base_url}/api/key-status") as response:
-            status = json.load(response)
+        status = self.get_key_status()
 
-        self.assertEqual(response.status, 200)
         self.assertEqual([entry["key_number"] for entry in status], [1, 2, 3])
         self.assertEqual([entry["last_checked_at"] for entry in status], [None, None, None])
         self.assertEqual([entry["next_check_due"] for entry in status], [None, None, None])
@@ -307,10 +310,8 @@ class AppHandlerTests(ServerTestCase):
         payload["checked_at"] = "2027-03-01"
         self.post_health_check(payload)
 
-        with urlopen(f"{self.base_url}/api/key-status") as response:
-            status = json.load(response)
+        status = self.get_key_status()
 
-        self.assertEqual(response.status, 200)
         self.assertEqual([entry["key_number"] for entry in status], [1, 2, 3])
         self.assertEqual([entry["type"] for entry in status], ["hardware", "hardware", "cloud"])
         self.assertEqual(status[0]["name"], "SeedSigner")
@@ -448,12 +449,16 @@ class AppHandlerTests(ServerTestCase):
 
         self.assertEqual(response.status, 200)
         self.assertIn('<html lang="en">', body)
-        self.assertIn('id="keys-list"', body)
         self.assertIn('id="wallet-software-list"', body)
         self.assertIn('id="rotation-list"', body)
-        self.assertIn("Rotate selected keys", body)
-        # The funds have to be moved to the new wallet, and the path has to change
-        # because the key is a new one (sections 25.2 and 26.3).
+        self.assertIn('id="save-keys"', body)
+        self.assertIn("Save keys", body)
+        self.assertIn("01 / Wallet software", body)
+        self.assertIn("02 / Key rotation", body)
+        # The key names, the address paths and the type are changed in the
+        # rotation section, so the page has no separate keys section
+        # (section 28).
+        self.assertNotIn('id="keys-list"', body)
         self.assertIn("Rotating a key creates a new wallet", body)
         self.assertIn("The address path must change", body)
         self.assertIn("Never enter seed phrases", body)
@@ -1065,8 +1070,7 @@ class RenamedSetupTests(ServerTestCase):
         )
 
     def test_the_dashboard_reports_the_configured_names(self):
-        with urlopen(f"{self.base_url}/api/key-status") as response:
-            status = json.load(response)
+        status = self.get_key_status()
 
         self.assertEqual([entry["name"] for entry in status], ["Coinbase", "ColdCard", "Jade"])
         self.assertEqual([entry["type"] for entry in status], ["cloud", "hardware", "hardware"])
@@ -1125,7 +1129,8 @@ class SettingsApiTests(ServerTestCase):
 
         self.assertEqual(body["keys"][0]["name"], "ColdCard")
         self.assertEqual(self.key_profiles()[0]["name"], "ColdCard")
-        # The type is locked (section 25.2).
+        # The type is part of the identity of the key, so only a rotation changes
+        # it, and the settings keep the stored one (sections 25.2 and 28).
         self.assertEqual(self.key_profiles()[0]["type"], "hardware")
 
     def test_the_address_path_can_be_changed_until_the_key_has_a_check(self):
@@ -1344,6 +1349,64 @@ class RotationApiTests(ServerTestCase):
         stored = self.key_profiles()[1]
         self.assertEqual(stored["name"], "Replacement")
         self.assertEqual(stored["address_path"], self.rotation_path(key["id"]))
+
+    def test_a_rotation_may_change_the_key_type(self):
+        # The type is part of the identity of a key, and the setup locks it. A
+        # rotation replaces the key with a new one, so the replacement may carry
+        # the other type (section 28).
+        key = self.key_profiles()[0]
+        self.assertEqual(key["type"], "hardware")
+
+        body = self.rotate(key["id"], type="cloud")
+
+        stored = self.key_profiles()[0]
+        self.assertEqual(stored["type"], "cloud")
+        self.assertEqual(stored["name"], key["name"])
+        self.assertEqual(stored["address_path"], self.rotation_path(key["id"]))
+        self.assertEqual(body["settings"]["keys"][0]["type"], "cloud")
+
+        # The new type is the identity of the key now, so the dashboard and the
+        # check form read it (section 23.3).
+        status = {entry["key_id"]: entry for entry in self.get_key_status()}
+        self.assertEqual(status[key["id"]]["type"], "cloud")
+
+        # The other direction works as well, and the name stops being a wallet
+        # software choice.
+        cloud_key = self.key_profiles()[2]
+        self.assertEqual(cloud_key["type"], "cloud")
+
+        self.rotate(cloud_key["id"], type="hardware")
+
+        self.assertEqual(self.key_profiles()[2]["type"], "hardware")
+
+    def test_a_rotation_to_cloud_is_refused_when_the_name_is_a_wallet_software(self):
+        # A cloud key offers its own name as a wallet software choice, and the
+        # settings list holds the other choices, so the same name cannot be both.
+        # The list entry has to be removed first (sections 25.4 and 28).
+        key = self.key_profiles()[0]
+        with self.post_wallet_software(["Sparrow Wallet", key["name"]]) as response:
+            self.assertEqual(response.status, 200)
+
+        self.assert_rejected_at(f"/api/keys/{key['id']}/rotate", {
+            "replaced": True,
+            "keep_name": True,
+            "address_path": self.rotation_path(key["id"]),
+            "type": "cloud",
+        }, status=409)
+
+        # The refused rotation left the key as it was.
+        stored = self.key_profiles()[0]
+        self.assertEqual(stored["type"], "hardware")
+        self.assertEqual(stored["address_path"], ADDRESS_PATH)
+        self.assertEqual(stored["name"], key["name"])
+
+        # Once the entry is gone, the same rotation goes through.
+        with self.post_wallet_software(["Sparrow Wallet"]) as response:
+            self.assertEqual(response.status, 200)
+
+        self.rotate(key["id"], type="cloud")
+
+        self.assertEqual(self.key_profiles()[0]["type"], "cloud")
 
     def test_a_rotation_needs_the_replacement_confirmation(self):
         key = self.key_profiles()[0]
