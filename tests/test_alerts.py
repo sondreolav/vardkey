@@ -66,6 +66,21 @@ def key_profile(key_number=1, name="SeedSigner"):
     return {"id": key_number, "key_number": key_number, "name": name}
 
 
+def acknowledgement(code, source, key_id, check_id, at="2026-10-02T09:00:00"):
+    """Return one stored acknowledgement, with the key it belongs to.
+
+    The key id is stored with the acknowledgement, so an alert that belongs to a
+    key is hidden by its key rather than by its source (section 27).
+    """
+    return {
+        "code": code,
+        "source": source,
+        "key_id": key_id,
+        "check_id": check_id,
+        "acknowledged_at": at,
+    }
+
+
 # One change per alert rule, so the rule sweep below covers every code.
 def _unavailable(record):
     record["key_checks"][0]["available"] = 0
@@ -264,8 +279,23 @@ class AlertTests(unittest.TestCase):
 
         self.assertEqual(self.codes(record), ["contact_info_unconfirmed"])
         self.assertEqual(alerts[0]["severity"], "info")
-        self.assertEqual(alerts[0]["source"], "Contact information")
+        # The alert belongs to the checked key and names it, so it blocks that
+        # key like every other key alert (section 27).
+        self.assertEqual(alerts[0]["source"], "Key 1: SeedSigner")
+        self.assertEqual(alerts[0]["key_id"], 1)
+        self.assertEqual(alerts[0]["actions"], [CONTACT_UPDATED])
+        self.assertIn("Key 1: SeedSigner", alerts[0]["message"])
         self.assertIn("external update", alerts[0]["message"])
+
+    def test_a_contact_alert_for_another_key_names_that_key(self):
+        record = clean_record(key_number=3, name="Nunchuk", key_type="cloud")
+        record["contact_info_verified"] = "Needs external update"
+
+        alerts = build_alerts(record)
+
+        self.assertEqual(alerts[0]["source"], "Key 3: Nunchuk")
+        self.assertEqual(alerts[0]["key_id"], 3)
+        self.assertIn("Key 3: Nunchuk", alerts[0]["message"])
 
     def test_the_old_contact_flag_raises_no_alert(self):
         # The 0/1 flag is migrated to a status, so a raw flag is never a result
@@ -371,7 +401,7 @@ class AlertActionTests(unittest.TestCase):
             ("security_vulnerable", _vulnerable_software, "Sparrow Wallet", [REMOVE_SOFTWARE, IGNORE]),
             ("security_compromised", _compromised_key, "SeedSigner", [ROTATE]),
             ("security_compromised", _compromised_software, "Sparrow Wallet", [REMOVE_SOFTWARE]),
-            ("contact_info_unconfirmed", _contact_unconfirmed, "Contact information", [CONTACT_UPDATED]),
+            ("contact_info_unconfirmed", _contact_unconfirmed, "Key 1: SeedSigner", [CONTACT_UPDATED]),
         )
         for code, change, source, actions in cases:
             record = clean_record()
@@ -424,6 +454,34 @@ class AlertActionTests(unittest.TestCase):
         self.assertIsNone(alerts[0]["software"])
         self.assertEqual(alerts[0]["actions"], [REMOVE_SOFTWARE])
 
+    def test_a_cloud_key_software_asks_for_a_replacement_instead_of_a_removal(self):
+        # A hardware key may run the software of a configured cloud key. That name
+        # can never be removed from the settings, so the alert belongs to the
+        # checked key and is closed by replacing the hardware (section 27).
+        record = clean_record()
+        record["wallet_software"] = "Nunchuk"
+        _software_incompatible(record)
+
+        alerts = build_alerts(record, cloud_names=("Nunchuk",))
+
+        self.assertEqual([alert["code"] for alert in alerts], ["software_incompatible"])
+        self.assertEqual(alerts[0]["key_id"], 1)
+        self.assertEqual(alerts[0]["source"], "Key 1: SeedSigner")
+        self.assertEqual(alerts[0]["actions"], [REPLACE_HARDWARE])
+        # There is no settings entry to remove, so no software removal target is
+        # named (section 27).
+        self.assertIsNone(alerts[0]["software"])
+
+    def test_a_settings_list_software_keeps_its_removal_form(self):
+        record = clean_record()
+        _software_incompatible(record)
+
+        alerts = build_alerts(record, cloud_names=("Nunchuk",))
+
+        self.assertEqual(alerts[0]["source"], "Sparrow Wallet")
+        self.assertIsNone(alerts[0]["key_id"])
+        self.assertEqual(alerts[0]["actions"], [REMOVE_SOFTWARE])
+
 
 class AlertGuardTests(unittest.TestCase):
     """An alert without an action would lock a key with no way out (section 26.1)."""
@@ -459,7 +517,7 @@ class SoftwareAlertTargetsTests(unittest.TestCase):
 
         targets = software_alert_targets([record], [], ["Sparrow Wallet"])
 
-        self.assertEqual(targets, [("software_incompatible", "Sparrow Wallet")])
+        self.assertEqual(targets, [("software_incompatible", "Sparrow Wallet", None)])
 
     def test_removing_another_software_closes_nothing(self):
         record = dated_record(1, "2026-10-01")
@@ -473,7 +531,7 @@ class SoftwareAlertTargetsTests(unittest.TestCase):
 
         targets = software_alert_targets([record], [], ["  sparrow wallet  "])
 
-        self.assertEqual(targets, [("software_incompatible", "Sparrow Wallet")])
+        self.assertEqual(targets, [("software_incompatible", "Sparrow Wallet", None)])
 
     def test_removing_a_software_closes_a_software_named_security_alert(self):
         record = dated_record(1, "2026-10-01")
@@ -481,7 +539,7 @@ class SoftwareAlertTargetsTests(unittest.TestCase):
 
         targets = software_alert_targets([record], [], ["Sparrow Wallet"])
 
-        self.assertEqual(targets, [("security_vulnerable", "Sparrow Wallet")])
+        self.assertEqual(targets, [("security_vulnerable", "Sparrow Wallet", None)])
 
     def test_removing_a_software_does_not_close_a_key_alert(self):
         # A key alert is about the key, not about the software, even when the
@@ -494,15 +552,23 @@ class SoftwareAlertTargetsTests(unittest.TestCase):
         self.assertEqual(software_alert_targets([unavailable], [], ["SeedSigner"]), [])
         self.assertEqual(software_alert_targets([vulnerable], [], ["SeedSigner"]), [])
 
+    def test_removing_a_cloud_key_name_does_not_close_the_replacement_alert(self):
+        # A cloud key name is refused by the settings, so it can never be removed;
+        # the alert offers the replacement action instead (section 27).
+        record = dated_record(1, "2026-10-01")
+        record["wallet_software"] = "Nunchuk"
+        _software_incompatible(record)
+
+        targets = software_alert_targets([record], [], ["Nunchuk"], ("Nunchuk",))
+
+        self.assertEqual(targets, [])
+
     def test_an_acknowledged_software_alert_is_not_returned_again(self):
         record = dated_record(1, "2026-10-01")
         _software_incompatible(record)
-        acknowledgements = [{
-            "code": "software_incompatible",
-            "source": "Sparrow Wallet",
-            "check_id": 1,
-            "acknowledged_at": "2026-10-02T09:00:00",
-        }]
+        acknowledgements = [acknowledgement(
+            "software_incompatible", "Sparrow Wallet", None, 1
+        )]
 
         targets = software_alert_targets([record], acknowledgements, ["Sparrow Wallet"])
 
@@ -611,12 +677,9 @@ class CollectAlertsTests(unittest.TestCase):
         record = dated_record(1, "2026-10-01")
         record["key_checks"][0]["available"] = 0
 
-        acknowledgements = [{
-            "code": "key_unavailable",
-            "source": "Key 1: SeedSigner",
-            "check_id": 1,
-            "acknowledged_at": "2026-10-02T09:00:00",
-        }]
+        acknowledgements = [acknowledgement(
+            "key_unavailable", "Key 1: SeedSigner", 1, 1
+        )]
 
         self.assertEqual(collect_alerts([record], acknowledgements), [])
 
@@ -627,59 +690,67 @@ class CollectAlertsTests(unittest.TestCase):
         older["key_checks"][0]["available"] = 0
         newer = dated_record(2, "2027-10-01")
         newer["key_checks"][0]["available"] = 0
-        acknowledged = [{
-            "code": "key_unavailable",
-            "source": "Key 1: SeedSigner",
-            "check_id": 1,
-            "acknowledged_at": "2026-10-02T09:00:00",
-        }]
+        acknowledged = [acknowledgement("key_unavailable", "Key 1: SeedSigner", 1, 1)]
 
         alerts = collect_alerts([newer, older], acknowledged)
 
         self.assertEqual(self.codes(alerts), ["key_unavailable"])
         self.assertEqual(alerts[0]["check_id"], 2)
 
-        acknowledged.append({
-            "code": "key_unavailable",
-            "source": "Key 1: SeedSigner",
-            "check_id": 2,
-            "acknowledged_at": "2027-10-02T09:00:00",
-        })
+        acknowledged.append(acknowledgement(
+            "key_unavailable", "Key 1: SeedSigner", 1, 2, "2027-10-02T09:00:00"
+        ))
         self.assertEqual(collect_alerts([newer, older], acknowledged), [])
 
-    def test_an_acknowledgement_covers_one_code_and_source_only(self):
+    def test_an_acknowledgement_covers_one_alert_only(self):
         record = dated_record(1, "2026-10-01")
         record["key_checks"][0]["available"] = 0
         record["contact_info_verified"] = "Needs external update"
         acknowledgements = [
-            {
-                "code": "key_unavailable",
-                "source": "Key 2: Blockstream Jade",
-                "check_id": 1,
-                "acknowledged_at": "2026-10-02T09:00:00",
-            },
-            {
-                "code": "contact_info_unconfirmed",
-                "source": "Contact information",
-                "check_id": 1,
-                "acknowledged_at": "2026-10-02T09:00:00",
-            },
+            # The same code, but for another key, so it covers nothing here.
+            acknowledgement("key_unavailable", "Key 2: Blockstream Jade", 2, 1),
+            acknowledgement("contact_info_unconfirmed", "Key 1: SeedSigner", 1, 1),
         ]
 
         alerts = collect_alerts([record], acknowledgements)
 
-        # The key alert has another source, so only the contact alert is hidden.
+        # Only the contact alert was closed; the key alert still stands.
         self.assertEqual(self.codes(alerts), ["key_unavailable"])
+
+    def test_an_acknowledgement_with_a_key_id_hides_the_alert_after_a_rename(self):
+        # The alert is identified by its key, so the name the key has now cannot
+        # open the closed alert again (section 27). This is the bug a rotation
+        # with a new name, or a plain rename, used to cause.
+        record = dated_record(1, "2026-10-01")
+        record["key_checks"][0]["available"] = 0
+        acknowledgements = [acknowledgement(
+            "key_unavailable", "Key 1: SeedSigner", 1, 1
+        )]
+        record["key_checks"][0]["name"] = "Replacement"
+
+        self.assertEqual(collect_alerts([record], acknowledgements), [])
+
+    def test_a_cloud_key_software_alert_is_hidden_by_its_key(self):
+        # The cloud form of the alert carries the key, so it is hidden the same
+        # way (section 27).
+        record = dated_record(1, "2026-10-01")
+        record["wallet_software"] = "Nunchuk"
+        record["software_compatibility_status"] = "PROBLEM"
+        acknowledgements = [acknowledgement(
+            "software_incompatible", "Key 1: SeedSigner", 1, 1
+        )]
+
+        self.assertEqual(
+            collect_alerts([record], acknowledgements, ("Nunchuk",)),
+            [],
+        )
 
     def test_an_acknowledgement_without_a_check_id_hides_nothing(self):
         record = dated_record(1, "2026-10-01")
         record["key_checks"][0]["available"] = 0
-        acknowledgements = [{
-            "code": "key_unavailable",
-            "source": "Key 1: SeedSigner",
-            "check_id": None,
-            "acknowledged_at": "2026-10-02T09:00:00",
-        }]
+        acknowledgements = [acknowledgement(
+            "key_unavailable", "Key 1: SeedSigner", 1, None
+        )]
 
         self.assertEqual(self.codes(collect_alerts([record], acknowledgements)), ["key_unavailable"])
 
@@ -699,12 +770,7 @@ class CollectAlertsTests(unittest.TestCase):
 
         # Closing it hides it, and it stays hidden because no newer check raises
         # it again.
-        acknowledged = [{
-            "code": "key_unavailable",
-            "source": "Key 1: SeedSigner",
-            "check_id": 1,
-            "acknowledged_at": "2026-10-02T09:00:00",
-        }]
+        acknowledged = [acknowledgement("key_unavailable", "Key 1: SeedSigner", 1, 1)]
 
         self.assertEqual(collect_alerts([newer, older], acknowledged), [])
 
