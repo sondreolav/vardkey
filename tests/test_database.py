@@ -430,6 +430,88 @@ SCHEMA_VERSION_9 = """
     PRAGMA user_version = 9;
 """
 
+# The schema version 10 layout, which is the current one except that
+# alert_acknowledgements has no key_id column. The migration adds that column
+# and rebuilds no table (section 27).
+SCHEMA_VERSION_10 = """
+    CREATE TABLE keys (
+        id INTEGER PRIMARY KEY,
+        key_number INTEGER NOT NULL UNIQUE CHECK (key_number BETWEEN 1 AND 3),
+        name TEXT NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('hardware', 'cloud')),
+        address_path TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE health_checks (
+        id INTEGER PRIMARY KEY,
+        checked_at TEXT NOT NULL,
+        next_check_due TEXT NOT NULL,
+        wallet_software TEXT,
+        software_version TEXT,
+        software_compatibility_status TEXT NOT NULL DEFAULT 'NOT_ASSESSED'
+            CHECK (software_compatibility_status IN ('OK', 'PROBLEM', 'NOT_ASSESSED')),
+        sparrow_version TEXT,
+        nunchuk_version TEXT,
+        software_comments TEXT,
+        contact_info_verified TEXT
+            CHECK (contact_info_verified IN ('Confirmed current', 'Needs external update')),
+        comments TEXT
+    );
+    CREATE TABLE key_checks (
+        id INTEGER PRIMARY KEY,
+        health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
+        key_id INTEGER NOT NULL REFERENCES keys(id) ON DELETE RESTRICT,
+        available INTEGER CHECK (available IN (0, 1)),
+        hardware_works INTEGER CHECK (hardware_works IN (0, 1)),
+        firmware_version TEXT,
+        seed_backup_verified TEXT CHECK (seed_backup_verified IN ('OK', 'PROBLEM')),
+        address_path_verified TEXT CHECK (address_path_verified IN ('OK', 'PROBLEM')),
+        address_path TEXT,
+        comments TEXT,
+        UNIQUE (health_check_id, key_id)
+    );
+    CREATE TABLE ai_security_checks (
+        id INTEGER PRIMARY KEY,
+        health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('SECURE', 'PATCHED', 'VULNERABLE', 'COMPROMISED')),
+        comments TEXT,
+        UNIQUE (health_check_id, provider)
+    );
+    CREATE TABLE wallet_software (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE alert_acknowledgements (
+        id INTEGER PRIMARY KEY,
+        code TEXT NOT NULL,
+        source TEXT NOT NULL,
+        check_id INTEGER,
+        reason TEXT NOT NULL,
+        acknowledged_at TEXT NOT NULL
+    );
+    INSERT INTO keys (id, key_number, name, type, address_path) VALUES
+        (1, 1, 'SeedSigner', 'hardware', 'm/48''/0''/0''/2'''),
+        (2, 2, 'Blockstream Jade', 'hardware', 'm/48''/1''/0''/2'''),
+        (3, 3, 'Nunchuk', 'cloud', 'm/48''/2''/0''/2''');
+    INSERT INTO health_checks (
+        id, checked_at, next_check_due, wallet_software, software_version,
+        software_compatibility_status, contact_info_verified, comments
+    ) VALUES (1, '2026-01-01', '2027-01-01', 'Sparrow Wallet', '1.8.0', 'OK', 'Confirmed current', 'Annual review');
+    INSERT INTO key_checks (
+        health_check_id, key_id, available, hardware_works, firmware_version,
+        seed_backup_verified, address_path_verified, address_path
+    ) VALUES (1, 1, 1, 1, '1.0.0', 'OK', 'OK', 'm/48''/0''/0''/2''');
+    INSERT INTO ai_security_checks (health_check_id, provider, status) VALUES
+        (1, 'SeedSigner', 'SECURE'),
+        (1, 'Sparrow Wallet', 'SECURE');
+    INSERT INTO wallet_software (name) VALUES ('Sparrow Wallet');
+    INSERT INTO alert_acknowledgements (code, source, check_id, reason, acknowledged_at) VALUES
+        ('key_unavailable', 'Key 1: SeedSigner', 1, 'rotate', '2026-02-01T09:00:00');
+    PRAGMA user_version = 10;
+"""
+
 
 class DatabaseInitializationTests(unittest.TestCase):
     def setUp(self):
@@ -499,7 +581,7 @@ class DatabaseInitializationTests(unittest.TestCase):
             }
 
         self.assertEqual(version, SCHEMA_VERSION)
-        self.assertEqual(version, 10)
+        self.assertEqual(version, 11)
         self.assertTrue(
             {
                 "keys",
@@ -712,7 +794,7 @@ class DatabaseInitializationTests(unittest.TestCase):
             ).fetchall()
 
         self.assertEqual(version, SCHEMA_VERSION)
-        self.assertEqual(version, 10)
+        self.assertEqual(version, 11)
         self.assertIn("wallet_software", self.table_names())
         self.assertIn("alert_acknowledgements", self.table_names())
         # The two derived cloud results are gone, and the rest of the history is
@@ -731,6 +813,28 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(record["wallet_software"], "Sparrow Wallet")
         self.assertEqual(record["key_checks"][0]["address_path_verified"], "OK")
         self.assertEqual(record["key_checks"][0]["address_path"], "m/48'/0'/0'/2'")
+
+    def test_a_version_10_database_gains_the_acknowledgement_key_id(self):
+        self.write_schema(SCHEMA_VERSION_10)
+        self.assertNotIn("key_id", self.columns_of("alert_acknowledgements"))
+
+        initialize_database(self.database_path)
+
+        with self.connect() as connection:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            stored = connection.execute(
+                "SELECT code, source, key_id, check_id, reason FROM alert_acknowledgements"
+            ).fetchall()
+
+        self.assertEqual(version, SCHEMA_VERSION)
+        self.assertEqual(version, 11)
+        self.assertIn("key_id", self.columns_of("alert_acknowledgements"))
+        # The older acknowledgement survives, with an empty key id, because it
+        # predates the column (section 27).
+        self.assertEqual(
+            stored,
+            [("key_unavailable", "Key 1: SeedSigner", None, 1, "rotate")],
+        )
 
     def test_status_values_migrate_to_english(self):
         self.write_schema(SCHEMA_VERSION_5)
@@ -954,7 +1058,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             save_key_settings(999, "ColdCard", DEFAULT_ADDRESS_PATH, self.database_path)
 
-    def test_an_acknowledgement_is_stored_with_the_check_it_closed(self):
+    def test_an_acknowledgement_is_stored_with_the_check_and_the_key_it_closed(self):
         keys = self.prepare()
         saved_id = save_health_check(
             validate(sample_payload(keys[0]), keys), self.database_path
@@ -963,6 +1067,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         acknowledgement_id = save_alert_acknowledgement(
             "address_path_mismatch",
             "Key 1: SeedSigner",
+            keys[0]["id"],
             saved_id,
             "rotate",
             self.database_path,
@@ -974,9 +1079,62 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(stored[0]["code"], "address_path_mismatch")
         self.assertEqual(stored[0]["source"], "Key 1: SeedSigner")
         self.assertEqual(stored[0]["check_id"], saved_id)
-        # The stored reason is the action that closed the alert (section 26.4).
+        # The stored reason is the action that closed the alert, and the key is
+        # the key the alert belonged to (sections 26.4 and 27).
         self.assertEqual(stored[0]["reason"], "rotate")
+        self.assertEqual(stored[0]["key_id"], keys[0]["id"])
         self.assertTrue(stored[0]["acknowledged_at"])
+
+    def test_a_software_acknowledgement_is_stored_without_a_key(self):
+        keys = self.prepare()
+        saved_id = save_health_check(
+            validate(sample_payload(keys[0]), keys), self.database_path
+        )
+
+        save_alert_acknowledgement(
+            "software_incompatible",
+            "Sparrow Wallet",
+            None,
+            saved_id,
+            "remove_software",
+            self.database_path,
+        )
+
+        stored = list_alert_acknowledgements(self.database_path)
+        # A software alert raised by the settings list belongs to no key
+        # (section 27).
+        self.assertIsNone(stored[0]["key_id"])
+
+    def test_acknowledgements_can_be_filtered_by_the_check_they_closed(self):
+        keys = self.prepare()
+        first_id = save_health_check(validate(sample_payload(keys[0]), keys), self.database_path)
+        second_id = save_health_check(validate(sample_payload(keys[1]), keys), self.database_path)
+        save_alert_acknowledgement(
+            "key_unavailable", "Key 1: SeedSigner", keys[0]["id"], first_id, "rotate", self.database_path
+        )
+        save_alert_acknowledgement(
+            "hardware_failure", "Key 2: Blockstream Jade", keys[1]["id"], second_id,
+            "replace_hardware", self.database_path,
+        )
+        save_alert_acknowledgement(
+            "software_incompatible", "Sparrow Wallet", None, second_id,
+            "remove_software", self.database_path,
+        )
+
+        self.assertEqual(
+            [
+                entry["code"]
+                for entry in list_alert_acknowledgements(self.database_path, check_id=first_id)
+            ],
+            ["key_unavailable"],
+        )
+        self.assertEqual(
+            [
+                entry["code"]
+                for entry in list_alert_acknowledgements(self.database_path, check_id=second_id)
+            ],
+            ["software_incompatible", "hardware_failure"],
+        )
 
     def test_each_key_can_be_recorded_separately(self):
         keys = self.prepare()
@@ -1101,12 +1259,39 @@ class DatabaseInitializationTests(unittest.TestCase):
             first["security_status"],
             "SeedSigner: SECURE; Sparrow Wallet: SECURE",
         )
+        # A check without a closure has an empty cell (section 27).
+        self.assertEqual(first["closed_alerts"], "")
 
         cloud = rows[1]
         self.assertEqual(cloud["key_number"], 3)
         self.assertEqual(cloud["key_name"], "Nunchuk")
         self.assertEqual(cloud["wallet_software"], "Nunchuk")
         self.assertEqual(cloud["security_status"], "Nunchuk: SECURE")
+
+    def test_export_rows_include_the_closures_that_belong_to_a_key(self):
+        keys = self.prepare()
+        saved_id = save_health_check(
+            validate(sample_payload(keys[0]), keys), self.database_path
+        )
+        save_alert_acknowledgement(
+            "key_unavailable", "Key 1: SeedSigner", keys[0]["id"], saved_id,
+            "rotate", self.database_path,
+        )
+        # A closure of a software alert belongs to no key, so it is left out
+        # (section 27).
+        save_alert_acknowledgement(
+            "software_incompatible", "Sparrow Wallet", None, saved_id,
+            "remove_software", self.database_path,
+        )
+
+        rows = list_export_rows(self.database_path)
+
+        self.assertEqual(len(rows), 1)
+        self.assertRegex(
+            rows[0]["closed_alerts"],
+            r"^key_unavailable: rotate \(\d{4}-\d{2}-\d{2}\)$",
+        )
+        self.assertNotIn("software_incompatible", rows[0]["closed_alerts"])
 
     def test_invalid_status_and_duplicate_key_numbers_are_rejected(self):
         initialize_database(self.database_path)
