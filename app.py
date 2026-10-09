@@ -79,18 +79,52 @@ def get_database_path():
     return os.environ.get("DATABASE_PATH", "data/helsesjekk.sqlite3")
 
 
-def newest_alert_check_id(records, code, source):
+def cloud_key_names(keys):
+    """Return the configured names of the cloud keys.
+
+    A cloud key offers its own name as a wallet software choice, so the alert
+    rules need these names to tell the two forms of ``software_incompatible``
+    apart (section 27).
+    """
+    return tuple(key["name"] for key in keys if key["type"] == "cloud")
+
+
+def closed_alerts(acknowledgements):
+    """Return the closures that belong to a key, ready for the history view.
+
+    A closure is shown when it carries a key id: a rotation, a replaced hardware,
+    an updated contact, and an ignored alert whose source is a key. A closure of
+    a software alert is left out, because it belongs to the settings list rather
+    than to the checked key (section 27).
+    """
+    return [
+        {
+            "code": entry["code"],
+            "source": entry["source"],
+            "action": entry["reason"],
+            "acknowledged_at": entry["acknowledged_at"],
+        }
+        for entry in acknowledgements
+        if entry.get("key_id") is not None
+    ]
+
+
+def newest_alert_check_id(records, code, source, cloud_names=()):
     """Return the id of the newest check that raised one alert, or None.
 
     The acknowledgement stores this id, so a newer check for the same code and
-    source raises the alert again (section 25.3).
+    source raises the alert again (section 25.3). ``cloud_names`` has to be the
+    same list the caller passed to ``collect_alerts``, because the source of a
+    software alert depends on it: a source that is built differently finds no
+    check, and an acknowledgement without a check id hides nothing, so the alert
+    could never be closed (section 27).
     """
     newest = None
     for record in records:
         check_id = record.get("id")
         if check_id is None:
             continue
-        for alert in build_alerts(record):
+        for alert in build_alerts(record, cloud_names):
             if alert["code"] != code or alert["source"] != source:
                 continue
             if newest is None or check_id > newest:
@@ -247,7 +281,7 @@ class AppHandler(BaseHTTPRequestHandler):
         database_path = get_database_path()
         try:
             keys = list_keys(database_path)
-            blocked = self._blocking_alert(payload, database_path)
+            blocked = self._blocking_alert(payload, keys, database_path)
             if blocked is not None:
                 self._send_json(409, {
                     "error": (
@@ -270,13 +304,14 @@ class AppHandler(BaseHTTPRequestHandler):
 
         self._send_json(201, {"id": health_check_id})
 
-    def _blocking_alert(self, payload, database_path):
+    def _blocking_alert(self, payload, keys, database_path):
         """Return the open alert that blocks the submitted key, or None.
 
         The key id is read straight from the payload, so the rule is applied
         before the rest of the submission is validated and a blocked key always
-        answers ``409``. A payload without a usable key id is left to validation,
-        which reports it as a ``400`` (section 26.1).
+        answers ``409``. The contact alert belongs to its key as well, so it
+        blocks that key too (section 27). A payload without a usable key id is
+        left to validation, which reports it as a ``400`` (section 26.1).
         """
         entry = payload.get("key_check") if isinstance(payload, dict) else None
         key_id = entry.get("key_id") if isinstance(entry, dict) else None
@@ -284,7 +319,8 @@ class AppHandler(BaseHTTPRequestHandler):
             return None
         records = self._health_check_records(database_path)
         acknowledgements = list_alert_acknowledgements(database_path)
-        return blocking_alert(collect_alerts(records, acknowledgements), key_id)
+        alerts = collect_alerts(records, acknowledgements, cloud_key_names(keys))
+        return blocking_alert(alerts, key_id)
 
     def _save_key_settings(self):
         """Store the name of one key, and its address path while it is unlocked.
@@ -348,7 +384,7 @@ class AppHandler(BaseHTTPRequestHandler):
             stored = list_wallet_software(database_path)
             names = validate_wallet_software(payload, keys)
             save_wallet_software(names, database_path)
-            closed = self._close_removed_software(stored, names, database_path)
+            closed = self._close_removed_software(stored, names, keys, database_path)
             software = list_wallet_software(database_path)
         except ValidationError as error:
             self._send_json(400, {"error": str(error)})
@@ -360,30 +396,33 @@ class AppHandler(BaseHTTPRequestHandler):
         self._send_json(200, {
             "wallet_software": software,
             "acknowledged": [
-                {"code": code, "source": source} for code, source in closed
+                {"code": code, "source": source} for code, source, _ in closed
             ],
         })
 
-    def _close_removed_software(self, stored, names, database_path):
+    def _close_removed_software(self, stored, names, keys, database_path):
         """Close the alerts of the wallet software that was removed.
 
         A software alert is closed by removing the failing software from the
         settings, which is exactly what the alert offers (section 26.7). The
-        stored acknowledgement carries the action name as its reason
-        (section 26.4).
+        stored acknowledgement carries the action name as its reason, and the key
+        the alert belonged to, which is None for a software alert raised by the
+        settings list (sections 26.4 and 27).
         """
         kept = {name.casefold() for name in names}
         removed = [name for name in stored if name.casefold() not in kept]
         if not removed:
             return []
+        cloud_names = cloud_key_names(keys)
         records = self._health_check_records(database_path)
         acknowledgements = list_alert_acknowledgements(database_path)
-        targets = software_alert_targets(records, acknowledgements, removed)
-        for code, source in targets:
+        targets = software_alert_targets(records, acknowledgements, removed, cloud_names)
+        for code, source, key_id in targets:
             save_alert_acknowledgement(
                 code,
                 source,
-                newest_alert_check_id(records, code, source),
+                key_id,
+                newest_alert_check_id(records, code, source, cloud_names),
                 REMOVAL_REASON,
                 database_path,
             )
@@ -394,7 +433,9 @@ class AppHandler(BaseHTTPRequestHandler):
 
         The rotation replaces the key, so it requires a new, unique address path:
         the type is locked, the old path is refused, and no earlier check is
-        changed (sections 26.2 and 26.3).
+        changed (sections 26.2 and 26.3). The acknowledgement carries the key, so
+        a rotation that changes the name still keeps the closed alerts closed
+        (section 27).
         """
         try:
             payload = self._read_json_body()
@@ -415,8 +456,9 @@ class AppHandler(BaseHTTPRequestHandler):
         try:
             rotation = validate_rotation(payload, keys, key_id)
             key = next(entry for entry in keys if entry["id"] == rotation["key_id"])
+            cloud_names = cloud_key_names(keys)
             records = self._health_check_records(database_path)
-            targets = rotation_alert_targets(records, key)
+            targets = rotation_alert_targets(records, key, cloud_names)
             save_key_settings(
                 key["id"],
                 rotation["name"] or key["name"],
@@ -427,7 +469,8 @@ class AppHandler(BaseHTTPRequestHandler):
                 save_alert_acknowledgement(
                     code,
                     source,
-                    newest_alert_check_id(records, code, source),
+                    key["id"],
+                    newest_alert_check_id(records, code, source, cloud_names),
                     ROTATION_REASON,
                     database_path,
                 )
@@ -451,7 +494,9 @@ class AppHandler(BaseHTTPRequestHandler):
 
         The action is stored as the reason, and the acknowledgement stores the
         newest check that raised the alert, so a newer check for the same code
-        and source raises it again (sections 25.3 and 26.4).
+        and source raises it again (sections 25.3 and 26.4). The key the alert
+        belonged to is stored too, so the alert stays hidden across a rename
+        (section 27).
         """
         try:
             payload = self._read_json_body()
@@ -467,9 +512,11 @@ class AppHandler(BaseHTTPRequestHandler):
 
         database_path = get_database_path()
         try:
+            keys = list_keys(database_path)
+            cloud_names = cloud_key_names(keys)
             records = self._health_check_records(database_path)
             acknowledgements = list_alert_acknowledgements(database_path)
-            alerts = collect_alerts(records, acknowledgements)
+            alerts = collect_alerts(records, acknowledgements, cloud_names)
         except STORAGE_ERRORS:
             self._send_json(500, {"error": "Alerts are unavailable"})
             return
@@ -496,7 +543,8 @@ class AppHandler(BaseHTTPRequestHandler):
             save_alert_acknowledgement(
                 entry["code"],
                 entry["source"],
-                newest_alert_check_id(records, entry["code"], entry["source"]),
+                alert.get("key_id"),
+                newest_alert_check_id(records, entry["code"], entry["source"], cloud_names),
                 entry["action"],
                 database_path,
             )
@@ -587,17 +635,22 @@ class AppHandler(BaseHTTPRequestHandler):
         ``collect_alerts``, and acknowledged alerts are left out until a newer
         check raises them again (sections 21 and 25.3). Every alert names the
         actions that close it and the software it is about, when it is about one
-        (sections 26.4 and 26.7).
+        (sections 26.4 and 26.7). The configured cloud key names are passed in,
+        because a wallet software that carries one of them can never be removed
+        from the settings (section 27).
         """
         database_path = get_database_path()
         try:
+            keys = list_keys(database_path)
             records = self._health_check_records(database_path)
             acknowledgements = list_alert_acknowledgements(database_path)
         except STORAGE_ERRORS:
             self._send_json(500, {"error": "Alerts are unavailable"})
             return
 
-        self._send_json(200, collect_alerts(records, acknowledgements))
+        self._send_json(
+            200, collect_alerts(records, acknowledgements, cloud_key_names(keys))
+        )
 
     def _health_check_records(self, database_path):
         """Return every saved check with its related rows."""
@@ -626,13 +679,23 @@ class AppHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _send_health_check(self, health_check_id):
+        """Return one saved check with its related rows and the closures it has.
+
+        A closure that belongs to a key is shown in the history, so the user can
+        see what was closed on this check, with the action and the date
+        (section 27).
+        """
+        database_path = get_database_path()
         try:
-            record = get_health_check(health_check_id, get_database_path())
+            record = get_health_check(health_check_id, database_path)
+            if record is None:
+                self._send_json(404, {"error": "Health check not found"})
+                return
+            record["closed_alerts"] = closed_alerts(
+                list_alert_acknowledgements(database_path, check_id=health_check_id)
+            )
         except STORAGE_ERRORS:
             self._send_json(500, {"error": "Saved health checks are unavailable"})
-            return
-        if record is None:
-            self._send_json(404, {"error": "Health check not found"})
             return
         self._send_json(200, record)
 
