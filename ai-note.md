@@ -8,16 +8,15 @@ Short working handover for the next model. Keep it short.
 
 ## Status
 
-- **Done and verified:** sections 19–26 and section 18 steps 1–8. Schema version 10. 319 green tests.
-- **Next work:** section 27 — alert closures in the history and the CSV, the contact alert on the key card, and `replace_hardware` for a cloud-key wallet software. **Not started.** The schema goes to version 11.
-- **After that:** section 18 steps 9–12 — the StartOS package, the persistent volume, backup/restore, and `.s9pk`. Covered by sections 13, 14, 16 and 17 of `TODO.md`. Do not start the StartOS part before the user says so.
+- **Done and verified:** sections 19–27 and section 18 steps 1–8. Schema version 11. 337 green tests.
+- **Next work:** section 18 steps 9–12 — the StartOS package, the persistent volume, backup/restore, and `.s9pk`. Covered by sections 13, 14, 16 and 17 of `TODO.md`. Do not start the StartOS part before the user says so.
 - **Verified how:** the automated suite and the user's manual browser testing. The remaining manual tests are the ones in section 16 of `TODO.md`; the StartOS test there is still open.
 - **Tests:** the user runs them: `python3 -m unittest discover -s tests`. They run on a Windows copy at `C:\Users\Driftsleiar\Downloads\helsesjekk`, so they must pass there as well as on Linux.
 - **Future work, deliberately not built:** more than three keys, and another threshold than 2-of-3.
 
-## Section 27 — the next round
+## Section 27 — implemented
 
-Read section 27 of `TODO.md` first. `TODO.md` is already updated, so start with the code. Work one file at a time, in this order:
+Section 27 is implemented and verified, and the schema is version 11. Read section 27 of `TODO.md` for the binding rules; this is the record of what was done. The work was done one file at a time, in this order:
 
 1. `alerts.py`
 2. `database.py`
@@ -29,35 +28,36 @@ Read section 27 of `TODO.md` first. `TODO.md` is already updated, so start with 
 8. `README.md`
 9. `ai-note.md`
 
-What changes:
+What changed:
 
-- **Blocking.** An alert that belongs to a key blocks that key until the alert is closed. That now includes `contact_info_unconfirmed`, which has severity `info`. `blocking_alert()` in `app.py` and the `blockingAlerts` filter in `static/health-check.js` already match on `key_id`, so no blocking code changes: the rule is satisfied by giving the two alerts below a `key_id`.
+- **Blocking.** An alert that belongs to a key blocks that key until the alert is closed. That now includes `contact_info_unconfirmed`, which has severity `info`. `blocking_alert()` in `app.py` and the `blockingAlerts` filter in `static/health-check.js` already match on `key_id`, so no blocking code changed: the rule is satisfied by giving the two alerts below a `key_id`.
 - **The contact alert belongs to a key.** `key_id` is the checked key, `source` becomes `Key N: <name>` (the convention the key alerts already use), and the message names the key: `The contact details for Key 1: SeedSigner need an external update. Update them in your external documentation, then close this alert.` Severity stays `info` and the action stays `contact_updated`.
 - **`software_incompatible` gets two forms.** When the recorded `wallet_software` is the name of a configured cloud key: `key_id` is the checked key, `source` is `Key N: <name>`, and the actions are `[replace_hardware]`. Otherwise it stays as it is: `key_id` is `None`, `source` is the software name (or `_SOFTWARE_SOURCE`), and the actions are `[remove_software]`. The reason for the split: a cloud key name can never be removed from the settings — `validate_wallet_software` refuses it — so `remove_software` would be a dead end and the alert could never be closed.
 - **The acknowledgement stores the key.** `alert_acknowledgements` gets a new, nullable `key_id` column (INTEGER, no FK, no CHECK). Schema version 11: bump `SCHEMA_VERSION`, add the column to `ALERT_ACKNOWLEDGEMENTS_TABLE` and to `OPTIONAL_COLUMNS` so `ALTER TABLE ... ADD COLUMN` migrates an older database. No table rebuild is needed, and `save_alert_acknowledgement()` takes `key_id` as a new argument. `software_alert_targets()` returns `(code, source, key_id)` triples.
-- **Alert identity.** An alert with a `key_id` is acknowledged and hidden by `(code, key_id)`; an alert without one stays as it is, by `(code, source)`. This fixes a real bug: `_is_acknowledged()` matches on `source`, which contains the name the key has *now*, so a `rotate` with `keep_name=false` — or a plain rename in the settings — writes an acknowledgement with the old name and then rebuilds the alert with the new one, and the closed alert reappears. No test covers it today, because the rotation tests that raise an alert keep the name.
-- **Closures in the history and the CSV.** Closures with a `key_id` (that is `rotate`, `replace_hardware`, `contact_updated`, and `ignore` with a key as its source) must be visible in `GET /api/health-checks/<id>` and in the CSV export. `remove_software` and a software-sourced `ignore` must not be visible. A closure is attached to the check that it closed, through `check_id`.
-  - Add an optional `check_id` filter to `list_alert_acknowledgements()` and assemble the payload in `app.py`. The detail view gets a `closed_alerts` list with `code`, `source`, `action` and `acknowledged_at`.
-  - `static/history.js` gets a new card, `Follow-up closed`, with one line per closure: code, source, the action written out as a readable label, and the date. The action labels have to be duplicated in that file, which is the existing pattern (see `ACTION_LABELS` in `app.js` and `health-check.js`).
-  - The CSV gets one new column, last: `Follow-up closed`, with `code: action (YYYY-MM-DD); ...` in one cell per check — the same joining pattern `Security status` already uses.
-- **One frontend change in `static/app.js`.** A key card with an open alert must keep showing `Last checked` and `Next check due`; the alert note comes in addition, not instead. Today the dates disappear, which costs the user the dates for a key whose only alert is the informational contact one.
+- **Alert identity.** An alert with a `key_id` is acknowledged and hidden by `(code, key_id)`; an alert without one stays as it is, by `(code, source)`. This fixes a real bug: `_is_acknowledged()` matched on `source`, which contains the name the key has *now*, so a `rotate` with `keep_name=false` — or a plain rename in the settings — wrote an acknowledgement with the old name and then rebuilt the alert with the new one, and the closed alert reappeared.
+- **Closures in the history and the CSV.** Closures with a `key_id` (that is `rotate`, `replace_hardware`, `contact_updated`, and `ignore` with a key as its source) are visible in `GET /api/health-checks/<id>` and in the CSV export. `remove_software` and a software-sourced `ignore` are not visible. A closure is attached to the check that it closed, through `check_id`.
+  - `list_alert_acknowledgements()` takes an optional `check_id` filter, and `app.py` assembles the payload. The detail view gets a `closed_alerts` list with `code`, `source`, `action` and `acknowledged_at`.
+  - `static/history.js` gets a card, `Follow-up closed`, with one line per closure: code, source, the action written out as a readable label, and the date. The action labels are duplicated in that file, which is the existing pattern (see `ACTION_LABELS` in `app.js` and `health-check.js`).
+  - The CSV gets one new column, last: `Follow-up closed`, with `code: action (YYYY-MM-DD); ...` in one cell per check — the same joining pattern `Security status` uses.
+- **One frontend change in `static/app.js`.** A key card with an open alert keeps showing `Last checked` and `Next check due`; the alert note comes in addition, not instead.
 
-### Traps in section 27
+### Notes from section 27
 
-- **The `cloud_names` trap.** `alerts.py` cannot tell that `Nunchuk` is a cloud key from the record alone, so `build_alerts()`/`collect_alerts()` need a new optional parameter, `cloud_names=()`, threaded through `rotation_alert_targets()`, `software_alert_targets()`, and the four call sites in `app.py` (`_send_alerts`, `_blocking_alert`, `_rotate_key`, `_close_removed_software`) plus `newest_alert_check_id()`. If `newest_alert_check_id()` does not receive exactly the same `cloud_names` as `collect_alerts()`, the alert's `source` differs, the acknowledgement stores `check_id = None`, `_is_acknowledged()` refuses to hide an alert without a check id, and the alert can never be closed. Write a comment about it and cover it with a test.
-- Keep the default `cloud_names=()` on `build_alerts()`, or every existing call in the tests breaks.
-- A legacy record saved before section 19 can hold up to three `key_checks`. Use the first one to find the key, and say so in a comment.
-- **A test breaks by design:** `AppHandlerTests.test_alerts_api_merges_identical_alerts_and_keeps_the_newest` uses the contact alert precisely because it carried no key and never blocked. Rework it, for example by acknowledging between the two submissions.
-- The old `source` value `Contact information` disappears. Acknowledgements written before the change no longer match; that is acceptable, because the project writes no data migration for a test database, but it must be said in this note and in `README.md`.
+- **The `cloud_names` trap.** `alerts.py` cannot tell that `Nunchuk` is a cloud key from the record alone, so `build_alerts()`/`collect_alerts()` take an optional parameter, `cloud_names=()`, threaded through `rotation_alert_targets()`, `software_alert_targets()`, and the call sites in `app.py` (`_send_alerts`, `_blocking_alert`, `_rotate_key`, `_close_removed_software`, `_acknowledge_alert`) plus `newest_alert_check_id()`. If `newest_alert_check_id()` does not receive exactly the same `cloud_names` as `collect_alerts()`, the alert's `source` differs, the acknowledgement stores `check_id = None`, `_is_acknowledged()` refuses to hide an alert without a check id, and the alert can never be closed. `_acknowledge_alert` needs it too, or the cloud form of the alert cannot be found at all. It is commented and covered by a test.
+- `build_alerts()` keeps the default `cloud_names=()`, or every existing call in the tests breaks.
+- The cloud form of `software_incompatible` carries no `software` field: there is no settings entry to remove, so a software removal must not be able to close it. That is why `software_alert_targets()` never returns it.
+- A legacy record saved before section 19 can hold up to three `key_checks`. `_checked_key()` uses the first one to find the key, and says so in a comment.
+- **A test broke by design:** `AppHandlerTests.test_alerts_api_merges_identical_alerts_and_keeps_the_newest` used the contact alert precisely because it carried no key and never blocked. It now acknowledges between the two submissions.
+- The old `source` value `Contact information` disappeared. Acknowledgements written before the change no longer match; that is acceptable, because the project writes no data migration for a test database, and it is said in this note and in `README.md`.
 - **Windows:** keep closing `sqlite3` connections explicitly with `try`/`finally`. `with sqlite3.connect(...)` only commits or rolls back, and the file stays locked so `TemporaryDirectory.cleanup()` fails with `WinError 32`.
 
-### Tests to add or change for section 27
+### Tests added or changed for section 27
 
-- `tests/test_alerts.py`: the contact alert's `key_id`, `source` and message; a cloud-key software → `[replace_hardware]` plus a `key_id`; a settings-list software → unchanged; an acknowledgement matched by `key_id` after the name changed; the regression test for a rotation with a new name. These three mention `Contact information` as the source and must be updated: `test_contact_details_that_need_an_external_update_are_reported`, `AlertActionTests.test_the_agreed_actions_are_offered_for_each_code_and_source`, and `test_an_acknowledgement_covers_one_code_and_source_only`.
-- `tests/test_database.py`: version 11 in `test_initialization_creates_versioned_schema_and_is_idempotent`; a new `SCHEMA_VERSION_10` literal with a migration test, following the pattern of the older ones; `save_alert_acknowledgement()` with `key_id`; `list_alert_acknowledgements(check_id=...)`; the closure cell in `list_export_rows`.
-- `tests/test_app.py`: the history detail holds the closure and leaves out `remove_software`; the CSV cell; the contact alert blocks with `409` and frees the key at `contact_updated`; the cloud-key software flow end to end; the rotation regression.
+- `tests/test_alerts.py`: the contact alert's `key_id`, `source` and message; a cloud-key software → `[replace_hardware]` plus a `key_id`; a settings-list software → unchanged; an acknowledgement matched by `key_id` after the name changed; a cloud-key software alert hidden by its key. Three tests that mentioned `Contact information` as the source were updated: `test_contact_details_that_need_an_external_update_are_reported`, `AlertActionTests.test_the_agreed_actions_are_offered_for_each_code_and_source`, and `test_an_acknowledgement_covers_one_alert_only` (formerly `..._one_code_and_source_only`). The key-alert acknowledgements in `CollectAlertsTests` now carry a `key_id`, and `software_alert_targets()` is asserted with `(code, source, key_id)` triples.
+- `tests/test_database.py`: version 11 in `test_initialization_creates_versioned_schema_and_is_idempotent` and `test_a_version_9_database_gains_the_address_path_and_the_new_tables`; a new `SCHEMA_VERSION_10` literal with a migration test, following the pattern of the older ones; `save_alert_acknowledgement()` with `key_id`; a software acknowledgement without a key; `list_alert_acknowledgements(check_id=...)`; the closure cell in `list_export_rows`.
+- `tests/test_app.py`: the history detail holds the closure and leaves out `remove_software`; the CSV cell; the contact alert blocks with `409` and frees the key at `contact_updated`; the cloud-key software flow end to end; the rotation regression with a new name.
 - `tests/test_export.py`: the new column is last, and the joined cell reads back.
-- `tests/test_health_check_form.py`: the new history card.
+- `tests/test_health_check_form.py`: the new history card, and the key dates that stay on a card with an open alert.
 
 ### Deliberately left out
 
@@ -80,7 +80,7 @@ What changes:
 - **Whether a date is overdue is decided in the browser**, so `/api/key-status` stays independent of the current date.
 - **`/api/previous-values` still returns a `security` map** that nothing consumes any more, and its `address_path` per key is no longer used by the form, which pre-fills the path from `keys.address_path`. Both are deliberate: removing them would shrink the endpoint, but nothing breaks while they stay.
 
-## Data model (schema version 11 after section 27)
+## Data model (schema version 11)
 
 - `keys`: `key_number` (1–3), `name`, `type` (`hardware`/`cloud`), `address_path`, `created_at`. There is no `device` column. The name is editable in the settings; the type and the address path are the identity of the key, and the path must be unique across the three rows.
 - `health_checks`: `checked_at`, `next_check_due`, `wallet_software`, `software_version`, `software_compatibility_status`, `software_comments`, `contact_info_verified`, `comments`, plus the legacy `sparrow_version` / `nunchuk_version`. `wallet_software` and `contact_info_verified` are free text.
@@ -91,8 +91,8 @@ What changes:
 - `tool_checks` no longer exists.
 - Startup migration rebuilds `keys` when it still has `device`, `key_checks` when it uses the old layout or still holds the two cloud columns, and `health_checks` and `key_checks` when their `CHECK` constraints still allow the old values. It then drops `tool_checks` if it is there, and adds the new columns through `OPTIONAL_COLUMNS`.
 - The table definitions are `{table}` templates, so a rebuild can create the same table under a temporary name. `health_checks` is a parent table, so the whole migration runs with `PRAGMA foreign_keys = OFF`, checks `PRAGMA foreign_key_check` before committing, and rolls back on any failure.
-- `tests/test_database.py` carries `LEGACY_SCHEMA`, `SCHEMA_VERSION_5`, `SCHEMA_VERSION_8` and `SCHEMA_VERSION_9` as literal older schemas. Copy that pattern for a new migration test: write the old schema, run `initialize_database()`, then assert on the migrated rows.
-- There is **no data migration** for an older test database: the user deletes the `data` folder and configures the setup again.
+- `tests/test_database.py` carries `LEGACY_SCHEMA`, `SCHEMA_VERSION_5`, `SCHEMA_VERSION_8`, `SCHEMA_VERSION_9` and `SCHEMA_VERSION_10` as literal older schemas. Copy that pattern for a new migration test: write the old schema, run `initialize_database()`, then assert on the migrated rows.
+- There is **no data migration** for an older test database: the user deletes the `data` folder and configures the setup again. An acknowledgement written before section 27 has no `key_id`, and the older contact alert used the source `Contact information`, which no longer matches, so that closure is not carried over.
 
 ## API
 
@@ -112,7 +112,7 @@ Five things that are easy to break:
 - **A `required` control inside a `display:none` container still blocks submission.** The browser refuses to submit and logs "An invalid form field is not focusable". Hiding a section is not enough: the required flags must be cleared, or the section must render something other than required fields. That is why `renderSecurityChecks()` shows an empty note instead of cards when a key could not be checked, why `syncUncheckableState()` clears the flags on the wallet software and the compatibility select — also for a cloud key, whose grid is hidden — and why `syncRequiredFields()` clears the flag on `hardware_works` and `seed_backup_verified`. The rotation path field follows the same rule: it is `disabled` until the key is selected, and the script refuses to send an empty one.
 - **The mismatch confirmation follows its warning.** `#address-path-confirmed` is `required` only while `#address-path-warning` is visible, so the browser itself stops the submission and a required control is never hidden.
 - **The page heading uses `class="eyebrow"` too.** A regex over `health-check.html` finds `Annual security check` before the numbered sections, and `settings.html` starts with `Settings`. A test on the section order must expect that first.
-- **Do not assert on the quoting style of the JavaScript.** `static/health-check.js` uses single quotes for constant selectors and template literals where a `${...}` substitution is needed, and `static/settings.js` uses double quotes. Assert on the selector text, e.g. `[name="address_path"]`, and on quote-free substrings such as `/api/settings` and `/settings?rotate=`.
+- **Do not assert on the quoting style of the JavaScript.** `static/health-check.js` uses single quotes for constant selectors and template literals where a `${...}` substitution is needed, and `static/settings.js` uses double quotes. Assert on the selector text, e.g. `[name=\"address_path\"]`, and on quote-free substrings such as `/api/settings` and `/settings?rotate=`.
 - **`clean_record()` in `tests/test_alerts.py` has a fixed provider list and carries `key_id` and `wallet_software`.** A test that needs another provider must replace the entry itself, and the recorded software is `Sparrow Wallet`, which is what a software alert names.
 - **`sample_payload()` / `unavailable_payload()` are duplicated in `tests/test_validation.py`, `tests/test_database.py` and `tests/test_app.py`.** They build the labels from the key's name and the selected software, they always send `contact_info_verified`, and for a hardware key `hardware_works`. They must send the key's **own** `address_path`, because the server compares it with the stored one.
 - **Every test fixture uses one address path per key** (`ADDRESS_PATH`, `SECOND_ADDRESS_PATH`, `THIRD_ADDRESS_PATH`), because the setup refuses duplicates. `tests/test_app.py` also has `ROTATION_PATHS` and the `rotate()` helper, which picks an unused path per key so a test can rotate several keys in one run.
