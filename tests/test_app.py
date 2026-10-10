@@ -359,7 +359,7 @@ class AppHandlerTests(ServerTestCase):
 
         self.assertEqual(response.status, 200)
         self.assertEqual(content_type, "text/csv; charset=utf-8")
-        self.assertIn("helsesjekk-export.csv", disposition)
+        self.assertIn("vardkey-export.csv", disposition)
 
         rows = list(csv.reader(io.StringIO(body)))
         self.assertEqual(rows[0], list(HEADERS))
@@ -482,6 +482,17 @@ class AppHandlerTests(ServerTestCase):
         self.assertIn('href="/settings"', body)
         self.assertIn("Download CSV", body)
         self.assertNotIn("Report export is not implemented", body)
+
+    def test_the_dashboard_shows_the_product_name_and_the_description(self):
+        with urlopen(self.base_url) as response:
+            body = response.read().decode("utf-8")
+
+        self.assertEqual(response.status, 200)
+        # The app is called VardKey, and its description is shown on the
+        # dashboard, under the title (section 29).
+        self.assertIn("<title>VardKey</title>", body)
+        self.assertIn("VardKey", body)
+        self.assertIn("Bitcoin Multisig Health Monitor", body)
 
     def test_alerts_api_is_empty_before_anything_is_saved(self):
         with urlopen(f"{self.base_url}/api/alerts") as response:
