@@ -1,4 +1,4 @@
-"""SQLite schema, initialization, and storage for Helsesjekk."""
+"""SQLite schema, initialization, and storage for VardKey."""
 
 from datetime import datetime
 from pathlib import Path
@@ -161,7 +161,7 @@ _LATEST_CHECK_QUERY = """
 """
 
 
-def initialize_database(database_path="data/helsesjekk.sqlite3"):
+def initialize_database(database_path="data/vardkey.sqlite3"):
     """Create the schema and safely migrate existing databases."""
     path = Path(database_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -552,7 +552,7 @@ def _rebuild_key_checks(connection):
     _replace_table(connection, "key_checks", temporary)
 
 
-def list_keys(database_path="data/helsesjekk.sqlite3"):
+def list_keys(database_path="data/vardkey.sqlite3"):
     """Return the stored key profiles in key order.
 
     An empty list means a new database, which the app answers with the first-run
@@ -582,7 +582,7 @@ def list_keys(database_path="data/helsesjekk.sqlite3"):
     return keys
 
 
-def save_key_setup(entries, database_path="data/helsesjekk.sqlite3"):
+def save_key_setup(entries, database_path="data/vardkey.sqlite3"):
     """Store the key setup for the three key slots.
 
     The setup is written once, because the names, the types and the address
@@ -612,7 +612,7 @@ def save_key_setup(entries, database_path="data/helsesjekk.sqlite3"):
         connection.close()
 
 
-def key_has_check(key_id, database_path="data/helsesjekk.sqlite3"):
+def key_has_check(key_id, database_path="data/vardkey.sqlite3"):
     """Return True when the key already has a saved check.
 
     The address path is the identity of a key, so it may only be changed while
@@ -628,7 +628,7 @@ def key_has_check(key_id, database_path="data/helsesjekk.sqlite3"):
     return count > 0
 
 
-def save_key_settings(key_id, name, address_path, database_path="data/helsesjekk.sqlite3", *, key_type=None):
+def save_key_settings(key_id, name, address_path, database_path="data/vardkey.sqlite3", *, key_type=None):
     """Store the name, the address path, and the type of one key.
 
     The name is only a label, while the address path and the type are part of the
@@ -654,7 +654,7 @@ def save_key_settings(key_id, name, address_path, database_path="data/helsesjekk
         connection.close()
 
 
-def list_wallet_software(database_path="data/helsesjekk.sqlite3"):
+def list_wallet_software(database_path="data/vardkey.sqlite3"):
     """Return the stored wallet software names in their stored order.
 
     The list is maintained in the settings and stored whole; every entry is a
@@ -670,7 +670,7 @@ def list_wallet_software(database_path="data/helsesjekk.sqlite3"):
     return [row[0] for row in rows]
 
 
-def save_wallet_software(names, database_path="data/helsesjekk.sqlite3"):
+def save_wallet_software(names, database_path="data/vardkey.sqlite3"):
     """Replace the stored wallet software list with the given names.
 
     The list is stored whole, not entry by entry (section 25.4). Removing a name
@@ -689,7 +689,7 @@ def save_wallet_software(names, database_path="data/helsesjekk.sqlite3"):
         connection.close()
 
 
-def save_alert_acknowledgement(code, source, key_id, check_id, reason, database_path="data/helsesjekk.sqlite3"):
+def save_alert_acknowledgement(code, source, key_id, check_id, reason, database_path="data/vardkey.sqlite3"):
     """Store one acknowledged alert, so it stays hidden until it is raised again.
 
     ``key_id`` is the key the alert belonged to, or None for a software alert
@@ -721,7 +721,7 @@ def save_alert_acknowledgement(code, source, key_id, check_id, reason, database_
         connection.close()
 
 
-def list_alert_acknowledgements(database_path="data/helsesjekk.sqlite3", check_id=None):
+def list_alert_acknowledgements(database_path="data/vardkey.sqlite3", check_id=None):
     """Return the stored acknowledgements, newest first.
 
     ``check_id`` limits the result to the closures of one saved check, which is
@@ -746,7 +746,7 @@ def list_alert_acknowledgements(database_path="data/helsesjekk.sqlite3", check_i
         connection.close()
 
 
-def save_health_check(data, database_path="data/helsesjekk.sqlite3"):
+def save_health_check(data, database_path="data/vardkey.sqlite3"):
     """Store one validated health check for a single key together with its rows."""
     connection = sqlite3.connect(database_path, timeout=5)
     connection.execute("PRAGMA foreign_keys = ON")
@@ -807,7 +807,7 @@ def save_health_check(data, database_path="data/helsesjekk.sqlite3"):
         connection.close()
 
 
-def list_health_checks(database_path="data/helsesjekk.sqlite3"):
+def list_health_checks(database_path="data/vardkey.sqlite3"):
     """Return saved health check summaries, newest first.
 
     Each summary carries the key numbers of the check, so the history can show
@@ -847,7 +847,7 @@ def list_health_checks(database_path="data/helsesjekk.sqlite3"):
         connection.close()
 
 
-def list_key_status(database_path="data/helsesjekk.sqlite3"):
+def list_key_status(database_path="data/vardkey.sqlite3"):
     """Return each key with the dates of its newest saved check.
 
     A key that has never been checked has no dates. Whether a date is overdue is
@@ -870,7 +870,7 @@ def list_key_status(database_path="data/helsesjekk.sqlite3"):
         connection.close()
 
 
-def list_previous_values(database_path="data/helsesjekk.sqlite3"):
+def list_previous_values(database_path="data/vardkey.sqlite3"):
     """Return the most recently saved values, for pre-filling the form.
 
     ``keys`` carries the last recorded firmware version, address path, wallet
@@ -910,7 +910,7 @@ def list_previous_values(database_path="data/helsesjekk.sqlite3"):
         connection.close()
 
 
-def list_export_rows(database_path="data/helsesjekk.sqlite3"):
+def list_export_rows(database_path="data/vardkey.sqlite3"):
     """Return one row per key check for the report export, oldest first.
 
     Every row is one key check. ``check_id`` identifies the submission it belongs
@@ -988,7 +988,7 @@ def _short_date(value):
     return (value or "")[:10]
 
 
-def get_health_check(health_check_id, database_path="data/helsesjekk.sqlite3"):
+def get_health_check(health_check_id, database_path="data/vardkey.sqlite3"):
     """Return one saved health check with its related rows, or None.
 
     The key rows are read through ``keys``, so the history, the alerts and the
