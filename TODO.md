@@ -11,9 +11,9 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 **Om dokumentet**
 
 - §1–§18 er kravspecen og gjeld som han står.
-- §19–§28 er korte samandrag av rundane. Alle reglane deira står i §1–§18; den fulle grunngjevinga ligg i git-historikken.
+- §19–§29 er korte samandrag av rundane. Alle reglane deira står i §1–§18; den fulle grunngjevinga ligg i git-historikken.
 - Eit punkt utan avkryssingsboks er implementert og verifisert. `[ ]` markerer det som står att.
-- **Status:** §1–§28 er implementerte og verifiserte, skjema versjon 11, testsuiten er grøn (345 testar). §29 og §30 er vedtekne og **ikkje starta**; §29 (namnebytet) blir gjord fyrst. §18 steg 9–12 (StartOS) høyrer til §30.
+- **Status:** §1–§29 er implementerte og verifiserte, skjema versjon 11, testsuiten er grøn (346 testar). §30 er vedteke og **ikkje starta**; punkta hans står som ukryssa boksar. §18 steg 9–12 (StartOS) høyrer til §30.
 
 ## Språkkrav
 
@@ -404,7 +404,7 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 - [ ] 11. Test restart og restore.
 - [ ] 12. Bygg endeleg `.s9pk` og gjer første release.
 
-**Merk:** §23–§28 kom inn etter steg 8 og er implementerte og verifiserte. Steg 9–12 er ikkje starta, og høyrer til §30.
+**Merk:** §23–§29 kom inn etter steg 8 og er implementerte og verifiserte. Steg 9–12 er ikkje starta, og høyrer til §30.
 
 **Testar:** køyr `python3 -m unittest discover -s tests`. Suiten skal vere grøn både på Linux og på Windows-kopien.
 
@@ -477,21 +477,20 @@ Typen er ein del av identiteten til nøkkelen, saman med adressestien, så oppse
 
 ---
 
-# 29. Namnebyte til VardKey (vedteke, ikkje implementert)
+# 29. Namnebyte til VardKey (implementert og verifisert)
 
-Avtalt 10.10.2026. Skjema versjon 11 står uendra; dette er eit reint namnebyte utan åtferdsendring.
+Avtalt 10.10.2026. Skjema versjon 11 står uendra; dette var eit reint namnebyte utan åtferdsendring.
 
 Appen heiter **VardKey**, med beskrivinga **Bitcoin Multisig Health Monitor**. Etter bytet er `TODO.md` det einaste norske dokumentet i repoet: korkje produktnamnet eller databasefila er lenger unntak frå engelskregelen.
 
-- **Databasen.** Standardstien blir `data/vardkey.sqlite3` i `app.py` og i alle funksjonsdefaultane i `database.py`. Det blir **ikkje** skriven migrering: den gamle testdatabasen blir kasta og oppsettet konfigurert på nytt, slik README alt seier for ei eldre testdatabase.
-- **Eksportfila.** `EXPORT_FILENAME` i `app.py` og `download`-attributtet i `static/index.html` blir `vardkey-export.csv`, og `tests/test_app.py` sjekkar det nye namnet. Dei to stadene må byte i takt, elles lovar grensesnittet eitt namn og serveren eit anna.
-- **Produktnamnet i grensesnittet.** `<title>`, brand-teksten, `aria-label`, `brand-mark` (`H` → `V`) og footeren i alle fem HTML-filene, og intro-meininga i `health-check.html`.
-- **Beskrivinga.** «Bitcoin Multisig Health Monitor» blir vist i README, i StartOS-manifestet (§30) og som éi linje under tittelen på dashboardet. Ho blir **ikkje** lagd inn som `<p class="eyebrow">` i `health-check.html` eller `settings.html`: testane samanliknar eyebrow-lista på dei to sidene eksakt.
+- **Databasen.** Standardstien er `data/vardkey.sqlite3` i `app.py` og i alle funksjonsdefaultane i `database.py`. Det vart ikkje skriven migrering: den gamle testdatabasen blir kasta og oppsettet konfigurert på nytt, slik README seier for ei eldre testdatabase.
+- **Eksportfila.** `EXPORT_FILENAME` i `app.py` og `download`-attributtet i `static/index.html` er `vardkey-export.csv`, og `tests/test_app.py` sjekkar det nye namnet. Dei to stadene byter i takt, så grensesnittet og serveren lovar same namn.
+- **Produktnamnet i grensesnittet.** `<title>`, brand-teksten, `aria-label`, `brand-mark` (`V`) og footeren i alle fem HTML-filene, og intro-meininga i `health-check.html`.
+- **Beskrivinga.** «Bitcoin Multisig Health Monitor» blir vist i `README.md` og som éi linje under tittelen på dashboardet. Ho er ikkje lagd inn som eyebrow i `health-check.html` eller `settings.html`, sidan testane samanliknar eyebrow-lista på dei to sidene eksakt.
 - **Repoet byter ikkje namn.** Gitea-repoet og prosjekt-id-en held fram som `ai-bot/helsesjekk`. Ei seinare omdøyping i Gitea-UI rører ingen kode, men `REPOSITORIES_JSON` må då oppdaterast.
-- **README.md** held strukturen sin. Berre namna, stiane, eksportfila og unntaksavsnittet i «Development» blir endra. Unntaksavsnittet må formulerast på nytt, sidan det ikkje finst namn-unntak att.
-- **Inga åtferdsendring, ingen nye funksjonar, ingen skjemaendring.** Testsuiten skal framleis vere grøn, med éin ny test som sjekkar at dashboardet viser namnet og beskrivinga.
-- **Filer, i rekkjefølgja dei skal gjerast ferdige:** `app.py`, `database.py`, `static/index.html`, `static/styles.css`, `static/setup.html`, `static/settings.html`, `static/history.html`, `static/health-check.html`, `tests/test_app.py`, `README.md`. `TODO.md` og `ai-note.md` er alt oppdaterte og skal ikkje rørast i denne runden.
-- **Vernet:** grep etter `helsesjekk` i heile repoet før arbeidet byrjar og etter at det er ferdig. Null treff att er kriteriet.
+- **README.md** held strukturen sin, med namn, stiar, eksportfila og unntaksavsnittet i «Development» oppdaterte. Unntaksavsnittet seier no at `TODO.md` er det einaste norske dokumentet, og at produktnamnet og databasefila er engelske.
+- **Inga åtferdsendring, ingen nye funksjonar, inga skjemaendring.** Éin ny test sjekkar at dashboardet viser namnet og beskrivinga, og testsuiten er grøn med 346 testar.
+- **Vernet.** Eit grep etter det gamle namnet i heile repoet gav null treff i kode, grensesnitt, testar og dokumentasjon. Dei einaste attverande referansane til repoet og arbeidskopien står i dette dokumentet og i `ai-note.md`, som er dei to dokumenta som ikkje vart rørte i denne runden.
 
 ---
 
@@ -501,18 +500,19 @@ Avtalt 10.10.2026. Blir bygd etter at §29 er verifisert.
 
 Appen blir éin StartOS-service: éin daemon, éin container, SQLite på eit persistent volum. Forbodet i §13 gjeld som han står: ingen Postgres, ingen Redis, ingen ekstern backend, inga ekstern cloud-teneste for appdata, og ingen ekstra container utan konkret behov.
 
-- **Pakka ligg i app-repoet.** StartOS-filene (`startos/`, `Dockerfile`, `Makefile`, `package.json` og resten av skjelettet) ligg ved sida av appen i `ai-bot/helsesjekk`. Pakkeguiden seier at pakke-repoet ikkje skal vere ein fork av appen; her er appen vår eigen og har ikkje noko publisert image, så pakka byggjer appen frå repo-rota. Avviket skal stå i `AGENTS.md`, så ingen legg inn ein submodul for å «rette» det.
-- **Namn og versjon.** Manifest `id: 'vardkey'`, `title: 'VardKey'`, `volumes: ['main']` mounta på `/data`. Pakkeversjonen startar på `0.1.0:0` og blir heva til `1.0.0:0` når §16 StartOS-testen og §17 er oppfylte.
-- **Lisens.** `GPL-3.0-only`, med ein `LICENSE`-fil i repoet. Det er copyleft-motstykket til CC BY-SA 4.0, som er ein innhaldslisens Creative Commons sjølve rår frå å bruke på programvare, og GPL-3.0 gjev i tillegg ein eksplisitt patentlisens. Blir SPDX-id-en avvist av bygget, blir han skriven som `GPL-3.0`.
-- **`marketingUrl`** er `https://sondreolav.com/vardkey`. Sida finst ikkje enno og blir laga til slutt; URL-en blir sett inn no likevel, sidan manifestet krev han.
-- **Ikonet blir utsett.** `icon.svg` blir teikna i runden som hevar pakka til `1.0.0`, når appen er ferdig. Nektar bygget å pakke utan ikon, blir eit minimalt placeholder-ikon lagt inn og bytt ut i den runden.
-- **Daemonen.** Éin daemon `primary` som køyrer `python3 app.py` med `PORT=8080` og `DATABASE_PATH=/data/vardkey.sqlite3`. Volumet `main` blir mounta skrivbart på `/data`. Ingen oneshot, ingen sidecar, og inga `USER`-linje i Dockerfile, så `/data` er skrivbar utan `chown`.
-- **Helsesjekk.** Daemon-`ready` med `checkWebUrl` mot `http://127.0.0.1:8080/health`. Den interne porten i `bindPort` må vere den same som `PORT`, elles blir sjekken aldri grøn.
-- **Web-grensesnitt.** `MultiHost.of(effects, 'ui').bindPort(8080, { protocol: 'http', preferredExternalPort: 80 })` med éin `createInterface({ id: 'ui', type: 'ui' })`. StartOS terminerer TLS og proxyar rein HTTP inn i containeren, så appen må ikkje byggje absolutte `http://`-URL-ar. Appen gjer det ikkje i dag.
-- **Backup.** `backups.ts` peikar på volumet `main`. Det må undersøkast om `setupBackups` har ein krok som kan ta eit konsistent SQLite-snapshot. Finnst han ikkje, blir snapshotet teke medan ei skriving kan pågå, og det skal i så fall nemnast som ei kjend avgrensing.
-- **Ingen CI.** Pakkeguiden føreset GitHub-workflows. Repoet ligg på Gitea, og `.s9pk` blir bygd lokalt med `make`. Det skal stå i `AGENTS.md`.
-- **Rekkjefølgje.** Skjelettet kjem frå `s9pk init-workspace`; deretter `LICENSE`, `Dockerfile`, `.dockerignore`, `startos/manifest/i18n.ts`, `startos/manifest/index.ts`, `startos/utils.ts`, `startos/main.ts`, `startos/interfaces.ts`, `startos/backups.ts`, `startos/versions/`, `startos/init/`, `instructions.md`, `UPDATING.md`, `AGENTS.md`, `README.md`, og til slutt `TODO.md` og `ai-note.md`.
-- **Framleis manuelt:** §14, §16 StartOS-testen og §17 blir ikkje kryssa av før brukaren har køyrt dei på ein eigen StartOS 0.4.0-boks.
+- [ ] **Pakka ligg i app-repoet.** StartOS-filene (`startos/`, `Dockerfile`, `Makefile`, `package.json` og resten av skjelettet) ligg ved sida av appen i `ai-bot/helsesjekk`. Pakkeguiden seier at pakke-repoet ikkje skal vere ein fork av appen; her er appen vår eigen og har ikkje noko publisert image, så pakka byggjer appen frå repo-rota. Avviket skal stå i `AGENTS.md`, så ingen legg inn ein submodul for å «rette» det.
+- [ ] **Namn og versjon.** Manifest `id: 'vardkey'`, `title: 'VardKey'`, `volumes: ['main']` mounta på `/data`. Pakkeversjonen startar på `0.1.0:0` og blir heva til `1.0.0:0` når §16 StartOS-testen og §17 er oppfylte.
+- [ ] **Lisens.** `GPL-3.0-only`, med ein `LICENSE`-fil i repoet. Det er copyleft-motstykket til CC BY-SA 4.0, som er ein innhaldslisens Creative Commons sjølve rår frå å bruke på programvare, og GPL-3.0 gjev i tillegg ein eksplisitt patentlisens. Blir SPDX-id-en avvist av bygget, blir han skriven som `GPL-3.0`.
+- [ ] **`marketingUrl`** er `https://sondreolav.com/vardkey`. Sida finst ikkje enno og blir laga til slutt; URL-en blir sett inn no likevel, sidan manifestet krev han.
+- [ ] **Ikonet blir utsett.** `icon.svg` blir teikna i runden som hevar pakka til `1.0.0`, når appen er ferdig. Nektar bygget å pakke utan ikon, blir eit minimalt placeholder-ikon lagt inn og bytt ut i den runden.
+- [ ] **Daemonen.** Éin daemon `primary` som køyrer `python3 app.py` med `PORT=8080` og `DATABASE_PATH=/data/vardkey.sqlite3`. Volumet `main` blir mounta skrivbart på `/data`. Ingen oneshot, ingen sidecar, og inga `USER`-linje i Dockerfile, så `/data` er skrivbar utan `chown`.
+- [ ] **Helseendepunktet.** Daemon-`ready` med `checkWebUrl` mot `http://127.0.0.1:8080/health`. Den interne porten i `bindPort` må vere den same som `PORT`, elles blir sjekken aldri grøn.
+- [ ] **Web-grensesnitt.** `MultiHost.of(effects, 'ui').bindPort(8080, { protocol: 'http', preferredExternalPort: 80 })` med éin `createInterface({ id: 'ui', type: 'ui' })`. StartOS terminerer TLS og proxyar rein HTTP inn i containeren, så appen må ikkje byggje absolutte `http://`-URL-ar. Appen gjer det ikkje i dag.
+- [ ] **Backup.** `backups.ts` peikar på volumet `main`. Det må undersøkast om `setupBackups` har ein krok som kan ta eit konsistent SQLite-snapshot. Finnst han ikkje, blir snapshotet teke medan ei skriving kan pågå, og det skal i så fall nemnast som ei kjend avgrensing.
+- [ ] **Ingen CI.** Pakkeguiden føreset GitHub-workflows. Repoet ligg på Gitea, og `.s9pk` blir bygd lokalt med `make`. Det skal stå i `AGENTS.md`.
+- [ ] **Rekkjefølgje.** Skjelettet kjem frå `s9pk init-workspace`; deretter `LICENSE`, `Dockerfile`, `.dockerignore`, `startos/manifest/i18n.ts`, `startos/manifest/index.ts`, `startos/utils.ts`, `startos/main.ts`, `startos/interfaces.ts`, `startos/backups.ts`, `startos/versions/`, `startos/init/`, `instructions.md`, `UPDATING.md`, `AGENTS.md`, `README.md`, og til slutt `TODO.md` og `ai-note.md`.
+
+**Merk:** §14, §16 StartOS-testen og §17 blir ikkje kryssa av før brukaren har køyrt dei på ein eigen StartOS 0.4.0-boks.
 
 ---
 
