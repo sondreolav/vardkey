@@ -1,15 +1,19 @@
-# AI Agent Note — Helsesjekk
+# AI Agent Note — VardKey
 
 Short working handover for the next model. Keep it short.
 
-- `TODO.md` (Norwegian) is the requirement specification. Sections 1–18 are the binding spec; sections 19–28 are short summaries of the rounds. The full reasoning is in the git history.
+- `TODO.md` (Norwegian) is the requirement specification. Sections 1–18 are the binding spec; sections 19–28 are short summaries of the rounds that are implemented and verified, and sections 29–30 are the rounds that are decided but **not started**. The full reasoning is in the git history.
 - The binding rules live in `TODO.md` and `README.md`. This note does not repeat them — it carries the handover, the rules that are easy to get wrong, and the traps that already cost time.
 - `HANDOVER.md` was deleted as outdated. Do not recreate it.
 
 ## Status
 
 - **Done and verified:** sections 19–28 and section 18 steps 1–8. Schema version 11. 345 green tests.
-- **Next work:** section 18 steps 9–12 — the StartOS package, the persistent volume, backup/restore, and `.s9pk`. Covered by sections 13, 14, 16 and 17 of `TODO.md`. **Not started.** Do not start the StartOS part before the user says so.
+- **Next work, in this order:**
+  1. **Section 29 — the rename.** The app becomes **VardKey**, described as **Bitcoin Multisig Health Monitor**. Decided and **not started**. Do the whole round in one pass; the file order is in section 29.
+  2. **Section 30 — the StartOS 0.4.0 package**, with the persistent volume, backup/restore, and the `.s9pk`. Covered by sections 13, 14, 16 and 17 of `TODO.md`. Decided and **not started**. Do not start it before section 29 is verified, and not before the user says so.
+- **The decisions behind sections 29 and 30 are already written into `TODO.md`.** Read them there instead of re-deriving them: the database file becomes `data/vardkey.sqlite3` with no migration, the export becomes `vardkey-export.csv`, the Gitea repo and the project id stay `ai-bot/helsesjekk`, the description is shown in `README.md`, in the StartOS manifest and on the dashboard, and the package is `id: 'vardkey'`, `title: 'VardKey'`, `volumes: ['main']`, starting at `0.1.0:0` with license `GPL-3.0-only`.
+- **A round stops when it is done.** Section 29 is one round and section 30 is the next; do not roll into the following one.
 - **Verified how:** the automated suite and the user's manual browser testing. The remaining manual tests are the ones in section 16 of `TODO.md`; the StartOS test there is still open.
 - **Tests:** the user runs them: `python3 -m unittest discover -s tests`. They run on a Windows copy at `C:\Users\Driftsleiar\Downloads\helsesjekk`, so they must pass there as well as on Linux.
 - **Future work, deliberately not built:** more than three keys, and another threshold than 2-of-3.
@@ -62,8 +66,8 @@ What the code does now, and the parts that are easy to get wrong:
 - `tool_checks` no longer exists.
 - Startup migration rebuilds `keys` when it still has `device`, `key_checks` when it uses the old layout or still holds the two cloud columns, and `health_checks` and `key_checks` when their `CHECK` constraints still allow the old values. It then drops `tool_checks` if it is there, and adds the newer columns through `OPTIONAL_COLUMNS` — including `alert_acknowledgements.key_id`.
 - The table definitions are `{table}` templates, so a rebuild can create the same table under a temporary name. `health_checks` is a parent table, so the whole migration runs with `PRAGMA foreign_keys = OFF`, checks `PRAGMA foreign_key_check` before committing, and rolls back on any failure.
-- `tests/test_database.py` carries `LEGACY_SCHEMA`, `SCHEMA_VERSION_5`, `SCHEMA_VERSION_8` and `SCHEMA_VERSION_9` as literal older schemas. Copy that pattern for a new migration test: write the old schema, run `initialize_database()`, then assert on the migrated rows.
-- There is **no data migration** for an older test database: the user deletes the `data` folder and configures the setup again. An acknowledgement written before version 11 has no key, and the older contact alert used the source `Contact information`, which no longer matches, so the alert it closed is raised again.
+- `tests/test_database.py` carries `LEGACY_SCHEMA`, `SCHEMA_VERSION_5`, `SCHEMA_VERSION_8`, `SCHEMA_VERSION_9` and `SCHEMA_VERSION_10` as literal older schemas. Copy that pattern for a new migration test: write the old schema, run `initialize_database()`, then assert on the migrated rows.
+- There is **no data migration** for an older test database: the user deletes the `data` folder and configures the setup again. An acknowledgement written before version 11 has no key, and the older contact alert used the source `Contact information`, which no longer matches, so the alert it closed is raised again. Section 29 renames the database file for the same reason, and the old file is discarded with the rest.
 
 ## API
 
@@ -84,7 +88,7 @@ Five things that are easy to break:
 - **`with sqlite3.connect(...)` does not close the connection.** It only commits or rolls back the transaction. On Windows the database file stays locked and `TemporaryDirectory.cleanup()` fails with `WinError 32`. Always close explicitly with `try`/`finally`; see `write_schema()` in `tests/test_database.py`.
 - **A `required` control inside a `display:none` container still blocks submission.** The browser refuses to submit and logs "An invalid form field is not focusable". Hiding a section is not enough: the required flags must be cleared, or the section must render something other than required fields. That is why `renderSecurityChecks()` shows an empty note instead of cards when a key could not be checked, why `syncUncheckableState()` clears the flags on the wallet software and the compatibility select — also for a cloud key, whose grid is hidden — and why `syncRequiredFields()` clears the flag on `hardware_works` and `seed_backup_verified`. The rotation fields follow the same rule: the type is `disabled` until the key is marked for rotation, the path is `disabled` when the key has a saved check and is not marked, and the script refuses to send an empty path.
 - **The mismatch confirmation follows its warning.** `#address-path-confirmed` is `required` only while `#address-path-warning` is visible, so the browser itself stops the submission and a required control is never hidden.
-- **The page heading uses `class="eyebrow"` too.** A regex over `health-check.html` finds `Annual security check` before the numbered sections. `settings.html` starts with `Settings`, then `01 / Wallet software` and `02 / Key rotation`. A test on the section order must expect that first.
+- **The page heading uses `class="eyebrow"` too.** A regex over `health-check.html` finds `Annual security check` before the numbered sections. `settings.html` starts with `Settings`, then `01 / Wallet software` and `02 / Key rotation`. A test on the section order must expect that first. `tests/test_health_check_form.py` asserts those two lists **exactly**, so a new eyebrow on either page breaks it — the section 29 description line must go on the dashboard only.
 - **Do not assert on the quoting style of the JavaScript.** `static/health-check.js` uses single quotes for constant selectors and template literals where a `${...}` substitution is needed, and `static/settings.js` uses double quotes. Assert on the selector text, e.g. `[name="address_path"]`, and on quote-free substrings such as `/api/settings` and `/settings?rotate=`.
 - **`clean_record()` in `tests/test_alerts.py` has a fixed provider list and carries `key_id` and `wallet_software`.** A test that needs another provider must replace the entry itself, and the recorded software is `Sparrow Wallet`, which is what a software alert names. A test that exercises the cloud-key form of `software_incompatible` has to pass `cloud_names` to `build_alerts()`.
 - **`sample_payload()` / `unavailable_payload()` are duplicated in `tests/test_validation.py`, `tests/test_database.py` and `tests/test_app.py`.** They build the labels from the key's name and the selected software, they always send `contact_info_verified`, and for a hardware key `hardware_works`. They must send the key's **own** `address_path`, because the server compares it with the stored one.
@@ -92,6 +96,7 @@ Five things that are easy to break:
 - **`validate_health_check()` takes a third argument** (the wallet software list), and `validate_rotation()` takes a fourth for the same reason. `tests/test_validation.py` and `tests/test_database.py` wrap the first one in a small `validate()` helper.
 - **`tests/test_app.py` has six test classes.** `ServerTestCase` starts the server, `AppHandlerTests` stores the default setup in `setUp`, `RenamedSetupTests` stores the renamed one, `SettingsApiTests`, `RotationApiTests` and `AcknowledgementApiTests` store the default one, and `KeySetupApiTests` leaves the database empty. A new test must go in the class whose setup it needs.
 - **Section 19 records one key per submission**, so a `Check id` in the export can cover up to three keys only for rows saved before section 19. A legacy record with several `key_checks` is read through its first one when an alert needs the key it belongs to.
+- **The database path default is repeated in fourteen places.** `database.py` carries `database_path="data/vardkey.sqlite3"` as the default of every storage function, and `app.py` carries it in `get_database_path()`. Section 29 changes all of them at once; a missed one makes a single code path read or create the old file, silently. Grep for `helsesjekk` before and after the round.
 
 ## Product clarification
 
