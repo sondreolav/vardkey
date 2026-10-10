@@ -1,6 +1,6 @@
-# Helsesjekk
+# VardKey
 
-Helsesjekk is a local web application for recording annual checks of a fixed 2-of-3 multisig setup. It does not sign transactions, perform wallet operations, or store seed phrases, private keys, passwords, or other wallet secrets.
+VardKey is a local web application for recording annual checks of a fixed 2-of-3 multisig setup — a Bitcoin multisig health monitor. It does not sign transactions, perform wallet operations, or store seed phrases, private keys, passwords, or other wallet secrets.
 
 ## Current status
 
@@ -28,7 +28,7 @@ Requires Python 3.9 or later. No third-party packages are needed.
 python3 app.py
 ```
 
-Open <http://localhost:8080>. Set the `PORT` environment variable to use a different port. Set `DATABASE_PATH` to change the SQLite database file location; it defaults to `data/helsesjekk.sqlite3`.
+Open <http://localhost:8080>. Set the `PORT` environment variable to use a different port. Set `DATABASE_PATH` to change the SQLite database file location; it defaults to `data/vardkey.sqlite3`.
 
 Run the tests with:
 
@@ -177,7 +177,7 @@ Unknown statuses, unknown key ids, a missing `available`, a missing `hardware_wo
 
 ## CSV export
 
-`GET /api/export` sends `helsesjekk-export.csv` as a download: UTF-8, comma separated, CRLF line endings, with a header row. It contains every saved key check, oldest first.
+`GET /api/export` sends `vardkey-export.csv` as a download: UTF-8, comma separated, CRLF line endings, with a header row. It contains every saved key check, oldest first.
 
 One row is one key check. The `Check id` column identifies the submission a row belongs to, so records saved before section 19 (up to three keys in one submission) stay grouped. The `Security status` column has more than one value per submission, so those values are joined into a single cell as `Label: value; Label: value`.
 
@@ -256,7 +256,7 @@ The history detail view and the CSV export list the closures that belong to a ke
 
 The web server, validation, alert rules, export, and database use Python's standard library. The server serves only explicitly listed static assets. Keep application data local; never add fields for seed phrases, private keys, wallet passwords, cloud credentials, or contact details.
 
-The application UI, source code, comments, and technical documentation are in English. `TODO.md` is intentionally written in Norwegian. Two names are deliberate exceptions to the English rule: the product name **Helsesjekk** and the database file name **`data/helsesjekk.sqlite3`**.
+The application UI, source code, comments, and technical documentation are in English. `TODO.md` is intentionally written in Norwegian, and it is the only document in the repository that is. The product name **VardKey** and the database file name **`data/vardkey.sqlite3`** are English, like the rest of the repository.
 
 Stored status values are English. The seed backup result is `OK` or `PROBLEM`; software compatibility is `OK` or `PROBLEM` for a check that could be performed; the security statuses are `SECURE`, `PATCHED`, `VULNERABLE`, and `COMPROMISED`; the contact confirmation is `Confirmed current` or `Needs external update`. `NOT_ASSESSED` is only ever the derived `software_compatibility_status` of a key that could not be checked, and no other field offers or accepts it.
 
