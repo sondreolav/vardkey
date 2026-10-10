@@ -1,4 +1,4 @@
-"""Minimal HTTP server for the Helsesjekk dashboard."""
+"""Minimal HTTP server for the VardKey dashboard."""
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -63,7 +63,7 @@ STATIC_FILES = {
 }
 HEALTH_CHECK_PATH = re.compile(r"^/api/health-checks/([1-9][0-9]*)$")
 ROTATE_PATH = re.compile(r"^/api/keys/([1-9][0-9]*)/rotate$")
-EXPORT_FILENAME = "helsesjekk-export.csv"
+EXPORT_FILENAME = "vardkey-export.csv"
 MAX_REQUEST_BYTES = 262144
 # Errors that mean the stored data cannot be served as it stands.
 STORAGE_ERRORS = (OSError, sqlite3.Error, ValueError, RuntimeError)
@@ -77,7 +77,7 @@ REMOVAL_REASON = REMOVE_SOFTWARE
 
 def get_database_path():
     """Return the configured SQLite database path."""
-    return os.environ.get("DATABASE_PATH", "data/helsesjekk.sqlite3")
+    return os.environ.get("DATABASE_PATH", "data/vardkey.sqlite3")
 
 
 def cloud_key_names(keys):
@@ -754,7 +754,7 @@ def main():
         raise ValueError("PORT must be between 1 and 65535")
 
     server = ThreadingHTTPServer(("0.0.0.0", port), AppHandler)
-    print(f"Helsesjekk listening on port {port}", flush=True)
+    print(f"VardKey listening on port {port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
