@@ -1,0 +1,12 @@
+.git
+.gitmodules
+.github
+node_modules
+javascript
+ncc-cache
+docker-images
+*.s9pk
+__pycache__
+*.py[cod]
+data
+tests
