@@ -8,11 +8,12 @@ Short working handover for the next model. Keep it short.
 
 ## Status
 
-- **Done and verified:** sections 19–29 and section 18 steps 1–8. Schema version 11. 346 green tests.
-- **Section 30 is written, not built and not installed.** The StartOS package lives in this repository beside the application: `startos/`, `Dockerfile`, `.dockerignore`, `Makefile`, `package.json`, `tsconfig.json`, `.prettierrc`, `LICENSE`, `icon.svg`, `instructions.md`, `UPDATING.md`, `AGENTS.md`, `README.md`, and `CLAUDE.md`. What is left is the build, the install, and the manual tests — section 13's `Build .s9pk` and the install verification, section 14, the StartOS test in section 16, and section 17.
+- **Done and verified:** sections 1–30, and section 18 steps 1–11. Schema version 11. 346 green tests.
+- **Section 30 is done and verified.** The StartOS package lives in this repository beside the application: `startos/`, `Dockerfile`, `.dockerignore`, `Makefile`, `package.json`, `tsconfig.json`, `.prettierrc`, `LICENSE`, `icon.svg`, `instructions.md`, `UPDATING.md`, `AGENTS.md`, `README.md`, and `CLAUDE.md`. It built clean with `make x86` into `vardkey_x86_64.s9pk`, was sideloaded onto a StartOS 0.4.0 box, and runs there: the service shows **Running**, the health check reports **The web interface is ready**, and **Open UI** opens the VardKey web app. Sections 14, 16 and 17 were exercised on that box and are ticked in `TODO.md`.
+- **Two things are deliberately left in section 30, and both need the user's go-ahead.** Do **not** raise the package version from `0.1.0:0` to `1.0.0:0`, and do **not** draw the real `icon.svg`. Sections 16 and 17 are met, so section 30's own rule would bump the version — but the user has more to implement before version 1 and is taking that decision to their own AI strategist. Wait to be asked.
+- **A round stops when it is done.** Section 30 is the round and it is finished apart from those two deferred items. Do not roll into anything after it, and do not install or publish anything further.
 - **Section 29 is done.** The app is **VardKey**, described as **Bitcoin Multisig Health Monitor**, the database file is `data/vardkey.sqlite3`, and the export is `vardkey-export.csv`. The Gitea repo and the project id stay `ai-bot/helsesjekk`.
-- **A round stops when it is done.** Section 30 is the round; do not roll into anything after it. In particular, do not install on a StartOS box, and do not start on anything beyond section 30.
-- **Verified how:** the automated suite and the user's manual browser testing. The remaining manual tests are the ones in section 16 of `TODO.md`; the StartOS test there is still open.
+- **Verified how:** the automated suite, the user's manual browser testing, and the install and test round on a StartOS 0.4.0 box. The manual tests in section 16 are all run.
 - **Tests:** the user runs them: `python3 -m unittest discover -s tests`. They run on a Windows copy at `C:\Users\<brukarnamn>\Downloads\helsesjekk`, so they must pass there as well as on Linux.
 - **Future work, deliberately not built:** more than three keys, and another threshold than 2-of-3.
 
@@ -26,7 +27,7 @@ The decisions are recorded in `TODO.md` section 30; this is what the next model 
 
 The application and the package share one repository, at the root. That is a deliberate deviation from the guide's "a package repo is not a fork of the application": the rule assumes a published upstream image or a git submodule, and VardKey has neither. `AGENTS.md` states the deviation so nobody adds an `upstream-project/` submodule to "fix" it.
 
-The image is built by the root `Dockerfile`, referenced as `dockerBuild: {}` in `startos/manifest/index.ts`, which makes the build context the repository root. **Anything the `Dockerfile` does not `COPY` is not in the image.** In particular `static/` must be copied: `app.py` answers `/health` from code, but every page is read from `ROOT/static`, so an image without it reports a healthy service whose entire UI answers `404`.
+The image is built by the root `Dockerfile`, referenced as `dockerBuild: {}` in `startos/manifest/index.ts`, which makes the build context the repository root. **Anything the `Dockerfile` does not `COPY` is not in the image.** In particular `static/` must be copied: `app.py` answers `/health` from code, but every page is read from `ROOT/static`, so an image without it reports a healthy service whose entire UI answers `404`. The build log confirms four steps — `FROM`, `WORKDIR`, and the two `COPY` lines — and no `USER` step.
 
 There is no CI. The guide assumes GitHub Actions; this repository is on Gitea, so there are no `.github/workflows/` and there must not be any. The `.s9pk` is built locally with `make`.
 
@@ -38,20 +39,17 @@ The readiness check is `checkWebUrl` against `http://127.0.0.1:8080/health`, not
 
 ### Backups
 
-`startos/backups.ts` is `sdk.Backups.ofVolumes('main')`. The open question section 30 raised — whether `setupBackups` has a hook for a consistent SQLite snapshot — turned out not to need one: StartOS stops the service for the duration of a backup, so the database file is quiescent while it is copied. That is written up in `README.md` and in `startos/backups.ts`; it is not a known limitation.
+`startos/backups.ts` is `sdk.Backups.ofVolumes('main')`. The open question section 30 raised — whether `setupBackups` has a hook for a consistent SQLite snapshot — turned out not to need one: StartOS stops the service for the duration of a backup, so the database file is quiescent while it is copied. That is written up in `README.md` and in `startos/backups.ts`; it is not a known limitation. Restore was tested on the box and brought the setup and the saved checks back.
 
-### What is not verified
+### Notes on the skeleton
 
-Nothing about this package has been run. `make` has not been invoked, no `.s9pk` exists, and no StartOS box has seen it. Treat every claim in `README.md` about runtime behaviour as intended, not observed.
+The skeleton files (`package.json`, `tsconfig.json`, `Makefile`, `.prettierrc`, `startos/sdk.ts`, `startos/index.ts`, `startos/actions/index.ts`, `startos/i18n/`, `startos/fileModels/.gitkeep`, `assets/.gitkeep`) were written to match the Start9 template rather than generated by `s9pk init-workspace`, because that command was not available in the environment that wrote them. The successful build and install confirm they are equivalent; `@start9labs/start-sdk` is pinned to `3.0.4` and that is the version the `.s9pk` was built with. No reconciliation is outstanding.
 
-Two specific things to reconcile on the first build:
-
-- **The skeleton was written by hand.** `package.json`, `tsconfig.json`, `Makefile`, `.prettierrc`, `startos/sdk.ts`, `startos/index.ts`, `startos/actions/index.ts`, `startos/i18n/`, `startos/fileModels/.gitkeep`, and `assets/.gitkeep` were written to match the Start9 template rather than generated by `s9pk init-workspace`, because that command was not available in the environment that wrote them. Run `s9pk init-package` in a scratch directory and diff, above all the `@start9labs/start-sdk` version in `package.json` — it is pinned to the latest published release, not to whatever a current scaffold would pick.
-- **The icon is a placeholder.** Section 30 defers the real `icon.svg` to the round that raises the package to `1.0.0`; a minimal placeholder sits in the repository so the build has an icon to pack.
+The `icon.svg` in the repository is a minimal placeholder, kept so the build has an icon to pack. Section 30 defers the real one to the 1.0.0 round.
 
 ### Documentation layout
 
-`README.md` is now the StartOS package README, with the guide's fixed heading set. The application's own reference — the HTTP API, the alerts table, the schema history — moved to `docs/application.md`, which is what `instructions.md` links to under `## Documentation`. `AGENTS.md` is the repo-specific agent context, and `CLAUDE.md` is the one-line `@AGENTS.md` import.
+`README.md` is the StartOS package README, with the guide's fixed heading set. The application's own reference — the HTTP API, the alerts table, the schema history — moved to `docs/application.md`, which is what `instructions.md` links to under `## Documentation`. `AGENTS.md` is the repo-specific agent context, and `CLAUDE.md` is the one-line `@AGENTS.md` import.
 
 ## Sections 27 and 28 — implemented and verified
 
