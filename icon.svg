@@ -1,0 +1,6 @@
+<!-- Placeholder icon for the StartOS package. Replace with the real VardKey
+     icon in the round that raises the package to 1.0.0 (TODO.md section 30). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="VardKey placeholder icon">
+  <rect width="128" height="128" rx="20" fill="#1f2933"/>
+  <path d="M34 38 L64 96 L94 38" fill="none" stroke="#f5f7fa" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
