@@ -13,7 +13,7 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 - §1–§18 er kravspecen og gjeld som han står.
 - §19–§29 er korte samandrag av rundane. Alle reglane deira står i §1–§18; den fulle grunngjevinga ligg i git-historikken.
 - Eit punkt utan avkryssingsboks er implementert og verifisert. `[ ]` markerer det som står att.
-- **Status:** §1–§29 er implementerte og verifiserte, skjema versjon 11, testsuiten er grøn (346 testar). **§30 er skriven**: StartOS-pakka ligg no i repoet ved sida av appen. Ho er **ikkje bygd og ikkje installert** frå agentmiljøet som skreiv henne, så punkta som krev eit bygg eller ein installasjon står framleis opne — §13 `Bygg .s9pk` og verifiseringa, §14, §16 StartOS-testen og §17. §18 steg 9–12 (StartOS) høyrer til §30.
+- **Status:** §1–§29 er implementerte og verifiserte, skjema versjon 11, testsuiten er grøn (346 testar). **§30 er ferdig**: StartOS-pakka er bygd, sideloda og køyrd på ein eigen StartOS 0.4.0-boks, og §14, §16 og §17 er køyrde og verifiserte der. Att i §30 står berre det som er sett til 1.0.0-runden — det ekte ikonet og hevinga av pakkeversjonen — og §18 steg 12 ventar på same runden.
 
 ## Språkkrav
 
@@ -34,9 +34,9 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 - Automatisk forslag til neste sjekk, ca. eitt år fram i tid.
 - Rapporteksport i CSV-format.
 - Lokal SQLite-database.
-- [ ] Persistent lagring på StartOS.
-- [ ] StartOS health check.
-- [ ] StartOS backup og restore.
+- Persistent lagring på StartOS.
+- StartOS health check.
+- StartOS backup og restore.
 
 **Dette skal ikkje vere med i første versjon**
 
@@ -285,7 +285,7 @@ Minimumsendepunkt: `GET /health`, `GET /api/keys`, `GET /api/health-checks`, `GE
 - Eit påminningsvarsel før innsending når adressestien ikkje stemmer.
 - Innstillingsside med `01 / Wallet software` og `02 / Key rotation`, bygd for fleire tema seinare. Nøkkelnamnet, adressestien til ein nøkkel utan lagra kontroll, og roteringa med ny type blir alle endra i roteringsseksjonen, og éin knapp lagrar alt. Det finst ikkje lenger ein eigen `01 / Keys`-seksjon.
 - Varselknappane har den teksten og det stadfestingssteget som høyrer til handlinga si, og varselet om programvare-inkompatibilitet peikar på innstillingane.
-- [ ] Sørg for at appen fungerer godt i vanleg StartOS-browser.
+- Sørg for at appen fungerer godt i vanleg StartOS-browser.
 
 ---
 
@@ -310,10 +310,10 @@ StartOS 0.4.0
 - Opprett health check.
 - Opprett backup-oppsett.
 - Opprett installasjons-/brukarinstruksjonar.
-- [ ] Bygg `.s9pk`.
-- [ ] Verifiser at pakken kan installerast på StartOS 0.4.0.
+- Bygg `.s9pk`.
+- Verifiser at pakken kan installerast på StartOS 0.4.0.
 
-**Merk:** dei åtte første punkta er skrivne inn i repoet (sjå §30). Dei to siste krev ein bygg- og installasjonsrunde på ein eigen boks, og står difor opne. Forbodet nedanfor er eit varig forbod, ikkje ei oppgåveliste, og skal stadfestast på nytt før release.
+**Merk:** alle ti punkta er no oppfylte. Pakka er skriven inn i repoet, bygd til `vardkey_x86_64.s9pk`, sideloda og køyrd på ein eigen StartOS 0.4.0-boks (sjå §30 og §16). Forbodet nedanfor er eit varig forbod, ikkje ei oppgåveliste, og skal stadfestast på nytt før release.
 
 Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og ekstra container utan konkret behov.
 
@@ -323,13 +323,13 @@ Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og 
 
 # 14. Lagring og backup
 
-- [ ] SQLite-database skal liggje på persistent volum.
-- [ ] Appdata skal overleve restart.
-- [ ] Konfigurer StartOS backup av persistent data.
-- [ ] Test backup og test restore.
-- [ ] Verifiser at gamle health checks finst etter restore.
+- SQLite-database skal liggje på persistent volum.
+- Appdata skal overleve restart.
+- Konfigurer StartOS backup av persistent data.
+- Test backup og test restore.
+- Verifiser at gamle health checks finst etter restore.
 
-**Merk:** oppsettet er skrive: `startos/backups.ts` brukar `sdk.Backups.ofVolumes('main')`, og databasen ligg på `main`-volumet på `/data`. StartOS stoppar servicen medan ein backup går, så databasefila er ikkje under skriving når ho blir kopiert — det var det opne spørsmålet i §30, og det er svara på. Punkta står likevel opne til dei er køyrde på ein eigen boks.
+**Merk:** alle punkta er køyrde og verifiserte på boksen, gjennom §16 StartOS-testen og §17. `startos/backups.ts` brukar `sdk.Backups.ofVolumes('main')`, og databasen ligg på `main`-volumet på `/data`. StartOS stoppar servicen medan ein backup går, så databasefila er ikkje under skriving når ho blir kopiert — det var det opne spørsmålet i §30, og det er svara på. Restore gav attende nøkkeloppsettet og dei lagra kontrollane, så ingen eigen SQLite-snapshot-krok trongst og inga kjend avgrensing står att.
 
 ---
 
@@ -348,36 +348,38 @@ Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og 
 
 ## Funksjonstest
 
-- [ ] Opprett dei tre nøklane, start ein health check, fullfør alle kontrollpunkt, lagre han og vis han i historikken.
-- [ ] Start ein ny health check, og verifiser at den gamle kontrollen framleis finst.
+- Opprett dei tre nøklane, start ein health check, fullfør alle kontrollpunkt, lagre han og vis han i historikken.
+- Start ein ny health check, og verifiser at den gamle kontrollen framleis finst.
 
 ## Problemtest
 
-- [ ] Test nøkkel utilgjengeleg, hardware-feil og seed-backup-feil.
-- [ ] Test adressestifeil, både påminninga før innsending og varselet etterpå.
-- [ ] Test programvare-inkompatibilitet, og at `Hardware works` og kontaktstadfestinga krev eit val.
-- [ ] Test KI-status `VULNERABLE` og `COMPROMISED`, og kontaktinfo `Needs external update`.
-- [ ] Test rotering av ein nøkkel, med og utan nytt namn, og at rotering krev ein ny adressesti.
-- [ ] Test kvittering av eit varsel, og at eit nyare varsel kjem tilbake.
-- [ ] Test at ein nøkkel med eit ope varsel ikkje kan få ein ny kontroll, og at nøkkelen blir ledig igjen når varselet er lukka.
-- [ ] Test at to nøklar ikkje kan ha same adressesti, korkje i oppsettet, i innstillingane eller ved rotering.
-- [ ] Test kvar varselhandling, og at eit varsel utan handlingar blir rekna som ein feil.
-- [ ] Test at eit nøkkelkort viser ei varselmelding når nøkkelen har eit ope varsel.
-- [ ] Test at fjerning av den feilande programvara lukkar `software_incompatible`.
-- [ ] Test at eit lukka varsel viser seg i historikken og i CSV-en, med handling og dato.
-- [ ] Test at eit kontaktvarsel gir `Needs action` og sperrar nøkkelen, og at nøkkelen blir ledig att ved `contact_updated`.
-- [ ] Test at `software_incompatible` med ei cloud-nøkkel-programvare gir `replace_hardware` på den kontrollerte nøkkelen, og at det same varselet frå innstillingslista held fram med `remove_software`.
-- [ ] Test at ein kan byte namn på ein nøkkel i roteringsseksjonen utan å rotere han, og at ei rotering krev stadfestingsboksen.
-- [ ] Test at ei rotering kan gi nøkkelen den andre typen, og at eit namn som wallet-programvare-lista alt har, blir avvist.
+- Test nøkkel utilgjengeleg, hardware-feil og seed-backup-feil.
+- Test adressestifeil, både påminninga før innsending og varselet etterpå.
+- Test programvare-inkompatibilitet, og at `Hardware works` og kontaktstadfestinga krev eit val.
+- Test KI-status `VULNERABLE` og `COMPROMISED`, og kontaktinfo `Needs external update`.
+- Test rotering av ein nøkkel, med og utan nytt namn, og at rotering krev ein ny adressesti.
+- Test kvittering av eit varsel, og at eit nyare varsel kjem tilbake.
+- Test at ein nøkkel med eit ope varsel ikkje kan få ein ny kontroll, og at nøkkelen blir ledig igjen når varselet er lukka.
+- Test at to nøklar ikkje kan ha same adressesti, korkje i oppsettet, i innstillingane eller ved rotering.
+- Test kvar varselhandling, og at eit varsel utan handlingar blir rekna som ein feil.
+- Test at eit nøkkelkort viser ei varselmelding når nøkkelen har eit ope varsel.
+- Test at fjerning av den feilande programvara lukkar `software_incompatible`.
+- Test at eit lukka varsel viser seg i historikken og i CSV-en, med handling og dato.
+- Test at eit kontaktvarsel gir `Needs action` og sperrar nøkkelen, og at nøkkelen blir ledig att ved `contact_updated`.
+- Test at `software_incompatible` med ei cloud-nøkkel-programvare gir `replace_hardware` på den kontrollerte nøkkelen, og at det same varselet frå innstillingslista held fram med `remove_software`.
+- Test at ein kan byte namn på ein nøkkel i roteringsseksjonen utan å rotere han, og at ei rotering krev stadfestingsboksen.
+- Test at ei rotering kan gi nøkkelen den andre typen, og at eit namn som wallet-programvare-lista alt har, blir avvist.
 
-**Merk:** dette er dei manuelle nettlesartestane dine. Alt som er implementert, er òg dekt av testsuiten, men punkta står opne til du har køyrt dei i nettlesaren.
+**Merk:** dette er dei manuelle nettlesartestane dine, og dei er køyrde og verifiserte.
 
 ## StartOS-test
 
-- [ ] Installer `.s9pk` på StartOS 0.4.0, start servicen og opne web UI.
-- [ ] Utfør ein komplett test-check.
-- [ ] Restart servicen, og verifiser at data framleis finst.
-- [ ] Ta backup, restore backup, og verifiser data etter restore.
+- Installer `.s9pk` på StartOS 0.4.0, start servicen og opne web UI.
+- Utfør ein komplett test-check.
+- Restart servicen, og verifiser at data framleis finst.
+- Ta backup, restore backup, og verifiser data etter restore.
+
+**Merk:** alle fire er køyrde og verifiserte på boksen. `vardkey_x86_64.s9pk` vart sideloda og installert, servicen står som `Running`, helsesjekken melder «The web interface is ready», og `Open UI` opnar VardKey i nettlesaren på StartOS-adressa. Restart og restore heldt på dataa, og dei gamle health checkane fanst etter restore.
 
 ---
 
@@ -385,16 +387,18 @@ Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og 
 
 Før første release skal alle desse vere oppfylte:
 
-- [ ] Appen køyrer på StartOS 0.4.0.
-- [ ] Dei tre nøklane er representerte i appen.
-- [ ] Ein komplett årleg health check kan gjennomførast i nettlesaren, og alle årlege kontrollpunkt kan registrerast.
-- [ ] KI-status kan registrerast som SECURE, PATCHED, VULNERABLE eller COMPROMISED.
-- [ ] Kontaktinfo kan verifiserast utan å lagre kontaktinformasjonen.
-- [ ] Problem gir tydelege varsel, og eit varsel kan lukkast på den måten som høyrer til varselet.
-- [ ] Neste sjekk blir lagra, og historikk fungerer.
-- [ ] CSV-rapport kan eksporterast.
-- [ ] Data overlever restart, og backup og restore fungerer.
-- [ ] Ingen wallet-hemmelegheiter blir lagra.
+- Appen køyrer på StartOS 0.4.0.
+- Dei tre nøklane er representerte i appen.
+- Ein komplett årleg health check kan gjennomførast i nettlesaren, og alle årlege kontrollpunkt kan registrerast.
+- KI-status kan registrerast som SECURE, PATCHED, VULNERABLE eller COMPROMISED.
+- Kontaktinfo kan verifiserast utan å lagre kontaktinformasjonen.
+- Problem gir tydelege varsel, og eit varsel kan lukkast på den måten som høyrer til varselet.
+- Neste sjekk blir lagra, og historikk fungerer.
+- CSV-rapport kan eksporterast.
+- Data overlever restart, og backup og restore fungerer.
+- Ingen wallet-hemmelegheiter blir lagra.
+
+**Merk:** alle punkta er køyrde og verifiserte på boksen. Kriterielista er oppfylt, men pakkeversjonen blir ikkje heva enno — sjå §30.
 
 ---
 
@@ -405,10 +409,10 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 - 1–8. Grunnleggande web-app, SQLite og datamodellen, dei tre nøklane, health check-skjemaet, lagring og historikk, varsellogikken, dashboardet og rapporteksport.
 - 9. Implementer StartOS package.
 - 10. Implementer persistent storage og backup.
-- [ ] 11. Test restart og restore.
+- 11. Test restart og restore.
 - [ ] 12. Bygg endeleg `.s9pk` og gjer første release.
 
-**Merk:** §23–§29 kom inn etter steg 8 og er implementerte og verifiserte. Steg 9 og 10 er skrivne inn i repoet, men ikkje bygde og ikkje køyrde på ein boks; steg 11 og 12 står difor att. Alt høyrer til §30.
+**Merk:** §23–§29 kom inn etter steg 8 og er implementerte og verifiserte. Steg 9–11 er ferdige: pakka er skriven, bygd, installert og køyrd på ein eigen boks, og restart og restore er testa. Steg 12 står att, fordi det er sett til 1.0.0-runden saman med ikonet — ikkje fordi noko manglar. Alt høyrer til §30.
 
 **Testar:** køyr `python3 -m unittest discover -s tests`. Suiten skal vere grøn både på Linux og på Windows-kopien.
 
@@ -498,7 +502,7 @@ Appen heiter **VardKey**, med beskrivinga **Bitcoin Multisig Health Monitor**. E
 
 ---
 
-# 30. StartOS 0.4.0-pakke (skriven, ikkje bygd eller installert)
+# 30. StartOS 0.4.0-pakke (bygd, installert og verifisert)
 
 Avtalt 10.10.2026. Bygd etter at §29 er verifisert.
 
@@ -514,9 +518,11 @@ Appen blir éin StartOS-service: éin daemon, éin container, SQLite på eit per
 - **Web-grensesnitt.** `MultiHost.of(effects, 'ui').bindPort(8080, { protocol: 'http', preferredExternalPort: 80 })` med éin `createInterface({ id: 'ui', type: 'ui' })`. StartOS terminerer TLS og proxyar rein HTTP inn i containeren, så appen må ikkje byggje absolutte `http://`-URL-ar. Appen gjer det ikkje i dag.
 - **Backup.** `backups.ts` peikar på volumet `main`. Det opne spørsmålet i denne runden var om `setupBackups` har ein krok for eit konsistent SQLite-snapshot. Han trongst ikkje: StartOS stoppar servicen medan ein backup går, så databasefila er ikkje under skriving når ho blir kopiert. Det er ikkje ei kjend avgrensing lenger, og det står i `README.md` og i `startos/backups.ts`.
 - **Ingen CI.** Pakkeguiden føreset GitHub-workflows. Repoet ligg på Gitea, og `.s9pk` blir bygd lokalt med `make`. Det står i `AGENTS.md`.
-- [ ] **Rekkjefølgje.** Skjelettet kjem frå `s9pk init-workspace`; deretter `LICENSE`, `Dockerfile`, `.dockerignore`, `startos/manifest/i18n.ts`, `startos/manifest/index.ts`, `startos/utils.ts`, `startos/main.ts`, `startos/interfaces.ts`, `startos/backups.ts`, `startos/versions/`, `startos/init/`, `instructions.md`, `UPDATING.md`, `AGENTS.md`, `README.md`, og til slutt `TODO.md` og `ai-note.md`.
+- **Rekkjefølgje.** Skjelettet kjem frå `s9pk init-workspace`; deretter `LICENSE`, `Dockerfile`, `.dockerignore`, `startos/manifest/i18n.ts`, `startos/manifest/index.ts`, `startos/utils.ts`, `startos/main.ts`, `startos/interfaces.ts`, `startos/backups.ts`, `startos/versions/`, `startos/init/`, `instructions.md`, `UPDATING.md`, `AGENTS.md`, `README.md`, og til slutt `TODO.md` og `ai-note.md`.
 
-**Merk:** pakka er skriven, men **ikkje bygd og ikkje installert** frå miljøet som skreiv henne. Skjelett-filene (`package.json`, `tsconfig.json`, `Makefile`, `.prettierrc`, `startos/sdk.ts`, `startos/index.ts`, `startos/actions/index.ts`, `startos/i18n/`, `startos/fileModels/`, `assets/`) vart skrivne i same runde i staden for genererte av `s9pk init-workspace`, sidan kommandoen ikkje fanst der. Køyr gjerne `s9pk init-package` i eit eige dir og jamfør dei filene, særleg `@start9labs/start-sdk`-versjonen i `package.json`, før fyrste bygg. §14, §16 StartOS-testen og §17 blir ikkje kryssa av før brukaren har køyrt dei på ein eigen StartOS 0.4.0-boks.
+**Merk:** pakka er ferdig og verifisert. `make x86` gjekk reint (`tsc --noEmit`, `prettier --check`, `ncc`), bygde `vardkey_x86_64.s9pk` (35M, `Arch: x86_64`, `SDK: 3.0.4`, pakkeversjon `0.1.0:0`), og pakka vart sideloda og køyrd på ein eigen StartOS 0.4.0-boks. Skjelett-filene (`package.json`, `tsconfig.json`, `Makefile`, `.prettierrc`, `startos/sdk.ts`, `startos/index.ts`, `startos/actions/index.ts`, `startos/i18n/`, `startos/fileModels/`, `assets/`) vart skrivne i same runde i staden for genererte av `s9pk init-workspace`, sidan kommandoen ikkje fanst der miljøet som skreiv dei; bygget og installasjonen stadfestar at dei er ekvivalente, og `@start9labs/start-sdk` står på `3.0.4`.
+
+**Det som står att i denne runden er medvite utsett:** det ekte `icon.svg`, og hevinga av pakkeversjonen frå `0.1.0:0` til `1.0.0:0`. §16 og §17 er oppfylte, men brukaren har meir som skal implementerast før versjon 1, og tek den avgjerda med sin eigen AI-strateg. **Ikkje hev versjonen og ikkje lag ikonet utan at brukaren ber om det.** §18 steg 12 («gjer første release») ventar på den same avgjerda.
 
 ---
 
