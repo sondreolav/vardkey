@@ -13,7 +13,7 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 - §1–§18 er kravspecen og gjeld som han står.
 - §19–§29 er korte samandrag av rundane. Alle reglane deira står i §1–§18; den fulle grunngjevinga ligg i git-historikken.
 - Eit punkt utan avkryssingsboks er implementert og verifisert. `[ ]` markerer det som står att.
-- **Status:** §1–§29 er implementerte og verifiserte, skjema versjon 11, testsuiten er grøn (346 testar). §30 er vedteke og **ikkje starta**; punkta hans står som ukryssa boksar. §18 steg 9–12 (StartOS) høyrer til §30.
+- **Status:** §1–§29 er implementerte og verifiserte, skjema versjon 11, testsuiten er grøn (346 testar). **§30 er skriven**: StartOS-pakka ligg no i repoet ved sida av appen. Ho er **ikkje bygd og ikkje installert** frå agentmiljøet som skreiv henne, så punkta som krev eit bygg eller ein installasjon står framleis opne — §13 `Bygg .s9pk` og verifiseringa, §14, §16 StartOS-testen og §17. §18 steg 9–12 (StartOS) høyrer til §30.
 
 ## Språkkrav
 
@@ -302,16 +302,18 @@ StartOS 0.4.0
     └── Persistent data
 ```
 
-- [ ] Opprett StartOS package.
-- [ ] Opprett manifest.
-- [ ] Opprett service-definisjon.
-- [ ] Opprett HTTP web-interface.
-- [ ] Opprett persistent volume.
-- [ ] Opprett health check.
-- [ ] Opprett backup-oppsett.
-- [ ] Opprett installasjons-/brukarinstruksjonar.
+- Opprett StartOS package.
+- Opprett manifest.
+- Opprett service-definisjon.
+- Opprett HTTP web-interface.
+- Opprett persistent volume.
+- Opprett health check.
+- Opprett backup-oppsett.
+- Opprett installasjons-/brukarinstruksjonar.
 - [ ] Bygg `.s9pk`.
 - [ ] Verifiser at pakken kan installerast på StartOS 0.4.0.
+
+**Merk:** dei åtte første punkta er skrivne inn i repoet (sjå §30). Dei to siste krev ein bygg- og installasjonsrunde på ein eigen boks, og står difor opne. Forbodet nedanfor er eit varig forbod, ikkje ei oppgåveliste, og skal stadfestast på nytt før release.
 
 Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og ekstra container utan konkret behov.
 
@@ -326,6 +328,8 @@ Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og 
 - [ ] Konfigurer StartOS backup av persistent data.
 - [ ] Test backup og test restore.
 - [ ] Verifiser at gamle health checks finst etter restore.
+
+**Merk:** oppsettet er skrive: `startos/backups.ts` brukar `sdk.Backups.ofVolumes('main')`, og databasen ligg på `main`-volumet på `/data`. StartOS stoppar servicen medan ein backup går, så databasefila er ikkje under skriving når ho blir kopiert — det var det opne spørsmålet i §30, og det er svara på. Punkta står likevel opne til dei er køyrde på ein eigen boks.
 
 ---
 
@@ -399,12 +403,12 @@ Før første release skal alle desse vere oppfylte:
 Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjonar:
 
 - 1–8. Grunnleggande web-app, SQLite og datamodellen, dei tre nøklane, health check-skjemaet, lagring og historikk, varsellogikken, dashboardet og rapporteksport.
-- [ ] 9. Implementer StartOS package.
-- [ ] 10. Implementer persistent storage og backup.
+- 9. Implementer StartOS package.
+- 10. Implementer persistent storage og backup.
 - [ ] 11. Test restart og restore.
 - [ ] 12. Bygg endeleg `.s9pk` og gjer første release.
 
-**Merk:** §23–§29 kom inn etter steg 8 og er implementerte og verifiserte. Steg 9–12 er ikkje starta, og høyrer til §30.
+**Merk:** §23–§29 kom inn etter steg 8 og er implementerte og verifiserte. Steg 9 og 10 er skrivne inn i repoet, men ikkje bygde og ikkje køyrde på ein boks; steg 11 og 12 står difor att. Alt høyrer til §30.
 
 **Testar:** køyr `python3 -m unittest discover -s tests`. Suiten skal vere grøn både på Linux og på Windows-kopien.
 
@@ -494,25 +498,25 @@ Appen heiter **VardKey**, med beskrivinga **Bitcoin Multisig Health Monitor**. E
 
 ---
 
-# 30. StartOS 0.4.0-pakke (vedteke, ikkje starta)
+# 30. StartOS 0.4.0-pakke (skriven, ikkje bygd eller installert)
 
-Avtalt 10.10.2026. Blir bygd etter at §29 er verifisert.
+Avtalt 10.10.2026. Bygd etter at §29 er verifisert.
 
 Appen blir éin StartOS-service: éin daemon, éin container, SQLite på eit persistent volum. Forbodet i §13 gjeld som han står: ingen Postgres, ingen Redis, ingen ekstern backend, inga ekstern cloud-teneste for appdata, og ingen ekstra container utan konkret behov.
 
-- [ ] **Pakka ligg i app-repoet.** StartOS-filene (`startos/`, `Dockerfile`, `Makefile`, `package.json` og resten av skjelettet) ligg ved sida av appen i `ai-bot/helsesjekk`. Pakkeguiden seier at pakke-repoet ikkje skal vere ein fork av appen; her er appen vår eigen og har ikkje noko publisert image, så pakka byggjer appen frå repo-rota. Avviket skal stå i `AGENTS.md`, så ingen legg inn ein submodul for å «rette» det.
-- [ ] **Namn og versjon.** Manifest `id: 'vardkey'`, `title: 'VardKey'`, `volumes: ['main']` mounta på `/data`. Pakkeversjonen startar på `0.1.0:0` og blir heva til `1.0.0:0` når §16 StartOS-testen og §17 er oppfylte.
-- [ ] **Lisens.** `GPL-3.0-only`, med ein `LICENSE`-fil i repoet. Det er copyleft-motstykket til CC BY-SA 4.0, som er ein innhaldslisens Creative Commons sjølve rår frå å bruke på programvare, og GPL-3.0 gjev i tillegg ein eksplisitt patentlisens. Blir SPDX-id-en avvist av bygget, blir han skriven som `GPL-3.0`.
-- [ ] **`marketingUrl`** er `https://sondreolav.com/vardkey`. Sida finst ikkje enno og blir laga til slutt; URL-en blir sett inn no likevel, sidan manifestet krev han.
-- [ ] **Ikonet blir utsett.** `icon.svg` blir teikna i runden som hevar pakka til `1.0.0`, når appen er ferdig. Nektar bygget å pakke utan ikon, blir eit minimalt placeholder-ikon lagt inn og bytt ut i den runden.
-- [ ] **Daemonen.** Éin daemon `primary` som køyrer `python3 app.py` med `PORT=8080` og `DATABASE_PATH=/data/vardkey.sqlite3`. Volumet `main` blir mounta skrivbart på `/data`. Ingen oneshot, ingen sidecar, og inga `USER`-linje i Dockerfile, så `/data` er skrivbar utan `chown`.
-- [ ] **Helseendepunktet.** Daemon-`ready` med `checkWebUrl` mot `http://127.0.0.1:8080/health`. Den interne porten i `bindPort` må vere den same som `PORT`, elles blir sjekken aldri grøn.
-- [ ] **Web-grensesnitt.** `MultiHost.of(effects, 'ui').bindPort(8080, { protocol: 'http', preferredExternalPort: 80 })` med éin `createInterface({ id: 'ui', type: 'ui' })`. StartOS terminerer TLS og proxyar rein HTTP inn i containeren, så appen må ikkje byggje absolutte `http://`-URL-ar. Appen gjer det ikkje i dag.
-- [ ] **Backup.** `backups.ts` peikar på volumet `main`. Det må undersøkast om `setupBackups` har ein krok som kan ta eit konsistent SQLite-snapshot. Finnst han ikkje, blir snapshotet teke medan ei skriving kan pågå, og det skal i så fall nemnast som ei kjend avgrensing.
-- [ ] **Ingen CI.** Pakkeguiden føreset GitHub-workflows. Repoet ligg på Gitea, og `.s9pk` blir bygd lokalt med `make`. Det skal stå i `AGENTS.md`.
+- **Pakka ligg i app-repoet.** StartOS-filene (`startos/`, `Dockerfile`, `Makefile`, `package.json` og resten av skjelettet) ligg ved sida av appen i `ai-bot/helsesjekk`. Pakkeguiden seier at pakke-repoet ikkje skal vere ein fork av appen; her er appen vår eigen og har ikkje noko publisert image, så pakka byggjer appen frå repo-rota. Avviket står i `AGENTS.md`, så ingen legg inn ein submodul for å «rette» det.
+- **Namn og versjon.** Manifest `id: 'vardkey'`, `title: 'VardKey'`, `volumes: ['main']` mounta på `/data`. Pakkeversjonen startar på `0.1.0:0` og blir heva til `1.0.0:0` når §16 StartOS-testen og §17 er oppfylte.
+- **Lisens.** `GPL-3.0-only`, med ein `LICENSE`-fil i repoet. Det er copyleft-motstykket til CC BY-SA 4.0, som er ein innhaldslisens Creative Commons sjølve rår frå å bruke på programvare, og GPL-3.0 gjev i tillegg ein eksplisitt patentlisens. Blir SPDX-id-en avvist av bygget, blir han skriven som `GPL-3.0`.
+- **`marketingUrl`** er `https://sondreolav.com/vardkey`. Sida finst ikkje enno og blir laga til slutt; URL-en er sett inn likevel, sidan manifestet krev han.
+- [ ] **Ikonet blir utsett.** `icon.svg` blir teikna i runden som hevar pakka til `1.0.0`, når appen er ferdig. Eit minimalt placeholder-ikon ligg i repoet no, sidan skjelettet alltid leverer eit ikon, og blir bytt i den runden.
+- **Daemonen.** Éin daemon `primary` som køyrer `python3 app.py` med `PORT=8080` og `DATABASE_PATH=/data/vardkey.sqlite3`. Volumet `main` blir mounta skrivbart på `/data`. Ingen oneshot, ingen sidecar, og inga `USER`-linje i Dockerfile, så `/data` er skrivbar utan `chown`.
+- **Helseendepunktet.** Daemon-`ready` med `checkWebUrl` mot `http://127.0.0.1:8080/health`. Den interne porten i `bindPort` er den same som `PORT`, elles blir sjekken aldri grøn.
+- **Web-grensesnitt.** `MultiHost.of(effects, 'ui').bindPort(8080, { protocol: 'http', preferredExternalPort: 80 })` med éin `createInterface({ id: 'ui', type: 'ui' })`. StartOS terminerer TLS og proxyar rein HTTP inn i containeren, så appen må ikkje byggje absolutte `http://`-URL-ar. Appen gjer det ikkje i dag.
+- **Backup.** `backups.ts` peikar på volumet `main`. Det opne spørsmålet i denne runden var om `setupBackups` har ein krok for eit konsistent SQLite-snapshot. Han trongst ikkje: StartOS stoppar servicen medan ein backup går, så databasefila er ikkje under skriving når ho blir kopiert. Det er ikkje ei kjend avgrensing lenger, og det står i `README.md` og i `startos/backups.ts`.
+- **Ingen CI.** Pakkeguiden føreset GitHub-workflows. Repoet ligg på Gitea, og `.s9pk` blir bygd lokalt med `make`. Det står i `AGENTS.md`.
 - [ ] **Rekkjefølgje.** Skjelettet kjem frå `s9pk init-workspace`; deretter `LICENSE`, `Dockerfile`, `.dockerignore`, `startos/manifest/i18n.ts`, `startos/manifest/index.ts`, `startos/utils.ts`, `startos/main.ts`, `startos/interfaces.ts`, `startos/backups.ts`, `startos/versions/`, `startos/init/`, `instructions.md`, `UPDATING.md`, `AGENTS.md`, `README.md`, og til slutt `TODO.md` og `ai-note.md`.
 
-**Merk:** §14, §16 StartOS-testen og §17 blir ikkje kryssa av før brukaren har køyrt dei på ein eigen StartOS 0.4.0-boks.
+**Merk:** pakka er skriven, men **ikkje bygd og ikkje installert** frå miljøet som skreiv henne. Skjelett-filene (`package.json`, `tsconfig.json`, `Makefile`, `.prettierrc`, `startos/sdk.ts`, `startos/index.ts`, `startos/actions/index.ts`, `startos/i18n/`, `startos/fileModels/`, `assets/`) vart skrivne i same runde i staden for genererte av `s9pk init-workspace`, sidan kommandoen ikkje fanst der. Køyr gjerne `s9pk init-package` i eit eige dir og jamfør dei filene, særleg `@start9labs/start-sdk`-versjonen i `package.json`, før fyrste bygg. §14, §16 StartOS-testen og §17 blir ikkje kryssa av før brukaren har køyrt dei på ein eigen StartOS 0.4.0-boks.
 
 ---
 
