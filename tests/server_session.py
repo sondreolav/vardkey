@@ -6,14 +6,15 @@ session and CSRF cookies with every request, exactly as the browser does.
 
 ``tests/test_app.py`` has its own, larger ``ServerTestCase``; this module is the
 smaller helper the other server test modules share. A class that uses the mixin
-sets ``self.base_url`` and ``self.database_path`` in its own ``setUp`` and then
-calls ``authenticate()``.
+points ``DATABASE_PATH`` at its temporary database and sets ``self.base_url`` in
+its own ``setUp``, then calls ``authenticate()``.
 """
 
 from http.cookies import SimpleCookie
 import json
 from urllib.request import Request, urlopen
 
+from app import get_database_path
 from auth import CSRF_COOKIE, CSRF_HEADER, set_admin
 
 
@@ -25,14 +26,16 @@ class SessionMixin:
     """Sign in through the API and carry the cookies on every request."""
 
     def authenticate(self):
-        """Store the admin, sign in, and keep the session and CSRF cookies.
+        """Store the admin in the database the server is using, and sign in.
 
-        The session secret lives in the database, so a test that switches
-        ``DATABASE_PATH`` to another file has to call this again for that file,
-        or its cookie is signed with the wrong secret.
+        The path is resolved the way the server resolves it, so a test that
+        switches ``DATABASE_PATH`` to another file writes the admin into that
+        file and signs in to it. The session secret lives in the database too,
+        so the sign-in has to be repeated for a new file: an old cookie is
+        signed with the old secret and every request would answer ``401``.
         """
         self.cookies = {}
-        set_admin(ADMIN_USERNAME, ADMIN_PASSWORD, self.database_path)
+        set_admin(ADMIN_USERNAME, ADMIN_PASSWORD, get_database_path())
         request = self.request(
             "/api/login",
             method="POST",
