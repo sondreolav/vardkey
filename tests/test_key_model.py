@@ -29,6 +29,17 @@ DEFAULT_SETUP = [
     {"key_number": 2, "name": "Blockstream Jade", "type": "hardware", "address_path": SECOND_ADDRESS_PATH, "model": None},
     {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": THIRD_ADDRESS_PATH, "model": "Casa"},
 ]
+# A setup for a new database, with a model that needs trimming and one that is
+# left empty (section 31 point 5).
+FRESH_SETUP = {
+    "threshold": 2,
+    "key_count": 3,
+    "keys": [
+        {"key_number": 1, "name": "Key 1", "type": "hardware", "address_path": ADDRESS_PATH, "model": "  Ledger Nano S  "},
+        {"key_number": 2, "name": "Key 2", "type": "hardware", "address_path": SECOND_ADDRESS_PATH, "model": ""},
+        {"key_number": 3, "name": "Key 3", "type": "cloud", "address_path": THIRD_ADDRESS_PATH, "model": "Casa"},
+    ],
+}
 
 
 class KeyModelApiTests(unittest.TestCase):
@@ -97,21 +108,28 @@ class KeyModelApiTests(unittest.TestCase):
     def test_the_setup_endpoint_stores_the_model(self):
         # A new database has no setup yet, so the first-run step writes the model
         # with the rest of the key (section 31 point 5).
-        initialize_database(os.path.join(self.temp_dir.name, "fresh.sqlite3"))
-        payload = {
-            "threshold": 2,
-            "key_count": 3,
-            "keys": [
-                {"key_number": 1, "name": "Key 1", "type": "hardware", "address_path": ADDRESS_PATH, "model": "  Ledger Nano S  "},
-                {"key_number": 2, "name": "Key 2", "type": "hardware", "address_path": SECOND_ADDRESS_PATH, "model": ""},
-                {"key_number": 3, "name": "Key 3", "type": "cloud", "address_path": THIRD_ADDRESS_PATH, "model": "Casa"},
-            ],
-        }
+        fresh = os.path.join(self.temp_dir.name, "fresh.sqlite3")
+        initialize_database(fresh)
+        os.environ["DATABASE_PATH"] = fresh
 
-        # The stored setup already exists in this database, so the endpoint
-        # answers 409; the model of a new setup is covered by the validator and
-        # the storage test, and the settings are covered below.
-        self.assert_rejected_at("/api/setup", payload, status=409)
+        with self.post_json("/api/setup", FRESH_SETUP) as response:
+            self.assertEqual(response.status, 201)
+
+        keys = self.get_json("/api/keys")
+        self.assertEqual([key["name"] for key in keys], ["Key 1", "Key 2", "Key 3"])
+        # The model is trimmed, and the empty one is stored as "not recorded".
+        self.assertEqual([key["model"] for key in keys], ["Ledger Nano S", None, "Casa"])
+
+    def test_an_over_long_model_is_rejected_by_the_setup(self):
+        fresh = os.path.join(self.temp_dir.name, "fresh.sqlite3")
+        initialize_database(fresh)
+        os.environ["DATABASE_PATH"] = fresh
+
+        payload = json.loads(json.dumps(FRESH_SETUP))
+        payload["keys"][0]["model"] = "x" * 61
+        self.assert_rejected_at("/api/setup", payload)
+
+        self.assertFalse(self.get_json("/api/setup")["configured"])
 
     def test_the_settings_change_the_model(self):
         with self.post_json("/api/settings/keys", {
