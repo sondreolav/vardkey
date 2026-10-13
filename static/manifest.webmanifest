@@ -1,0 +1,17 @@
+{
+  "name": "VardKey",
+  "short_name": "VardKey",
+  "description": "Bitcoin Multisig Health Monitor",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#f4f6f2",
+  "background_color": "#f4f6f2",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
