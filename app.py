@@ -18,6 +18,7 @@ from alerts import (
 )
 from database import (
     get_health_check,
+    get_multisig_settings,
     initialize_database,
     key_has_check,
     list_alert_acknowledgements,
@@ -42,6 +43,7 @@ from validation import (
     validate_health_check,
     validate_key_settings,
     validate_key_setup,
+    validate_multisig_settings,
     validate_rotation,
     validate_wallet_software,
 )
@@ -235,7 +237,9 @@ class AppHandler(BaseHTTPRequestHandler):
         A new database has no key rows yet, so the first-run setup step is the
         only way they are written (section 23.2). The address path is part of the
         setup and is locked with the rest, and no two keys may share one
-        (sections 25.1 and 26.2).
+        (sections 25.1 and 26.2). The setup also carries the multisig threshold
+        and the number of key slots, which decide how many keys are configured
+        (section 31 point 7).
         """
         try:
             payload = self._read_json_body()
@@ -255,7 +259,10 @@ class AppHandler(BaseHTTPRequestHandler):
 
         try:
             entries = validate_key_setup(payload)
-            save_key_setup(entries, database_path)
+            threshold, key_count = validate_multisig_settings(payload)
+            save_key_setup(
+                entries, database_path, threshold=threshold, key_count=key_count
+            )
             keys = list_keys(database_path)
         except ValidationError as error:
             self._send_json(400, {"error": str(error)})
@@ -575,17 +582,27 @@ class AppHandler(BaseHTTPRequestHandler):
         })
 
     def _send_setup(self):
-        """Return whether the key setup is stored, together with the stored keys.
+        """Return whether the key setup is stored, the stored keys, and its shape.
 
         A database that holds only part of the setup is reported as an error, so
-        it is never answered with the first-run setup step (section 23.2).
+        it is never answered with the first-run setup step (section 23.2). The
+        multisig threshold and key count are returned with the keys, so the setup
+        page and the dashboard know how many key slots the single setup has
+        (section 31 point 7).
         """
+        database_path = get_database_path()
         try:
-            keys = list_keys(get_database_path())
+            keys = list_keys(database_path)
+            multisig = get_multisig_settings(database_path)
         except STORAGE_ERRORS:
             self._send_json(500, {"error": "The key setup is unavailable"})
             return
-        self._send_json(200, {"configured": bool(keys), "keys": keys})
+        self._send_json(200, {
+            "configured": bool(keys),
+            "threshold": multisig["threshold"],
+            "key_count": multisig["key_count"],
+            "keys": keys,
+        })
 
     def _send_keys(self):
         try:
