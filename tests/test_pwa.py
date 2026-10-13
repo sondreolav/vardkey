@@ -8,11 +8,14 @@ icons entry change then.
 
 from http.server import ThreadingHTTPServer
 import json
+import os
+import tempfile
 import threading
 import unittest
-from urllib.request import urlopen
 
 from app import ROOT, STATIC_FILES, AppHandler
+from database import initialize_database
+from server_session import SessionMixin
 
 
 class ServiceWorkerTests(unittest.TestCase):
@@ -33,6 +36,7 @@ class ServiceWorkerTests(unittest.TestCase):
         return (ROOT / "static" / filename).read_text(encoding="utf-8")
 
     def fetch_text(self, path):
+        # /sw.js is a static asset, so it needs no session (section 31 point 1).
         with urlopen(f"{self.base_url}{path}") as response:
             self.assertEqual(response.status, 200)
             return response.read().decode("utf-8")
@@ -56,8 +60,8 @@ class ServiceWorkerTests(unittest.TestCase):
         self.assertNotIn("/api/", body)
         # The quoted path is what matters: "/health-check" is a shell path, while
         # "/health" and "/login" are not, and must not appear.
-        self.assertNotIn('"/health"', body)
-        self.assertNotIn('"/login"', body)
+        self.assertNotIn('\"/health\"', body)
+        self.assertNotIn('\"/login\"', body)
         # The shell it does cache is the five pages, their assets, and the two
         # files the browser reads when the app is installed.
         for path in (
@@ -86,22 +90,38 @@ class ServiceWorkerTests(unittest.TestCase):
         self.assertIn("You are offline", body)
 
 
-class ManifestTests(unittest.TestCase):
+class ManifestTests(SessionMixin, unittest.TestCase):
     """The manifest and the icon that make the app installable."""
 
     def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.database_path = os.path.join(self.temp_dir.name, "test.sqlite3")
+        initialize_database(self.database_path)
+        self.previous_database_path = os.environ.get("DATABASE_PATH")
+        os.environ["DATABASE_PATH"] = self.database_path
+
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), AppHandler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base_url = f"http://127.0.0.1:{self.server.server_port}"
+        # The manifest and the icon are open, but the page test below reads the
+        # five pages, and those need a session (section 31 point 1). Without
+        # one the server redirects to the login page and urllib follows it, so
+        # the assertion would read the login page's HTML instead.
+        self.authenticate()
 
     def tearDown(self):
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=2)
+        if self.previous_database_path is None:
+            os.environ.pop("DATABASE_PATH", None)
+        else:
+            os.environ["DATABASE_PATH"] = self.previous_database_path
+        self.temp_dir.cleanup()
 
     def fetch_text(self, path):
-        with urlopen(f"{self.base_url}{path}") as response:
+        with self.get(path) as response:
             self.assertEqual(response.status, 200)
             return response.read().decode("utf-8")
 
