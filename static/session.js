@@ -65,7 +65,8 @@
     }
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "sign-out";
+    // The existing secondary button style is reused, so no new CSS is needed.
+    button.className = "secondary-button sign-out";
     button.textContent = "Sign out";
     button.addEventListener("click", signOut);
     (topbar.querySelector(".topbar-actions") || topbar).append(button);
