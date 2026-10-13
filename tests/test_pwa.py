@@ -50,8 +50,10 @@ class ServiceWorkerTests(unittest.TestCase):
         body = self.read_static("sw.js")
 
         self.assertNotIn("/api/", body)
-        self.assertNotIn("/health", body)
-        self.assertNotIn("/login", body)
+        # The quoted path is what matters: "/health-check" is a shell path, while
+        # "/health" and "/login" are not, and must not appear.
+        self.assertNotIn('"/health"', body)
+        self.assertNotIn('"/login"', body)
         # The shell it does cache is the five pages and their assets.
         for path in ("/", "/setup", "/settings", "/health-check", "/history", "/styles.css"):
             self.assertIn(f'"{path}"', body)
