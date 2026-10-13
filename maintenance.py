@@ -42,12 +42,13 @@ def delete_history_command(args):
 
 
 def build_parser():
-    """Return the argument parser for the maintenance commands."""
-    parser = argparse.ArgumentParser(
-        prog="maintenance.py",
-        description="Maintenance tasks for VardKey that do not need the server.",
-    )
-    parser.add_argument(
+    """Return the argument parser for the maintenance commands.
+
+    ``--database`` is shared by every command, so it can be given after the
+    command name: ``maintenance.py delete-history --database /data/x.sqlite3``.
+    """
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
         "--database",
         default=None,
         help=(
@@ -55,9 +56,15 @@ def build_parser():
             f"{DEFAULT_DATABASE_PATH}."
         ),
     )
+
+    parser = argparse.ArgumentParser(
+        prog="maintenance.py",
+        description="Maintenance tasks for VardKey that do not need the server.",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     delete = commands.add_parser(
         "delete-history",
+        parents=[common],
         help="Delete every saved health check and the follow-up it closed.",
     )
     delete.set_defaults(handler=delete_history_command)
