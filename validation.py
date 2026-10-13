@@ -17,6 +17,12 @@ checks apply, never the key number (section 23.3). The address path is part of
 the key's identity (section 25.1), and no two keys may share one: the comparison
 ignores surrounding whitespace and letter case (section 26.2).
 
+The number of key slots and the multisig threshold are configurable, so the setup
+carries ``threshold`` and ``key_count`` and the key numbers are bounded by that
+count (section 31 point 7). Both fields are optional: a payload without them
+keeps the 2-of-3 default, so an older client that only sends the keys keeps
+working, and the bounds are enforced here rather than by a database CHECK.
+
 ``available`` is always recorded (section 22). When the key was not available,
 the wallet software and the security statuses are not recorded either, so they
 may be left out of the payload.
@@ -45,7 +51,7 @@ The BIP327/SLIP39 results are gone, together with the rest of that function
 from datetime import date
 
 from alerts import ALERT_CODES, CLOSING_ACTIONS
-from database import KEY_COUNT
+from database import KEY_COUNT, MAX_KEY_COUNT, MIN_KEY_COUNT, MIN_THRESHOLD
 
 # Software compatibility requires an active choice, so "not assessed" is not
 # submittable for a new registration (section 23.1).
@@ -55,6 +61,7 @@ SECURITY_STATUSES = ("SECURE", "PATCHED", "VULNERABLE", "COMPROMISED")
 CONTACT_STATUSES = ("Confirmed current", "Needs external update")
 KEY_TYPES = ("hardware", "cloud")
 MAX_KEY_NAME_LENGTH = 60
+MAX_MODEL_LENGTH = 60
 MAX_VERSION_LENGTH = 100
 MAX_PATH_LENGTH = 200
 MAX_NOTES_LENGTH = 2000
@@ -94,14 +101,32 @@ def next_check_due(checked_at):
         return checked.replace(year=checked.year + 1, day=28).isoformat()
 
 
+def validate_multisig_settings(payload):
+    """Return the normalized ``(threshold, key_count)`` of the single setup.
+
+    Both fields are optional. A payload without them keeps the 2-of-3 default
+    the app was built for, so an older client that only sends the keys keeps
+    working, and the stored setup shape is unchanged. The bounds are enforced
+    here rather than by a database CHECK, the same way the address path is
+    handled (section 31 point 7).
+    """
+    if not isinstance(payload, dict):
+        raise ValidationError("payload must be a JSON object")
+    key_count = _multisig_key_count(payload.get("key_count"))
+    threshold = _multisig_threshold(payload.get("threshold"), key_count)
+    return threshold, key_count
+
+
 def validate_key_setup(payload):
-    """Return the normalized key setup for the three key slots.
+    """Return the normalized key setup for the configured key slots.
 
     The user names each key, picks its type, and records its address path once,
-    and all three are locked after the setup is saved (sections 23.2 and 25.1).
+    and all of them are locked after the setup is saved (sections 23.2 and 25.1).
     The names must be non-empty and unique, compared without regard to case. The
     address paths must be unique as well, so no two keys share one, because the
-    path is part of the identity of a key (section 26.2).
+    path is part of the identity of a key (section 26.2). The number of keys has
+    to match the setup's ``key_count``, which defaults to the 2-of-3 shape when it
+    is left out (section 31 point 7).
     """
     if not isinstance(payload, dict):
         raise ValidationError("payload must be a JSON object")
@@ -109,8 +134,9 @@ def validate_key_setup(payload):
     entries = payload.get("keys")
     if not isinstance(entries, list):
         raise ValidationError("keys must be a list")
-    if len(entries) != KEY_COUNT:
-        raise ValidationError(f"exactly {KEY_COUNT} keys must be configured")
+    _, key_count = validate_multisig_settings(payload)
+    if len(entries) != key_count:
+        raise ValidationError(f"exactly {key_count} keys must be configured")
 
     normalized = []
     numbers = set()
@@ -120,8 +146,8 @@ def validate_key_setup(payload):
         if not isinstance(entry, dict):
             raise ValidationError("each key must be an object")
         number = entry.get("key_number")
-        if isinstance(number, bool) or number not in range(1, KEY_COUNT + 1):
-            raise ValidationError(f"key_number must be between 1 and {KEY_COUNT}")
+        if isinstance(number, bool) or number not in range(1, key_count + 1):
+            raise ValidationError(f"key_number must be between 1 and {key_count}")
         if number in numbers:
             raise ValidationError("each key number may only be configured once")
         numbers.add(number)
@@ -343,6 +369,36 @@ def validate_acknowledgement(payload):
     if action not in CLOSING_ACTIONS:
         raise ValidationError("action is not a closing action for an alert")
     return {"code": code, "source": source, "action": action}
+
+
+def _multisig_key_count(value):
+    """Return the number of key slots, defaulting to the 2-of-3 shape."""
+    if value is None or value == "":
+        return KEY_COUNT
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValidationError("key_count must be a whole number")
+    if not MIN_KEY_COUNT <= value <= MAX_KEY_COUNT:
+        raise ValidationError(
+            f"key_count must be between {MIN_KEY_COUNT} and {MAX_KEY_COUNT}"
+        )
+    return value
+
+
+def _multisig_threshold(value, key_count):
+    """Return the multisig threshold, defaulting to two of the key slots.
+
+    A threshold of 1 is allowed, because the user chooses it and the app puts no
+    meaning into the number (section 31 point 7).
+    """
+    if value is None or value == "":
+        return min(2, key_count)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValidationError("threshold must be a whole number")
+    if not MIN_THRESHOLD <= value <= key_count:
+        raise ValidationError(
+            f"threshold must be between {MIN_THRESHOLD} and {key_count}"
+        )
+    return value
 
 
 def _rotation_type(value, key, name, software_names):
