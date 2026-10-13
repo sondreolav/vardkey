@@ -2,20 +2,20 @@
 
 Short working handover for the next model. Keep it short.
 
-- `TODO.md` (Norwegian) is the requirement specification. Sections 1–18 are the binding spec; sections 19–30 are short summaries of the rounds that are implemented and verified, and section 31 is the round that is decided but **not started**. The full reasoning is in the git history.
+- `TODO.md` (Norwegian) is the requirement specification. Sections 1–18 are the binding spec; sections 19–30 are short summaries of the rounds that are implemented and verified, and section 31 is the round in progress. The full reasoning is in the git history.
 - The binding rules live in `TODO.md` and `README.md`. This note does not repeat them — it carries the handover, the rules that are easy to get wrong, and the traps that already cost time.
 - `HANDOVER.md` was deleted as outdated. Do not recreate it.
 
 ## Status
 
-- **Done and verified:** sections 1–30, and section 18 steps 1–11. Schema version 11. 346 green tests.
+- **Done and verified:** sections 1–30, and section 18 steps 1–11. Schema version 12. 397 green tests.
 - **Section 30 is done and verified.** The StartOS package lives in this repository beside the application: `startos/`, `Dockerfile`, `.dockerignore`, `Makefile`, `package.json`, `tsconfig.json`, `.prettierrc`, `LICENSE`, `icon.svg`, `instructions.md`, `UPDATING.md`, `AGENTS.md`, `README.md`, and `CLAUDE.md`. It built clean with `make x86` into `vardkey_x86_64.s9pk`, was sideloaded onto a StartOS 0.4.0 box, and runs there: the service shows **Running**, the health check reports **The web interface is ready**, and **Open UI** opens the VardKey web app. Sections 14, 16 and 17 were exercised on that box and are ticked in `TODO.md`.
-- **Next work: section 31 — the eight points before version 1.** Decided and **not started**. Its plan, its order and its file list live in `TODO.md` section 31; read them there. Do not start it before the user says so.
+- **Next work: section 31 — the eight points before version 1.** **In progress.** The plan, the order and the file lists live in `TODO.md` section 31; the state of the round is at the top of that section. Read it there before touching anything.
 - **Two things are still deliberately left in section 30, and both need the user's go-ahead.** Do **not** raise the package version from `0.1.0:0` to `1.0.0:0`, and do **not** draw the real `icon.svg`. Section 31 comes first, and it carries the icon as its eighth point.
 - **A round stops when it is done.** Section 31 is the round. Do not roll into the version bump, into section 18 step 12, or into anything after it.
 - **Verified how:** the automated suite, the user's manual browser testing, and the install and test round on a StartOS 0.4.0 box. The manual tests in section 16 are all run.
 - **Tests:** the user runs them: `python3 -m unittest discover -s tests`. They run on a Windows copy at `C:\Users\<brukarnamn>\Downloads\helsesjekk`, so they must pass there as well as on Linux.
-- **Future work, deliberately not built:** nothing is left here that is not already section 31 point 7, which makes the multisig threshold configurable for the single setup.
+- **Future work, deliberately not built:** nothing is left here. The last item — more than three keys, and another threshold than 2-of-3 — was done in section 31 point 7.
 
 ## Section 30 — the StartOS package
 
@@ -27,7 +27,7 @@ The decisions are recorded in `TODO.md` section 30; this is what the next model 
 
 The application and the package share one repository, at the root. That is a deliberate deviation from the guide's "a package repo is not a fork of the application": the rule assumes a published upstream image or a git submodule, and VardKey has neither. `AGENTS.md` states the deviation so nobody adds an `upstream-project/` submodule to "fix" it.
 
-The image is built by the root `Dockerfile`, referenced as `dockerBuild: {}` in `startos/manifest/index.ts`, which makes the build context the repository root. **Anything the `Dockerfile` does not `COPY` is not in the image.** In particular `static/` must be copied: `app.py` answers `/health` from code, but every page is read from `ROOT/static`, so an image without it reports a healthy service whose entire UI answers `404`. The build log confirms four steps — `FROM`, `WORKDIR`, and the two `COPY` lines — and no `USER` step. Section 31 adds `maintenance.py` to that list, and new static files must be added to both the `Dockerfile` and `STATIC_FILES`.
+The image is built by the root `Dockerfile`, referenced as `dockerBuild: {}` in `startos/manifest/index.ts`, which makes the build context the repository root. **Anything the `Dockerfile` does not `COPY` is not in the image.** In particular `static/` must be copied: `app.py` answers `/health` from code, but every page is read from `ROOT/static`, so an image without it reports a healthy service whose entire UI answers `404`. `maintenance.py` is copied too, for the `Delete history` action. New static files must be added to both the `Dockerfile` and `STATIC_FILES` — section 31 still owes the login page, `session.js`, the manifest, `sw.js` and the PWA icons.
 
 There is no CI. The guide assumes GitHub Actions; this repository is on Gitea, so there are no `.github/workflows/` and there must not be any. The `.s9pk` is built locally with `make`.
 
@@ -35,7 +35,11 @@ There is no CI. The guide assumes GitHub Actions; this repository is on Gitea, s
 
 `startos/utils.ts` holds `uiPort` (8080). `startos/main.ts` passes it as `PORT` to the daemon and uses it in the readiness URL; `startos/interfaces.ts` binds it. Change one alone and the readiness check never goes green. The `DATABASE_PATH` constant in the same file is what puts the database on the volume instead of the application's own default of `data/vardkey.sqlite3` relative to the working directory.
 
-The readiness check is `checkWebUrl` against `http://127.0.0.1:8080/health`, not `checkPortListening` — section 30 asks for the endpoint, and `/health` is the application's own. **Section 31 puts every other route behind a login, so `/health` must stay open, or StartOS reports the service as unhealthy.**
+The readiness check is `checkWebUrl` against `http://127.0.0.1:8080/health`, not `checkPortListening` — section 30 asks for the endpoint, and `/health` is the application's own. **Section 31 point 1 puts every other route behind a login, so `/health` must stay open, or StartOS reports the service as unhealthy.** A red `ECONNREFUSED 127.0.0.1:8080` blip before `VardKey listening on port 8080` is just the first readiness poll landing before Python has bound the socket; the check polls again and goes green. Nothing to fix.
+
+### Actions
+
+`startos/actions/deleteHistory.ts` is the first action, registered through `Actions.of()` in `startos/actions/index.ts`, with its strings in `startos/i18n/dictionaries/`. Section 31 point 1 adds `setAdminPassword.ts` the same way, and its command reaches the container through `maintenance.py`.
 
 ### Backups
 
@@ -43,23 +47,36 @@ The readiness check is `checkWebUrl` against `http://127.0.0.1:8080/health`, not
 
 ### Notes on the skeleton
 
-The skeleton files (`package.json`, `tsconfig.json`, `Makefile`, `.prettierrc`, `startos/sdk.ts`, `startos/index.ts`, `startos/actions/index.ts`, `startos/i18n/`, `startos/fileModels/.gitkeep`, `assets/.gitkeep`) were written to match the Start9 template rather than generated by `s9pk init-workspace`, because that command was not available in the environment that wrote them. The successful build and install confirm they are equivalent; `@start9labs/start-sdk` is pinned to `3.0.4` and that is the version the `.s9pk` was built with. No reconciliation is outstanding.
-
-`startos/actions/index.ts` is empty today — it is the file section 31 grows the two new actions into, and each action also has to be passed into `Actions.of()`.
+The skeleton files (`package.json`, `tsconfig.json`, `Makefile`, `.prettierrc`, `startos/sdk.ts`, `startos/index.ts`, `startos/i18n/`, `startos/fileModels/.gitkeep`, `assets/.gitkeep`) were written to match the Start9 template rather than generated by `s9pk init-workspace`, because that command was not available in the environment that wrote them. The successful build and install confirm they are equivalent; `@start9labs/start-sdk` is pinned to `3.0.4` and that is the version the `.s9pk` was built with. No reconciliation is outstanding.
 
 The `icon.svg` in the repository is a minimal placeholder, kept so the build has an icon to pack. Section 30 defers the real one; section 31 point 8 brings it in.
 
 ### Documentation layout
 
-`README.md` is the StartOS package README, with the guide's fixed heading set. The application's own reference — the HTTP API, the alerts table, the schema history — moved to `docs/application.md`, which is what `instructions.md` links to under `## Documentation`. `AGENTS.md` is the repo-specific agent context, and `CLAUDE.md` is the one-line `@AGENTS.md` import. Section 31 changes all three: new endpoints, a new schema version, and two new actions.
+`README.md` is the StartOS package README, with the guide's fixed heading set. The application's own reference — the HTTP API, the alerts table, the schema history — moved to `docs/application.md`, which is what `instructions.md` links to under `## Documentation`. `AGENTS.md` is the repo-specific agent context, and `CLAUDE.md` is the one-line `@AGENTS.md` import. Section 31 changes all of them: new endpoints, a new schema version, and two new actions.
 
 ## Section 31 — the eight points before version 1
 
-Decided 10.10.2026 and **not started**. The plan, the per-point file lists and the tests are in `TODO.md` section 31; this is what is easy to get wrong.
+Decided 10.10.2026. **In progress.** The plan, the per-point file lists and the tests are in `TODO.md` section 31; this is what is easy to get wrong.
 
-The eight points are numbered by the user but are **not done in that order**. The order in `TODO.md` is 7, 5, 4, 3, 2, 1, 6, 8 — the data model first, because everything else builds on it. Do not reorder it back.
+### Where the round stands
 
-**The schema goes 11 → 12** (points 7 and 5), and **the package version stays at `0.1.0:0`**. Nothing in this round touches `startos/versions/`.
+- **Done: points 7, 5, 4, 3 and 2.** The schema is 12. `maintenance.py` (with `delete-history`), `startos/actions/deleteHistory.ts`, and the test modules `test_multisig_setup.py`, `test_key_model.py`, `test_key_status.py`, `test_export_filename.py` and `test_maintenance.py` are all in the repository.
+- **In progress: point 1, the admin password.** `auth.py` and `tests/test_auth.py` are written and green, and **nothing imports `auth.py` yet**. What `auth.py` gives the rest of the round:
+  - `hash_password(password)`, `verify_password(password, stored)` — `hashlib.scrypt`, random salt per password, self-describing stored format, a malformed row is a failed match and never a traceback.
+  - `get_admin(database_path)`, `admin_configured(database_path)`, `set_admin(username, password, database_path)`, `authenticate(username, password, database_path)`.
+  - `session_secret(database_path)`, `create_session_token(database_path, now=None)`, `verify_session_token(token, database_path, now=None)` — a signed cookie, HMAC-SHA256 over an expiry, keyed by a secret generated once into `app_settings`. No session table.
+  - `new_csrf_token()`, `csrf_tokens_match(cookie_value, header_value)` — a double-submit token.
+  - Constants: `SESSION_COOKIE` (`vardkey_session`), `CSRF_COOKIE` (`vardkey_csrf`), `CSRF_HEADER` (`X-CSRF-Token`), `SESSION_TTL_SECONDS`, and the three `app_settings` names.
+  - **Build on this. Do not invent a second session mechanism.**
+- **Still to do in point 1, in this order:** (1) `app.py` — login/logout, create-admin when none is stored, gating every route except `GET /health` (`401` on the API, a redirect on pages), and a CSRF requirement on every state-changing POST; (2) `static/login.html` and `static/login.js` (new), and `static/session.js` (new) — a small script that puts the CSRF header on every `fetch`, so the existing JS files do not have to be touched, with `<script src="/session.js">` added to the five pages; (3) `maintenance.py set-admin-password` plus `startos/actions/setAdminPassword.ts`; (4) `tests/test_app.py`.
+- **Not started: point 6 (installable PWA) and point 8 (the icon).**
+
+### The order is not the numbering
+
+The eight points are numbered by the user but are done in the order 7, 5, 4, 3, 2, 1, 6, 8 — the data model first, because everything else builds on it. Do not reorder it back.
+
+**The schema went 11 → 12** (points 7 and 5), and **the package version stays at `0.1.0:0`**. Nothing in this round touches `startos/versions/`.
 
 ### It amends three parts of the binding spec
 
@@ -69,13 +86,13 @@ The eight points are numbered by the user but are **not done in that order**. Th
 
 ### The traps, per point
 
-- **Point 7, dynamic key count.** `KEY_COUNT = 3` is a module constant in `database.py` that `validation.py` imports, and `keys.key_number` carries `CHECK (key_number BETWEEN 1 AND 3)`. Loosening the CHECK needs a table rebuild — the same migration shape section 21 already uses, with `PRAGMA foreign_keys = OFF` and `PRAGMA foreign_key_check` before commit. `tests/test_health_check_form.py` asserts that `name="key_1_name"`, `key_2_name` and `key_3_name` are in `setup.html`; that test has to move to the markup `setup.js` generates, or it breaks. The `2-of-3` card and the key-status payload both have to carry the two numbers now.
-- **Point 5, the model/service field.** One nullable column, added through `OPTIONAL_COLUMNS`, so no rebuild. It is **documentation only**: not a wallet-software choice, not part of the alert source, not part of a key's identity, so it is not locked. The key's `name` keeps doing everything it does today (section 25.4 and section 28). The label switches with the type — "Model" for hardware, "Service" for cloud — but the column name does not.
-- **Point 4, the address path on the card.** `GET /api/key-status` **does not return `address_path` today**; `database.list_key_status()` has to select it first. An empty path, which a migrated key can have, must not render an empty line.
-- **Point 3, the dated export name.** `static/index.html` carries `download="vardkey-export.csv"`. A `download` attribute **with a value overrides the server's `Content-Disposition` filename**, so it has to go or be left empty, or the browser keeps saving the old name.
-- **Point 2, delete history.** `alert_acknowledgements` has **no foreign key**, so it does not cascade and has to be deleted explicitly. `key_checks` and `ai_security_checks` do cascade. The key setup, `app_settings` and `wallet_software` stay. `maintenance.py` is a new module and must be `COPY`ed into the image, or the action fails at runtime on the box while the tests stay green.
-- **Point 1, the admin password.** The first run has no admin, so the login page has to be able to *create* one. Every route except `GET /health` is gated. The session is a signed cookie, which means **CSRF protection is now required** on every state-changing POST, and the cookie needs `HttpOnly` and `SameSite=Strict`. The password reaches the container on **stdin**, never in `argv`, because `argv` is visible in the process list — and whether the SDK can feed stdin to a `withTemp` command has to be checked before that design is committed to.
-- **Point 6, the PWA.** The service worker must cache **only** the shell — never `/api/*`, never `/health`, never the login page, or the app shows stale or unauthenticated data. It must be served from the root, because its scope is bounded by its path, so `/sw.js` goes into `STATIC_FILES`. It only registers in a secure context: fine on StartOS over HTTPS and on `http://localhost`, but not on a LAN IP over plain HTTP, and that belongs in the docs. The shell comes from the cache while every fetch fails, so the UI needs a clear offline state instead of empty cards.
+- **Point 7, dynamic key count — done.** `KEY_COUNT` is no longer a constant; it is read from `app_settings`, and `keys.key_number`'s CHECK was loosened through a table rebuild with `PRAGMA foreign_keys = OFF` and `PRAGMA foreign_key_check` before commit. `tests/test_health_check_form.py` no longer asserts the three hard-coded `key_N_name` fields in `setup.html`; it asserts the markup `setup.js` generates.
+- **Point 5, the model/service field — done.** One nullable column through `OPTIONAL_COLUMNS`, so no rebuild. It is **documentation only**: not a wallet-software choice, not part of the alert source, not part of a key's identity, so it is not locked. The key's `name` keeps doing everything it does today (section 25.4 and section 28). The label switches with the type — "Model" for hardware, "Service" for cloud — but the column name does not.
+- **Point 4, the address path on the card — done.** `GET /api/key-status` now returns `address_path`, and an empty path does not render an empty line.
+- **Point 3, the dated export name — done.** `static/index.html` no longer carries a `download` attribute with a value, because one **overrides the server's `Content-Disposition` filename**; the server names the file `YYYY-MM-DD-vardkey-export.csv`.
+- **Point 2, delete history — done.** `alert_acknowledgements` has **no foreign key**, so it does not cascade and is deleted explicitly; `key_checks` and `ai_security_checks` do cascade. The key setup, `app_settings` and `wallet_software` stay. `maintenance.py` is `COPY`ed into the image, or the action would fail at runtime on the box while the tests stayed green.
+- **Point 1, the admin password — in progress.** The first run has no admin, so the login page has to be able to *create* one. Every route except `GET /health` is gated. The session is a signed cookie, which means **CSRF protection is now required** on every state-changing POST, and the cookie needs `HttpOnly` and `SameSite=Strict`. The password reaches the container on **stdin**, never in `argv`, because `argv` is visible in the process list — and whether the SDK can feed stdin to a `withTemp` command still has to be checked before that design is committed to. If it cannot, generate the password in the container and show it to the user, which is the pattern the packaging guide describes for a password reset.
+- **Point 6, the PWA.** The service worker must cache **only** the shell — never `/api/*`, never `/health`, never the login page, or the app shows stale or unauthenticated data. It must be served from the root, because its scope is bounded by its path, so `/sw.js` goes into `STATIC_FILES`. It only registers in a secure context: fine on StartOS over HTTPS and on `http://localhost`, but not on a LAN IP over plain HTTP, and that belongs in the docs. The shell comes from the cache while every fetch fails, so the UI needs a clear offline state instead of empty cards. The manifest needs 192 and 512 px icons from point 8, so `manifest.webmanifest` and its `STATIC_FILES` entries are the last pieces to land.
 - **Point 8, the icon.** The user supplies the artwork. The package `icon.svg` is capped at 40 KiB, and the PWA needs 192 and 512 px PNGs. It is not part of the version bump.
 
 ### Compatibility rules that apply to all of them
@@ -127,19 +144,19 @@ What the code does now, and the parts that are easy to get wrong:
 - **Whether a date is overdue is decided in the browser**, so `/api/key-status` stays independent of the current date.
 - **`/api/previous-values` still returns a `security` map** that nothing consumes any more, and its `address_path` per key is no longer used by the form, which pre-fills the path from `keys.address_path`. Both are deliberate: removing them would shrink the endpoint, but nothing breaks while they stay.
 
-## Data model (schema version 11)
+## Data model (schema version 12)
 
-- `keys`: `key_number` (1–3), `name`, `type` (`hardware`/`cloud`), `address_path`, `created_at`. There is no `device` column. The name is editable in the settings; the type and the address path are the identity of the key, the path must be unique across the three rows, and the type only changes through a rotation.
+- `keys`: `key_number` (1–`multisig_key_count`), `name`, `type` (`hardware`/`cloud`), `model`, `address_path`, `created_at`. There is no `device` column. The name is editable in the settings; the type and the address path are the identity of the key, the path must be unique across the rows, and the type only changes through a rotation. `model` is optional documentation and is not locked.
 - `health_checks`: `checked_at`, `next_check_due`, `wallet_software`, `software_version`, `software_compatibility_status`, `software_comments`, `contact_info_verified`, `comments`, plus the legacy `sparrow_version` / `nunchuk_version`. `wallet_software` and `contact_info_verified` are free text.
 - `key_checks`: one row per submission — `available`, `hardware_works`, `firmware_version`, `seed_backup_verified`, `address_path_verified`, `address_path`, `comments`. The two cloud columns are gone.
 - `ai_security_checks`: `provider` (free text), `status`, `comments`, with `UNIQUE (health_check_id, provider)`.
 - `wallet_software`: `name`, `created_at`. Stored whole, seeded with `Sparrow Wallet` when the list is empty, never emptied through the API.
 - `alert_acknowledgements`: `code`, `source`, `key_id`, `check_id`, `reason`, `acknowledged_at`. `reason` holds the action name that closed the alert, and `key_id` holds the key the alert belonged to, or `NULL` for a software alert from the settings list.
+- `app_settings`: `name` (PRIMARY KEY), `value`. Holds `multisig_threshold`, `multisig_key_count`, `admin_username`, `admin_password_hash` and `session_secret`. Added by section 31 point 7; the credential keys are point 1's.
 - `tool_checks` no longer exists.
-- **Section 31 adds** an `app_settings` table (name/value), the `keys.model` column, and a loosened `key_number` CHECK. The schema becomes version 12.
-- Startup migration rebuilds `keys` when it still has `device`, `key_checks` when it uses the old layout or still holds the two cloud columns, and `health_checks` and `key_checks` when their `CHECK` constraints still allow the old values. It then drops `tool_checks` if it is there, and adds the newer columns through `OPTIONAL_COLUMNS` — including `alert_acknowledgements.key_id`.
+- Startup migration rebuilds `keys` when it still has `device` or the old `key_number` CHECK, `key_checks` when it uses the old layout or still holds the two cloud columns, and `health_checks` and `key_checks` when their `CHECK` constraints still allow the old values. It then drops `tool_checks` if it is there, and adds the newer columns through `OPTIONAL_COLUMNS`.
 - The table definitions are `{table}` templates, so a rebuild can create the same table under a temporary name. `health_checks` is a parent table, so the whole migration runs with `PRAGMA foreign_keys = OFF`, checks `PRAGMA foreign_key_check` before committing, and rolls back on any failure.
-- `tests/test_database.py` carries `LEGACY_SCHEMA`, `SCHEMA_VERSION_5`, `SCHEMA_VERSION_8`, `SCHEMA_VERSION_9` and `SCHEMA_VERSION_10` as literal older schemas. Copy that pattern for a new migration test: write the old schema, run `initialize_database()`, then assert on the migrated rows. Section 31 adds a `SCHEMA_VERSION_11` literal.
+- `tests/test_database.py` carries `LEGACY_SCHEMA`, `SCHEMA_VERSION_5`, `SCHEMA_VERSION_8`, `SCHEMA_VERSION_9`, `SCHEMA_VERSION_10` and `SCHEMA_VERSION_11` as literal older schemas. Copy that pattern for a new migration test: write the old schema, run `initialize_database()`, then assert on the migrated rows.
 - There is **no data migration** for an older test database: the user deletes the `data` folder and configures the setup again. An acknowledgement written before version 11 has no key, and the older contact alert used the source `Contact information`, which no longer matches, so the alert it closed is raised again. Section 29 renamed the database file for the same reason, and the old file is discarded with the rest.
 
 ## API
@@ -148,14 +165,14 @@ Pages: `/`, `/setup`, `/settings`, `/health-check`, `/history`. Endpoints: `GET 
 
 The rotate payload is `replaced` + `keep_name` + `name` + `type` + `address_path`, and `type` is optional. `GET /api/health-checks/<id>` also returns `closed_alerts`. The settings page has two sections, and `POST /api/settings/keys` is what a rename alone goes through.
 
-**Section 31 adds** a login page and a login/logout pair of endpoints, `threshold` and `key_count` on `POST /api/setup`, `model` on the key payloads, and `address_path` plus the two multisig numbers on `GET /api/key-status`. `GET /health` stays open.
+**Section 31 has already added** `threshold` and `key_count` to `POST /api/setup`, `model` to the key payloads, and `address_path` plus the two multisig numbers to `GET /api/key-status`. **Still owed:** the login page and a login/logout pair of endpoints, and the gating itself. `GET /health` stays open.
 
 Five things that are easy to break:
 
-- New static files must be added to `STATIC_FILES` in `app.py`, or they return `404`. That includes `/settings`, `/settings.js`, and everything section 31 adds: the login page, the manifest, `sw.js` and the PWA icons.
+- New static files must be added to `STATIC_FILES` in `app.py`, or they return `404`. That includes `/settings`, `/settings.js`, and everything section 31 still owes: the login page, `session.js`, the manifest, `sw.js` and the PWA icons.
 - `/api/setup`, `/api/settings`, `/api/alerts`, `/api/key-status` and `/api/previous-values` are extra endpoints that are not in the minimum list in section 11.
 - `STORAGE_ERRORS` in `app.py` includes `RuntimeError`, because `list_keys()` raises it for a partial setup. Keep it there, or a broken database answers with a traceback instead of a `500`.
-- The settings, rotation and acknowledgement endpoints keep the same error handling as the existing ones: a bad payload is a `400`, an unknown key or alert is a `404`, a locked or duplicate address path is a `409`, and a broken database is a `500`. `DuplicateAddressPath` and `WalletSoftwareNameInUse` must be caught before the general `ValidationError` — in `_save_key_settings` and `_rotate_key` respectively — or the `409` turns into a `400`.
+- The settings, rotation and acknowledgement endpoints keep the same error handling as the existing ones: a bad payload is a `400`, an unknown key or alert is a `404`, a locked or duplicate address path is a `409`, and a broken database is a `500`. `DuplicateAddressPath` and `WalletSoftwareNameInUse` must be caught before the general `ValidationError` — in `_save_key_settings` and `_rotate_key` respectively — or the `409` turns into a `400`. Section 31 point 1 adds `401` for a missing or invalid session.
 - `newest_alert_check_id()` in `app.py` derives the check id for the acknowledgement, the rotation and the software removal, so the same comparison rule is used in all three places. `blocking_alert()` is the module-level helper the `409` is built on, and `_blocking_alert()` reads the key id straight from the payload, so the rule applies before validation.
 
 ## Traps that already cost time — do not repeat
@@ -166,10 +183,10 @@ Five things that are easy to break:
 - **The page heading uses `class="eyebrow"` too.** A regex over `health-check.html` finds `Annual security check` before the numbered sections. `settings.html` starts with `Settings`, then `01 / Wallet software` and `02 / Key rotation`. A test on the section order must expect that first. `tests/test_health_check_form.py` asserts those two lists **exactly**, so a new eyebrow on either page breaks it — the section 29 description line went on the dashboard only.
 - **Do not assert on the quoting style of the JavaScript.** `static/health-check.js` uses single quotes for constant selectors and template literals where a `${...}` substitution is needed, and `static/settings.js` uses double quotes. Assert on the selector text, e.g. `[name="address_path"]`, and on quote-free substrings such as `/api/settings` and `/settings?rotate=`.
 - **`clean_record()` in `tests/test_alerts.py` has a fixed provider list and carries `key_id` and `wallet_software`.** A test that needs another provider must replace the entry itself, and the recorded software is `Sparrow Wallet`, which is what a software alert names. A test that exercises the cloud-key form of `software_incompatible` has to pass `cloud_names` to `build_alerts()`.
-- **`sample_payload()` / `unavailable_payload()` are duplicated in `tests/test_validation.py`, `tests/test_database.py` and `tests/test_app.py`.** They build the labels from the key's name and the selected software, they always send `contact_info_verified`, and for a hardware key `hardware_works`. They must send the key's **own** `address_path`, because the server compares it with the stored one. Section 31 adds a `model` field to them and a `threshold`/`key_count` pair to the setup fixtures.
+- **`sample_payload()` / `unavailable_payload()` are duplicated in `tests/test_validation.py`, `tests/test_database.py` and `tests/test_app.py`.** They build the labels from the key's name and the selected software, they always send `contact_info_verified`, and for a hardware key `hardware_works`. They must send the key's **own** `address_path`, because the server compares it with the stored one. Section 31 added a `model` field to them and a `threshold`/`key_count` pair to the setup fixtures.
 - **Every test fixture uses one address path per key** (`ADDRESS_PATH`, `SECOND_ADDRESS_PATH`, `THIRD_ADDRESS_PATH`), because the setup refuses duplicates. `tests/test_app.py` also has `ROTATION_PATHS` and the `rotate()` helper, which picks an unused path per key so a test can rotate several keys in one run.
 - **`validate_health_check()` takes a third argument** (the wallet software list), and `validate_rotation()` takes a fourth for the same reason. `tests/test_validation.py` and `tests/test_database.py` wrap the first one in a small `validate()` helper.
-- **`tests/test_app.py` has six test classes.** `ServerTestCase` starts the server, `AppHandlerTests` stores the default setup in `setUp`, `RenamedSetupTests` stores the renamed one, `SettingsApiTests`, `RotationApiTests` and `AcknowledgementApiTests` store the default one, and `KeySetupApiTests` leaves the database empty. A new test must go in the class whose setup it needs. Section 31's login changes `ServerTestCase`, because every test now needs a session, and `KeySetupApiTests` is the class that starts from a database with no admin.
+- **`tests/test_app.py` has six test classes.** `ServerTestCase` starts the server, `AppHandlerTests` stores the default setup in `setUp`, `RenamedSetupTests` stores the renamed one, `SettingsApiTests`, `RotationApiTests` and `AcknowledgementApiTests` store the default one, and `KeySetupApiTests` leaves the database empty. A new test must go in the class whose setup it needs. **Section 31 point 1 changes `ServerTestCase`**, because every test will then need a session, and `KeySetupApiTests` is the class that starts from a database with no admin.
 - **Section 19 records one key per submission**, so a `Check id` in the export can cover up to three keys only for rows saved before section 19. A legacy record with several `key_checks` is read through its first one when an alert needs the key it belongs to.
 - **The database path default is repeated in sixteen places.** `database.py` carries `database_path="data/vardkey.sqlite3"` as the default of every storage function (fifteen of them), and `app.py` carries it in `get_database_path()`. A missed one makes a single code path read or create the other file, silently. Grep for the old name before and after a rename round.
 
