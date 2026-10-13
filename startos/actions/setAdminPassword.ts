@@ -19,10 +19,7 @@ const inputSpec = InputSpec.of({
     required: false,
     default: null,
     patterns: [
-      {
-        regex: '.{1,60}',
-        description: i18n('Use at most 60 characters.'),
-      },
+      { regex: '.{1,60}', description: i18n('Use at most 60 characters.') },
     ],
   }),
 })
@@ -78,7 +75,8 @@ export const setAdminPassword = sdk.Action.withInput(
         const result = await sub.exec(command)
         if (result.exitCode !== 0) {
           const stderr = String(result.stderr).trim()
-          throw new Error(stderr || i18n('The admin password could not be set.'))
+          const reason = stderr || i18n('The admin password could not be set.')
+          throw new Error(reason)
         }
         report = String(result.stdout).trim()
       },
