@@ -29,8 +29,9 @@ const dict = {
   'The admin password could not be read back.': 18,
   'Admin credentials': 19,
   'Sign in to VardKey with these credentials. The password is shown once, so store it somewhere safe.': 20,
-  'Username': 21,
-  'Password': 22,
+  // A single word needs no quotes, and prettier removes them.
+  Username: 21,
+  Password: 22,
 } as const
 
 /**
