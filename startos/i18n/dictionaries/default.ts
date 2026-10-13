@@ -17,6 +17,7 @@ const dict = {
   'I confirm that the stored history will be deleted and cannot be recovered': 8,
   'History deleted': 9,
   'The confirmation is required before the history can be deleted.': 10,
+  'The history could not be deleted.': 11,
 } as const
 
 /**
