@@ -32,12 +32,17 @@ MULTISIG_KEY_COUNT_SETTING = "multisig_key_count"
 # hardware key has a choice from the first check on. The list is stored whole,
 # and this entry may be replaced once another one has been added (section 25.4).
 DEFAULT_WALLET_SOFTWARE = "Sparrow Wallet"
+# A sentinel for the arguments of a storage function that keeps the stored value
+# when the caller does not manage it. It is not stored and not returned.
+_UNSET = object()
 # Table definitions use a {table} placeholder, so a migration can create the same
 # table under a temporary name while it rebuilds it.
 #
 # ``key_number`` is only UNIQUE now, not bounded by a CHECK: the number of key
 # slots is read from ``app_settings`` and bounded by ``validation.py`` instead, so
 # a CHECK would have to be rebuilt for every setup shape (section 31 point 7).
+# ``model`` is the optional model or service label of a key, and it is only
+# documentation, never part of the key's identity (section 31 point 5).
 KEYS_TABLE = """
     CREATE TABLE IF NOT EXISTS {table} (
         id INTEGER PRIMARY KEY,
@@ -719,7 +724,7 @@ def save_key_setup(entries, database_path="data/vardkey.sqlite3", *, threshold=N
     count are stored with the keys, because the whole setup is one shape
     (section 31 point 7). ``threshold`` and ``key_count`` fall back to the
     2-of-3 default when they are left out, so a caller that only passes the keys
-    keeps working.
+    keeps working. The model is the optional label of a key (section 31 point 5).
     """
     if list_keys(database_path):
         raise RuntimeError("The key setup is already stored")
@@ -769,7 +774,7 @@ def key_has_check(key_id, database_path="data/vardkey.sqlite3"):
     return count > 0
 
 
-def save_key_settings(key_id, name, address_path, database_path="data/vardkey.sqlite3", *, key_type=None, model=None):
+def save_key_settings(key_id, name, address_path, database_path="data/vardkey.sqlite3", *, key_type=None, model=_UNSET):
     """Store the name, the address path, the model, and the type of one key.
 
     The name and the model are only labels, while the address path and the type
@@ -778,28 +783,29 @@ def save_key_settings(key_id, name, address_path, database_path="data/vardkey.sq
     checks from the same database. ``key_type`` is only passed by a rotation,
     which replaces the key with a new one and may pick the other type; the
     settings never change it, and the stored type is kept when the argument is
-    left out. ``model`` is stored as given, so a caller that does not manage it
-    keeps the stored value.
+    left out. ``model`` is written as given, including an empty value that
+    clears it; when the argument is left out, the stored model is kept, so a
+    caller that does not manage it never drops it.
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.execute("PRAGMA foreign_keys = ON")
     try:
         with connection:
             # COALESCE keeps the stored type when no new one is passed, so the
-            # settings and a rotation can share this one statement. The model is
-            # only written when a value is passed, so the settings keep it when
-            # they do not manage it.
-            cursor = connection.execute(
-                """
-                UPDATE keys
-                SET name = ?,
-                    address_path = ?,
-                    type = COALESCE(?, type),
-                    model = CASE WHEN ? IS NULL THEN model ELSE ? END
-                WHERE id = ?
-                """,
-                (name, address_path, key_type, model, model, key_id),
-            )
+            # settings and a rotation can share this one statement.
+            if model is _UNSET:
+                statement = (
+                    "UPDATE keys SET name = ?, address_path = ?, "
+                    "type = COALESCE(?, type) WHERE id = ?"
+                )
+                parameters = (name, address_path, key_type, key_id)
+            else:
+                statement = (
+                    "UPDATE keys SET name = ?, address_path = ?, "
+                    "type = COALESCE(?, type), model = ? WHERE id = ?"
+                )
+                parameters = (name, address_path, key_type, model, key_id)
+            cursor = connection.execute(statement, parameters)
             if cursor.rowcount != 1:
                 raise ValueError(f"Key {key_id} does not exist")
     finally:
