@@ -5,12 +5,13 @@ import { dataMountpoint, imageId, volumeId } from '../utils'
 const { InputSpec, Value } = sdk
 
 // The history cannot be recovered once it is gone, so the action takes a
-// mandatory confirmation and refuses to run without it (section 31 point 2).
+// confirmation box, and the handler refuses to run without it (section 31
+// point 2). A toggle has no `required` flag, so the confirmation is enforced in
+// the handler.
 const inputSpec = InputSpec.of({
   confirm: Value.toggle({
     name: i18n('I confirm that the stored history will be deleted and cannot be recovered'),
     description: null,
-    required: true,
     default: false,
   }),
 })
@@ -60,9 +61,12 @@ export const deleteHistory = sdk.Action.withInput(
       async (sub) => {
         const result = await sub.exec(['python3', 'maintenance.py', 'delete-history'])
         if (result.exitCode !== 0) {
-          throw new Error(result.stderr.trim() || i18n('The history could not be deleted.'))
+          // exec() returns stdout/stderr as either text or bytes, so both are
+          // normalised before they are used.
+          const stderr = String(result.stderr).trim()
+          throw new Error(stderr || i18n('The history could not be deleted.'))
         }
-        report = result.stdout.trim()
+        report = String(result.stdout).trim()
       },
     )
 
