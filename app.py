@@ -239,7 +239,8 @@ class AppHandler(BaseHTTPRequestHandler):
         setup and is locked with the rest, and no two keys may share one
         (sections 25.1 and 26.2). The setup also carries the multisig threshold
         and the number of key slots, which decide how many keys are configured
-        (section 31 point 7).
+        (section 31 point 7), and the optional model of each key
+        (section 31 point 5).
         """
         try:
             payload = self._read_json_body()
@@ -331,13 +332,13 @@ class AppHandler(BaseHTTPRequestHandler):
         return blocking_alert(alerts, key_id)
 
     def _save_key_settings(self):
-        """Store the name of one key, and its address path while it is unlocked.
+        """Store the name and the model of one key, and its path while it is unlocked.
 
-        The name is only a label. The address path is part of the key's identity,
-        so it may only be changed while the key has no saved check, and it may
-        never belong to another key (sections 25.1, 25.2 and 26.2). The type is
-        never part of the payload, because only a rotation replaces the key
-        (section 28).
+        The name and the model are only labels. The address path is part of the
+        key's identity, so it may only be changed while the key has no saved
+        check, and it may never belong to another key (sections 25.1, 25.2, 26.2
+        and 31.5). The type is never part of the payload, because only a rotation
+        replaces the key (section 28).
         """
         try:
             payload = self._read_json_body()
@@ -357,7 +358,11 @@ class AppHandler(BaseHTTPRequestHandler):
                 })
                 return
             save_key_settings(
-                entry["key_id"], entry["name"], entry["address_path"], database_path
+                entry["key_id"],
+                entry["name"],
+                entry["address_path"],
+                database_path,
+                model=entry["model"],
             )
             settings = self._settings_payload(database_path)
         except DuplicateAddressPath as error:
@@ -445,8 +450,10 @@ class AppHandler(BaseHTTPRequestHandler):
         the old path is refused, and no earlier check is changed (sections 26.2
         and 26.3). The replacement may also carry the other type, because a
         rotation is what replaces the key, and the type is part of its identity
-        (section 28). The acknowledgement carries the key, so a rotation that
-        changes the name still keeps the closed alerts closed (section 27).
+        (section 28). The model is a label, so it is written when the payload
+        carries one and the stored value is kept otherwise (section 31 point 5).
+        The acknowledgement carries the key, so a rotation that changes the name
+        still keeps the closed alerts closed (section 27).
         """
         try:
             payload = self._read_json_body()
@@ -474,12 +481,16 @@ class AppHandler(BaseHTTPRequestHandler):
             cloud_names = cloud_key_names(keys)
             records = self._health_check_records(database_path)
             targets = rotation_alert_targets(records, key, cloud_names)
+            # The model is only a label, so a rotation that does not mention it
+            # keeps the stored one (section 31 point 5).
+            model = rotation["model"] if "model" in payload else key.get("model")
             save_key_settings(
                 key["id"],
                 rotation["name"] or key["name"],
                 rotation["address_path"],
                 database_path,
                 key_type=rotation["type"],
+                model=model,
             )
             for code, source in targets:
                 save_alert_acknowledgement(
