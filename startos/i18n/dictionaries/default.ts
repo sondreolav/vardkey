@@ -18,6 +18,19 @@ const dict = {
   'History deleted': 9,
   'The confirmation is required before the history can be deleted.': 10,
   'The history could not be deleted.': 11,
+
+  // actions/setAdminPassword.ts
+  'Set Admin Password': 12,
+  'Generate a new admin password and show it once. Replaces any existing password.': 13,
+  'Admin username': 14,
+  'Leave blank to keep the current username, or to create the admin account when none exists.': 15,
+  'Use at most 60 characters.': 16,
+  'The admin password could not be set.': 17,
+  'The admin password could not be read back.': 18,
+  'Admin credentials': 19,
+  'Sign in to VardKey with these credentials. The password is shown once, so store it somewhere safe.': 20,
+  'Username': 21,
+  'Password': 22,
 } as const
 
 /**
