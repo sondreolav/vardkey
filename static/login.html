@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f4f6f2">
+    <title>Sign in — VardKey</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/login.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="VardKey dashboard">
+        <span class="brand-mark" aria-hidden="true">V</span>
+        <span>VardKey</span>
+      </a>
+    </header>
+
+    <main class="page-shell form-shell">
+      <div class="page-heading form-heading">
+        <div>
+          <p class="eyebrow">Admin access</p>
+          <h1 id="login-title">Sign in</h1>
+          <p class="intro" id="login-intro">Enter the VardKey admin password to continue.</p>
+        </div>
+      </div>
+
+      <div class="privacy-notice" role="note">
+        This is the VardKey admin login. It is not a wallet password, and a seed phrase or a private key must never be entered here.
+      </div>
+
+      <p class="workflow-note" id="login-status" role="status"></p>
+
+      <!-- The two steps are separate forms, so only the visible one is
+           validated and submitted. A hidden form never blocks the other one,
+           which is the trap a hidden required control would be
+           (section 31 point 1). -->
+      <form id="login-form">
+        <section class="form-section" aria-labelledby="login-form-title">
+          <div class="form-section-heading">
+            <p class="eyebrow">01 / Sign in</p>
+            <h2 id="login-form-title">Sign in</h2>
+          </div>
+          <label class="field"><span>Username</span><input id="login-username" name="username" type="text" maxlength="60" autocomplete="username" required></label>
+          <label class="field"><span>Password</span><input id="login-password" name="password" type="password" maxlength="200" autocomplete="current-password" required></label>
+        </section>
+        <div class="form-actions">
+          <button class="primary-button active-button" id="login-submit" type="submit">Sign in</button>
+        </div>
+      </form>
+
+      <form id="create-admin-form" hidden>
+        <section class="form-section" aria-labelledby="create-admin-title">
+          <div class="form-section-heading">
+            <p class="eyebrow">01 / First run</p>
+            <h2 id="create-admin-title">Create the admin</h2>
+          </div>
+          <p class="field-help">No admin is configured yet. Create the single admin account for this VardKey service. The password is stored only as a salted scrypt hash, never in clear text.</p>
+          <label class="field"><span>Username</span><input id="admin-username" name="username" type="text" maxlength="60" autocomplete="username" required></label>
+          <label class="field"><span>Password</span><input id="admin-password" name="password" type="password" minlength="8" maxlength="200" autocomplete="new-password" required></label>
+          <p class="field-help">Use at least 8 characters. The password protects this local service and is the only credential the app stores.</p>
+        </section>
+        <div class="form-actions">
+          <button class="primary-button active-button" id="create-admin-submit" type="submit">Create admin</button>
+        </div>
+      </form>
+    </main>
+    <footer class="footer"><span>VardKey</span><span>Your data stays local.</span></footer>
+  </body>
+</html>
