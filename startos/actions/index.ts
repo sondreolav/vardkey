@@ -1,7 +1,7 @@
 import { sdk } from '../sdk'
-import { deleteHistory } from './deleteHistory'
+import { deleteAllData } from './deleteAllData'
 import { setAdminPassword } from './setAdminPassword'
 
 export const actions = sdk.Actions.of()
-  .addAction(deleteHistory)
+  .addAction(deleteAllData)
   .addAction(setAdminPassword)
