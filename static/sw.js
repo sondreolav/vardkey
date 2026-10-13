@@ -1,15 +1,16 @@
 "use strict";
 
 // The VardKey service worker of section 31 point 6. It caches only the static
-// shell, never an API response, never /health, and never the login page, so the
-// app can never show stale or unauthenticated data. Every fetch still goes to
-// the server first; the cache is only there for the shell while the server is
-// unreachable.
+// shell, never an API response, never the health endpoint, and never the login
+// page, so the app can never show stale or unauthenticated data. It does that
+// with an allowlist: only a request for one of the shell paths below is handled
+// at all. Everything else is left to the browser and goes straight to the
+// server. Every shell fetch still tries the server first; the cache is only
+// there while the server is unreachable.
 
 const CACHE_NAME = "vardkey-shell-v1";
 
-// The shell: the pages and the assets they need. /api/*, /health and /login are
-// deliberately absent.
+// The shell: the pages and the assets they need.
 const SHELL = [
   "/",
   "/setup",
@@ -24,6 +25,7 @@ const SHELL = [
   "/health-check.js",
   "/history.js",
 ];
+const SHELL_PATHS = new Set(SHELL);
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -52,15 +54,8 @@ function isShellRequest(request) {
     return false;
   }
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) {
-    return false;
-  }
-  // The API, the readiness endpoint and the login page always go to the server.
-  return !(
-    url.pathname.startsWith("/api/")
-    || url.pathname === "/health"
-    || url.pathname === "/login"
-  );
+  // A query string, such as the history detail link, still matches its path.
+  return url.origin === self.location.origin && SHELL_PATHS.has(url.pathname);
 }
 
 self.addEventListener("fetch", (event) => {
