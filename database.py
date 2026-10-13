@@ -7,23 +7,45 @@ import sqlite3
 
 # Version 11 records the key an alert belonged to on its acknowledgement, so a
 # closed alert stays closed across a rename, and the closures can be shown in the
-# history and the export (section 27).
-SCHEMA_VERSION = 11
-# The app always supports exactly three key slots (section 23.2).
+# history and the export (section 27). Version 12 adds the ``app_settings`` table
+# that holds the multisig threshold and key count (section 31 point 7) and later
+# the admin credentials (section 31 point 1), and it loosens the ``key_number``
+# CHECK so the number of key slots is configurable, not fixed at three.
+SCHEMA_VERSION = 12
+# The number of key slots a database without a stored multisig setting falls back
+# to. A new database starts at the 2-of-3 default the app was built for, and the
+# stored ``multisig_key_count`` decides the real number from then on
+# (section 31 point 7).
 KEY_COUNT = 3
+# The bounds a stored multisig setup has to stay inside (section 31 point 7). A
+# threshold of 1 is allowed, because the user chooses it and the app puts no
+# meaning into the number.
+MIN_KEY_COUNT = 2
+MAX_KEY_COUNT = 15
+MIN_THRESHOLD = 1
+# The two ``app_settings`` rows that hold the single setup's shape. The values are
+# validated in ``validation.py`` rather than by a CHECK, the same way the address
+# path is handled (section 31 point 7).
+MULTISIG_THRESHOLD_SETTING = "multisig_threshold"
+MULTISIG_KEY_COUNT_SETTING = "multisig_key_count"
 # A database without any wallet software entry starts with this one, so a
 # hardware key has a choice from the first check on. The list is stored whole,
 # and this entry may be replaced once another one has been added (section 25.4).
 DEFAULT_WALLET_SOFTWARE = "Sparrow Wallet"
 # Table definitions use a {table} placeholder, so a migration can create the same
 # table under a temporary name while it rebuilds it.
+#
+# ``key_number`` is only UNIQUE now, not bounded by a CHECK: the number of key
+# slots is read from ``app_settings`` and bounded by ``validation.py`` instead, so
+# a CHECK would have to be rebuilt for every setup shape (section 31 point 7).
 KEYS_TABLE = """
     CREATE TABLE IF NOT EXISTS {table} (
         id INTEGER PRIMARY KEY,
-        key_number INTEGER NOT NULL UNIQUE CHECK (key_number BETWEEN 1 AND 3),
+        key_number INTEGER NOT NULL UNIQUE,
         name TEXT NOT NULL,
         type TEXT NOT NULL CHECK (type IN ('hardware', 'cloud')),
         address_path TEXT NOT NULL DEFAULT '',
+        model TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
     """
@@ -97,6 +119,15 @@ ALERT_ACKNOWLEDGEMENTS_TABLE = """
         acknowledged_at TEXT NOT NULL
     )
     """
+# A simple name/value store for the settings that are not per key. It holds the
+# multisig threshold and key count (section 31 point 7) and, from section 31
+# point 1, the admin username, the admin password hash, and the session secret.
+APP_SETTINGS_TABLE = """
+    CREATE TABLE IF NOT EXISTS {table} (
+        name TEXT PRIMARY KEY,
+        value TEXT
+    )
+    """
 TABLES = (
     ("keys", KEYS_TABLE),
     ("health_checks", HEALTH_CHECKS_TABLE),
@@ -104,13 +135,15 @@ TABLES = (
     ("ai_security_checks", AI_SECURITY_CHECKS_TABLE),
     ("wallet_software", WALLET_SOFTWARE_TABLE),
     ("alert_acknowledgements", ALERT_ACKNOWLEDGEMENTS_TABLE),
+    ("app_settings", APP_SETTINGS_TABLE),
 )
 # The address path is part of the key's identity and is written by the setup
-# step (section 25.1). It is added to a database that predates version 10, and the
-# key of an acknowledgement is added to one that predates version 11
-# (section 27).
+# step (section 25.1). It is added to a database that predates version 10, the
+# key of an acknowledgement to one that predates version 11 (section 27), and the
+# key model to one that predates version 12 (section 31 point 5).
 OPTIONAL_COLUMNS = (
     ("keys", "address_path", "TEXT NOT NULL DEFAULT ''"),
+    ("keys", "model", "TEXT"),
     ("health_checks", "software_comments", "TEXT"),
     ("health_checks", "wallet_software", "TEXT"),
     ("health_checks", "software_version", "TEXT"),
@@ -128,6 +161,10 @@ LEGACY_KEY_CHECK_COLUMNS = ("seed_backup_status", "address_verified", "derivatio
 # Columns that were dropped when a cloud key stopped recording derived results
 # (section 25.6).
 REMOVED_CLOUD_COLUMNS = ("cloud_health_status", "cloud_provider_operational")
+# The fixed key-number bound of a database that predates version 12. Its presence
+# marks a ``keys`` table that has to be rebuilt to loosen the CHECK
+# (section 31 point 7).
+LEGACY_KEY_NUMBER_CHECK = "CHECK (key_number BETWEEN 1 AND 3)"
 # Value mapping used when the security status values became English.
 SECURITY_STATUS_MIGRATION = (
     ("TRYGG", "SECURE"),
@@ -338,22 +375,33 @@ def _seed_default_wallet_software(connection):
 
 
 def _migrate_keys(connection):
-    """Rebuild keys when it still carries the removed device column.
+    """Rebuild keys when it carries the removed device column or a fixed bound.
 
     The configured name is the product label everywhere, so the fixed device
     value is gone (section 23.2). SQLite cannot drop a column from a table with
-    a CHECK constraint, so the table is rebuilt once. The address path is part
-    of the current definition and takes its default for the copied rows
-    (section 25.1).
+    a CHECK constraint, so the table is rebuilt once. The same rebuild loosens
+    the ``key_number`` CHECK, because the number of key slots is configurable now
+    and is bounded by ``validation.py`` instead (section 31 point 7). The address
+    path and the model are part of the current definition and are copied along,
+    taking their default for a row that predates them (sections 25.1 and 31.5).
     """
     columns = _table_columns(connection, "keys")
-    if not columns or "device" not in columns:
+    if not columns:
+        return
+    sql = _table_sql(connection, "keys") or ""
+    if "device" not in columns and LEGACY_KEY_NUMBER_CHECK not in sql:
         return
 
     temporary = _create_replacement(connection, "keys", KEYS_TABLE)
     connection.execute(f"""
-        INSERT INTO {temporary} (id, key_number, name, type, created_at)
-        SELECT id, key_number, name, type, created_at
+        INSERT INTO {temporary} (id, key_number, name, type, address_path, model, created_at)
+        SELECT {_column_or_null(columns, "id")},
+               key_number,
+               name,
+               type,
+               {_column_or_null(columns, "address_path")},
+               {_column_or_null(columns, "model")},
+               {_column_or_null(columns, "created_at")}
         FROM keys
     """)
     _replace_table(connection, "keys", temporary)
@@ -552,21 +600,100 @@ def _rebuild_key_checks(connection):
     _replace_table(connection, "key_checks", temporary)
 
 
+def _write_setting(connection, name, value):
+    """Upsert one ``app_settings`` row inside an open transaction."""
+    connection.execute(
+        """
+        INSERT INTO app_settings (name, value) VALUES (?, ?)
+        ON CONFLICT(name) DO UPDATE SET value = excluded.value
+        """,
+        (name, value),
+    )
+
+
+def get_app_settings(database_path="data/vardkey.sqlite3"):
+    """Return every ``app_settings`` row as a name -> value mapping.
+
+    The values are stored as text and interpreted by the caller, so the table
+    stays a plain store for the multisig setup (section 31 point 7) and the admin
+    credentials (section 31 point 1).
+    """
+    connection = sqlite3.connect(database_path, timeout=5)
+    try:
+        rows = connection.execute("SELECT name, value FROM app_settings").fetchall()
+        return {name: value for name, value in rows}
+    finally:
+        connection.close()
+
+
+def save_app_settings(values, database_path="data/vardkey.sqlite3"):
+    """Store the given name -> value pairs, replacing the ones that exist."""
+    connection = sqlite3.connect(database_path, timeout=5)
+    try:
+        with connection:
+            for name, value in values.items():
+                _write_setting(connection, name, value)
+    finally:
+        connection.close()
+
+
+def _stored_int(value, default):
+    """Return a stored setting as an int, or the default when it is unusable."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def get_multisig_settings(database_path="data/vardkey.sqlite3"):
+    """Return the stored multisig shape as {"threshold", "key_count"}.
+
+    A database without the two settings falls back to the 2-of-3 default the app
+    was built for, so an older database keeps working after the migration
+    (section 31 point 7).
+    """
+    settings = get_app_settings(database_path)
+    key_count = _stored_int(settings.get(MULTISIG_KEY_COUNT_SETTING), KEY_COUNT)
+    threshold = _stored_int(
+        settings.get(MULTISIG_THRESHOLD_SETTING), min(2, key_count)
+    )
+    return {"threshold": threshold, "key_count": key_count}
+
+
+def get_key_count(database_path="data/vardkey.sqlite3"):
+    """Return the number of key slots the stored setup uses (section 31 point 7)."""
+    return get_multisig_settings(database_path)["key_count"]
+
+
+def save_multisig_settings(threshold, key_count, database_path="data/vardkey.sqlite3"):
+    """Store the multisig threshold and key count of the single setup."""
+    save_app_settings(
+        {
+            MULTISIG_THRESHOLD_SETTING: str(threshold),
+            MULTISIG_KEY_COUNT_SETTING: str(key_count),
+        },
+        database_path,
+    )
+
+
 def list_keys(database_path="data/vardkey.sqlite3"):
     """Return the stored key profiles in key order.
 
     An empty list means a new database, which the app answers with the first-run
     setup step. A database that holds only part of the setup raises an error, so
     an unreadable database is never treated as a new installation
-    (section 23.2). The address path is part of the key's identity and is
-    compared with every submitted path (section 25.1).
+    (section 23.2). The expected number of keys comes from the stored multisig
+    setting, so a setup with another key count is read back correctly
+    (section 31 point 7). The address path is part of the key's identity and is
+    compared with every submitted path (section 25.1), and the model is the
+    optional documentation label of the key (section 31 point 5).
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
     try:
         rows = connection.execute(
             """
-            SELECT id, key_number, name, type, address_path, created_at
+            SELECT id, key_number, name, type, address_path, model, created_at
             FROM keys
             ORDER BY key_number
             """
@@ -575,39 +702,53 @@ def list_keys(database_path="data/vardkey.sqlite3"):
         connection.close()
 
     keys = [dict(row) for row in rows]
-    if keys and len(keys) != KEY_COUNT:
+    expected = get_key_count(database_path)
+    if keys and len(keys) != expected:
         raise RuntimeError(
-            f"The stored key setup has {len(keys)} of {KEY_COUNT} keys"
+            f"The stored key setup has {len(keys)} of {expected} keys"
         )
     return keys
 
 
-def save_key_setup(entries, database_path="data/vardkey.sqlite3"):
-    """Store the key setup for the three key slots.
+def save_key_setup(entries, database_path="data/vardkey.sqlite3", *, threshold=None, key_count=None):
+    """Store the key setup for the configured number of key slots.
 
     The setup is written once, because the names, the types and the address
     paths are locked after they are saved (sections 23.2 and 25.1). A database
-    that already holds a setup is left untouched.
+    that already holds a setup is left untouched. The multisig threshold and key
+    count are stored with the keys, because the whole setup is one shape
+    (section 31 point 7). ``threshold`` and ``key_count`` fall back to the
+    2-of-3 default when they are left out, so a caller that only passes the keys
+    keeps working.
     """
     if list_keys(database_path):
         raise RuntimeError("The key setup is already stored")
+
+    count = len(entries) if key_count is None else key_count
+    level = min(2, count) if threshold is None else threshold
 
     connection = sqlite3.connect(database_path, timeout=5)
     connection.execute("PRAGMA foreign_keys = ON")
     try:
         with connection:
             connection.executemany(
-                "INSERT INTO keys (key_number, name, type, address_path) VALUES (?, ?, ?, ?)",
+                """
+                INSERT INTO keys (key_number, name, type, address_path, model)
+                VALUES (?, ?, ?, ?, ?)
+                """,
                 [
                     (
                         entry["key_number"],
                         entry["name"],
                         entry["type"],
                         entry["address_path"],
+                        entry.get("model"),
                     )
                     for entry in entries
                 ],
             )
+            _write_setting(connection, MULTISIG_THRESHOLD_SETTING, str(level))
+            _write_setting(connection, MULTISIG_KEY_COUNT_SETTING, str(count))
     finally:
         connection.close()
 
@@ -628,25 +769,36 @@ def key_has_check(key_id, database_path="data/vardkey.sqlite3"):
     return count > 0
 
 
-def save_key_settings(key_id, name, address_path, database_path="data/vardkey.sqlite3", *, key_type=None):
-    """Store the name, the address path, and the type of one key.
+def save_key_settings(key_id, name, address_path, database_path="data/vardkey.sqlite3", *, key_type=None, model=None):
+    """Store the name, the address path, the model, and the type of one key.
 
-    The name is only a label, while the address path and the type are part of the
-    key's identity (sections 25.1, 25.2 and 28). Whether the path may change is
-    decided by the caller, which reads the key's saved checks from the same
-    database. ``key_type`` is only passed by a rotation, which replaces the key
-    with a new one and may pick the other type; the settings never change it, and
-    the stored type is kept when the argument is left out.
+    The name and the model are only labels, while the address path and the type
+    are part of the key's identity (sections 25.1, 25.2, 28 and 31.5). Whether
+    the path may change is decided by the caller, which reads the key's saved
+    checks from the same database. ``key_type`` is only passed by a rotation,
+    which replaces the key with a new one and may pick the other type; the
+    settings never change it, and the stored type is kept when the argument is
+    left out. ``model`` is stored as given, so a caller that does not manage it
+    keeps the stored value.
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.execute("PRAGMA foreign_keys = ON")
     try:
         with connection:
             # COALESCE keeps the stored type when no new one is passed, so the
-            # settings and a rotation can share this one statement.
+            # settings and a rotation can share this one statement. The model is
+            # only written when a value is passed, so the settings keep it when
+            # they do not manage it.
             cursor = connection.execute(
-                "UPDATE keys SET name = ?, address_path = ?, type = COALESCE(?, type) WHERE id = ?",
-                (name, address_path, key_type, key_id),
+                """
+                UPDATE keys
+                SET name = ?,
+                    address_path = ?,
+                    type = COALESCE(?, type),
+                    model = CASE WHEN ? IS NULL THEN model ELSE ? END
+                WHERE id = ?
+                """,
+                (name, address_path, key_type, model, model, key_id),
             )
             if cursor.rowcount != 1:
                 raise ValueError(f"Key {key_id} does not exist")
@@ -742,6 +894,30 @@ def list_alert_acknowledgements(database_path="data/vardkey.sqlite3", check_id=N
             statement + " ORDER BY id DESC", parameters
         ).fetchall()
         return [dict(row) for row in rows]
+    finally:
+        connection.close()
+
+
+def delete_history(database_path="data/vardkey.sqlite3"):
+    """Delete every saved health check and the follow-up it closed.
+
+    The child rows of a check (``key_checks`` and ``ai_security_checks``) go with
+    it through ``ON DELETE CASCADE``, but ``alert_acknowledgements`` has no
+    foreign key, so its rows are deleted explicitly. The key setup, the multisig
+    settings, the admin credentials and the wallet software list are never
+    touched (section 31 point 2). The number of deleted checks is returned, so the
+    caller can report it.
+    """
+    connection = sqlite3.connect(database_path, timeout=5)
+    connection.execute("PRAGMA foreign_keys = ON")
+    try:
+        with connection:
+            deleted = connection.execute(
+                "SELECT COUNT(*) FROM health_checks"
+            ).fetchone()[0]
+            connection.execute("DELETE FROM alert_acknowledgements")
+            connection.execute("DELETE FROM health_checks")
+        return deleted
     finally:
         connection.close()
 
@@ -852,6 +1028,9 @@ def list_key_status(database_path="data/vardkey.sqlite3"):
 
     A key that has never been checked has no dates. Whether a date is overdue is
     left to the caller, so this function stays independent of the current date.
+    The address path and the model are carried as well, so the dashboard card can
+    show them (sections 31.4 and 31.5). An empty address path, which a migrated
+    key can have, is passed through as it stands and left out by the card.
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
@@ -859,6 +1038,7 @@ def list_key_status(database_path="data/vardkey.sqlite3"):
         rows = connection.execute(
             f"""
             SELECT k.id AS key_id, k.key_number, k.name, k.type,
+                   k.address_path, k.model,
                    ({_LATEST_CHECK_QUERY.format(expression="hc.checked_at")}) AS last_checked_at,
                    ({_LATEST_CHECK_QUERY.format(expression="hc.next_check_due")}) AS next_check_due
             FROM keys AS k
