@@ -1,5 +1,6 @@
 """Minimal HTTP server for the VardKey dashboard."""
 
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -65,7 +66,9 @@ STATIC_FILES = {
 }
 HEALTH_CHECK_PATH = re.compile(r"^/api/health-checks/([1-9][0-9]*)$")
 ROTATE_PATH = re.compile(r"^/api/keys/([1-9][0-9]*)/rotate$")
-EXPORT_FILENAME = "vardkey-export.csv"
+# The export file is dated with the server's own date, so two downloads never
+# look like the same report (section 31 point 3).
+EXPORT_FILENAME_SUFFIX = "vardkey-export.csv"
 MAX_REQUEST_BYTES = 262144
 # Errors that mean the stored data cannot be served as it stands.
 STORAGE_ERRORS = (OSError, sqlite3.Error, ValueError, RuntimeError)
@@ -80,6 +83,16 @@ REMOVAL_REASON = REMOVE_SOFTWARE
 def get_database_path():
     """Return the configured SQLite database path."""
     return os.environ.get("DATABASE_PATH", "data/vardkey.sqlite3")
+
+
+def export_filename(now=None):
+    """Return the dated export filename the server sends (section 31 point 3).
+
+    The date is the server's own, taken when the download is answered, so the
+    name is ``YYYY-MM-DD-vardkey-export.csv``.
+    """
+    today = (now or datetime.now()).date()
+    return f"{today.isoformat()}-{EXPORT_FILENAME_SUFFIX}"
 
 
 def cloud_key_names(keys):
@@ -705,16 +718,21 @@ class AppHandler(BaseHTTPRequestHandler):
         return records
 
     def _send_export(self):
-        """Return every saved key check as a CSV download."""
+        """Return every saved key check as a CSV download.
+
+        The file is named with the server's date, so a download is identifiable
+        and two downloads never carry the same name (section 31 point 3).
+        """
         try:
             body = build_csv(list_export_rows(get_database_path())).encode("utf-8")
         except STORAGE_ERRORS:
             self._send_json(500, {"error": "The export is unavailable"})
             return
 
+        filename = export_filename()
         self.send_response(200)
         self.send_header("Content-Type", "text/csv; charset=utf-8")
-        self.send_header("Content-Disposition", f'attachment; filename="{EXPORT_FILENAME}"')
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Cache-Control", "no-store")
         self._send_security_headers()
         self.send_header("Content-Length", str(len(body)))
