@@ -1,6 +1,7 @@
 """Minimal HTTP server for the VardKey dashboard."""
 
 from datetime import datetime
+from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -16,6 +17,20 @@ from alerts import (
     collect_alerts,
     rotation_alert_targets,
     software_alert_targets,
+)
+from auth import (
+    CSRF_COOKIE,
+    CSRF_HEADER,
+    SESSION_COOKIE,
+    SESSION_TTL_SECONDS,
+    admin_configured,
+    authenticate,
+    create_session_token,
+    csrf_tokens_match,
+    new_csrf_token,
+    set_admin,
+    validate_admin_credentials,
+    verify_session_token,
 )
 from database import (
     get_health_check,
@@ -57,13 +72,23 @@ STATIC_FILES = {
     "/settings": ("settings.html", "text/html; charset=utf-8"),
     "/health-check": ("health-check.html", "text/html; charset=utf-8"),
     "/history": ("history.html", "text/html; charset=utf-8"),
+    "/login": ("login.html", "text/html; charset=utf-8"),
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/setup.js": ("setup.js", "text/javascript; charset=utf-8"),
     "/settings.js": ("settings.js", "text/javascript; charset=utf-8"),
     "/health-check.js": ("health-check.js", "text/javascript; charset=utf-8"),
     "/history.js": ("history.js", "text/javascript; charset=utf-8"),
+    "/session.js": ("session.js", "text/javascript; charset=utf-8"),
+    "/login.js": ("login.js", "text/javascript; charset=utf-8"),
+    "/sw.js": ("sw.js", "text/javascript; charset=utf-8"),
 }
+# The five application pages are served only to a signed-in user, and every API
+# endpoint answers 401 without one. ``GET /health``, the login page, the two
+# endpoints that establish a session, and the static assets stay open: StartOS
+# polls /health and reports the service as unhealthy otherwise, and the login
+# page has to be reachable before a session exists (section 31 point 1).
+PROTECTED_PAGES = {"/", "/setup", "/settings", "/health-check", "/history"}
 HEALTH_CHECK_PATH = re.compile(r"^/api/health-checks/([1-9][0-9]*)$")
 ROTATE_PATH = re.compile(r"^/api/keys/([1-9][0-9]*)/rotate$")
 # The export file is dated with the server's own date, so two downloads never
@@ -78,6 +103,29 @@ STORAGE_ERRORS = (OSError, sqlite3.Error, ValueError, RuntimeError)
 # settings closes the alerts that software raised (sections 26.3 and 26.7).
 ROTATION_REASON = ROTATE
 REMOVAL_REASON = REMOVE_SOFTWARE
+
+
+def _cookie_header(name, value, max_age=None, http_only=True):
+    """Return a ``Set-Cookie`` header value for one cookie.
+
+    The session cookie is ``HttpOnly`` and ``SameSite=Strict``, so a script
+    cannot read it and another site cannot send it (section 31 point 1). The
+    CSRF cookie is deliberately readable, because the page has to copy it into
+    the request header, and it is compared with that header on every
+    state-changing POST. Neither is marked ``Secure``: StartOS terminates TLS
+    and proxies plain HTTP into the container, and a ``Secure`` cookie would be
+    dropped on ``http://localhost``.
+    """
+    jar = SimpleCookie()
+    jar[name] = value
+    morsel = jar[name]
+    morsel["path"] = "/"
+    morsel["samesite"] = "Strict"
+    if http_only:
+        morsel["httponly"] = True
+    if max_age is not None:
+        morsel["max-age"] = int(max_age)
+    return morsel.OutputString()
 
 
 def get_database_path():
@@ -165,9 +213,22 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         """Serve the pages, key profiles, saved checks, alerts, and the health endpoint."""
         path = urlsplit(self.path).path
+        # The readiness endpoint stays open, because StartOS polls it and
+        # reports the service as unhealthy otherwise (section 31 point 1).
         if path == "/health":
             self._send_json(200, {"status": "ok"})
             return
+        # The login step is open too: the page and the two endpoints that
+        # establish a session are what a request without one needs.
+        if path == "/api/session":
+            self._send_session()
+            return
+        if path == "/login":
+            self._serve_static(*STATIC_FILES["/login"])
+            return
+        if path in PROTECTED_PAGES or path.startswith("/api/"):
+            if not self._require_session(path):
+                return
         if path == "/api/setup":
             self._send_setup()
             return
@@ -203,24 +264,30 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_error(404, "Not Found")
             return
 
-        filename, content_type = asset
-        try:
-            body = (ROOT / "static" / filename).read_bytes()
-        except OSError:
-            self.send_error(500, "Application page unavailable")
-            return
-
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Cache-Control", "no-store")
-        self._send_security_headers()
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        self._serve_static(*asset)
 
     def do_POST(self):
         """Store the key setup once, one health check, or one settings change."""
         path = urlsplit(self.path).path
+        # Creating the admin and signing in are the two POSTs that run before a
+        # session exists, so they cannot require one (section 31 point 1).
+        if path == "/api/admin":
+            self._create_admin()
+            return
+        if path == "/api/login":
+            self._login()
+            return
+        if not self._require_session(path):
+            return
+        # Every other POST changes state, so it needs the double-submit CSRF
+        # token as well, or another site could post for the signed-in user
+        # (section 31 point 1).
+        if not self._csrf_ok():
+            self._send_json(403, {"error": "The CSRF token is missing or invalid"})
+            return
+        if path == "/api/logout":
+            self._logout()
+            return
         if path == "/api/setup":
             self._save_setup()
             return
@@ -243,6 +310,167 @@ class AppHandler(BaseHTTPRequestHandler):
             return
 
         self.send_error(404, "Not Found")
+
+    # -- sessions, cookies, and CSRF --------------------------------------
+
+    def _cookie_value(self, name):
+        """Return one cookie from the request, or None."""
+        header = self.headers.get("Cookie")
+        if not header:
+            return None
+        jar = SimpleCookie()
+        try:
+            jar.load(header)
+        except CookieError:
+            return None
+        morsel = jar.get(name)
+        return morsel.value if morsel is not None else None
+
+    def _session_valid(self):
+        """Return True when the request carries a signed, unexpired session."""
+        token = self._cookie_value(SESSION_COOKIE)
+        if not token:
+            return False
+        try:
+            return verify_session_token(token, get_database_path())
+        except STORAGE_ERRORS:
+            return False
+
+    def _csrf_ok(self):
+        """Return True when the CSRF cookie and the CSRF header are the same token."""
+        return csrf_tokens_match(
+            self._cookie_value(CSRF_COOKIE), self.headers.get(CSRF_HEADER)
+        )
+
+    def _require_session(self, path):
+        """Answer a request that has no session, and report whether to stop.
+
+        A page redirects to the login page, while an API call answers ``401``
+        (section 31 point 1). A broken database is a failed session, so the
+        request is refused rather than served.
+        """
+        if self._session_valid():
+            return True
+        if path.startswith("/api/"):
+            self._send_json(401, {"error": "Authentication required"})
+        else:
+            self._redirect("/login")
+        return False
+
+    def _session_cookies(self, database_path):
+        """Return the session and CSRF ``Set-Cookie`` headers of a new session."""
+        return (
+            _cookie_header(
+                SESSION_COOKIE,
+                create_session_token(database_path),
+                max_age=SESSION_TTL_SECONDS,
+            ),
+            _cookie_header(
+                CSRF_COOKIE,
+                new_csrf_token(),
+                max_age=SESSION_TTL_SECONDS,
+                http_only=False,
+            ),
+        )
+
+    def _send_session(self):
+        """Report whether an admin exists and whether this request is signed in.
+
+        The login page reads this before it shows either form, so it is open
+        like the login step itself (section 31 point 1).
+        """
+        try:
+            configured = admin_configured(get_database_path())
+        except STORAGE_ERRORS:
+            self._send_json(500, {"error": "The admin state is unavailable"})
+            return
+        self._send_json(200, {
+            "admin_configured": configured,
+            "authenticated": self._session_valid(),
+        })
+
+    def _create_admin(self):
+        """Create the single admin account, once, on the first run.
+
+        The first run has no admin, so the app shows the create-admin step
+        instead of the login form, and the step cannot be skipped because every
+        other route needs a session (section 31 point 1).
+        """
+        try:
+            payload = self._read_json_body()
+        except ValueError as error:
+            self._send_json(400, {"error": str(error)})
+            return
+
+        database_path = get_database_path()
+        try:
+            if admin_configured(database_path):
+                self._send_json(409, {"error": "An admin is already configured"})
+                return
+        except STORAGE_ERRORS:
+            self._send_json(500, {"error": "The admin state is unavailable"})
+            return
+
+        try:
+            username, password = validate_admin_credentials(payload)
+        except ValueError as error:
+            self._send_json(400, {"error": str(error)})
+            return
+
+        try:
+            set_admin(username, password, database_path)
+        except STORAGE_ERRORS:
+            self._send_json(500, {"error": "The admin could not be stored"})
+            return
+
+        self._send_json(
+            201,
+            {"configured": True, "username": username},
+            cookies=self._session_cookies(database_path),
+        )
+
+    def _login(self):
+        """Sign in with the stored admin credential and start a session."""
+        try:
+            payload = self._read_json_body()
+        except ValueError as error:
+            self._send_json(400, {"error": str(error)})
+            return
+
+        database_path = get_database_path()
+        try:
+            if not admin_configured(database_path):
+                self._send_json(409, {"error": "No admin is configured yet"})
+                return
+            username = payload.get("username") if isinstance(payload, dict) else None
+            password = payload.get("password") if isinstance(payload, dict) else None
+            signed_in = authenticate(username, password, database_path)
+        except STORAGE_ERRORS:
+            self._send_json(500, {"error": "The login could not be checked"})
+            return
+
+        if not signed_in:
+            self._send_json(401, {"error": "Invalid username or password"})
+            return
+
+        self._send_json(
+            200,
+            {"authenticated": True},
+            cookies=self._session_cookies(database_path),
+        )
+
+    def _logout(self):
+        """End the session and clear both cookies."""
+        self._send_json(
+            200,
+            {"authenticated": False},
+            cookies=(
+                _cookie_header(SESSION_COOKIE, "", max_age=0),
+                _cookie_header(CSRF_COOKIE, "", max_age=0, http_only=False),
+            ),
+        )
+
+    # -- health checks, setup, settings, and alerts -----------------------
 
     def _save_setup(self):
         """Store the key setup once, because the names, types, and paths are locked.
@@ -760,6 +988,8 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         self._send_json(200, record)
 
+    # -- request and response plumbing ------------------------------------
+
     def _read_json_body(self):
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -776,11 +1006,38 @@ class AppHandler(BaseHTTPRequestHandler):
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
             raise ValueError("the request body must be valid JSON") from error
 
-    def _send_json(self, status, payload):
+    def _serve_static(self, filename, content_type):
+        """Serve one file from ``static/`` as the response body."""
+        try:
+            body = (ROOT / "static" / filename).read_bytes()
+        except OSError:
+            self.send_error(500, "Application page unavailable")
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-store")
+        self._send_security_headers()
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _redirect(self, location):
+        """Answer with a redirect to another page."""
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.send_header("Cache-Control", "no-store")
+        self._send_security_headers()
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _send_json(self, status, payload, cookies=()):
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self._send_security_headers()
+        for cookie in cookies:
+            self.send_header("Set-Cookie", cookie)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
