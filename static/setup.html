@@ -22,7 +22,7 @@
         <div>
           <p class="eyebrow">First-run setup</p>
           <h1>Key setup</h1>
-          <p class="intro">Name the three keys of your 2-of-3 setup, choose the type of each one, and record its address path. The name is a label you can change later in the settings; the type and the address path are locked once the setup is saved.</p>
+          <p class="intro">Choose how many keys your multisig setup has and how many of them are required to sign, then name each key, choose its type, and record its address path. The name is a label you can change later in the settings; the type and the address path are locked once the setup is saved.</p>
         </div>
       </div>
 
@@ -31,15 +31,27 @@
       </div>
 
       <form id="setup-form">
+        <section class="form-section" aria-labelledby="multisig-title">
+          <div class="form-section-heading">
+            <p class="eyebrow">01 / Multisig setup</p>
+            <h2 id="multisig-title">Threshold and key slots</h2>
+          </div>
+          <p class="field-help">The threshold is how many keys are required to sign. The key slots are how many keys the setup holds. The app records check results only — it never signs anything.</p>
+          <div class="field-grid">
+            <label class="field"><span>Threshold</span><input id="threshold" name="threshold" type="number" min="1" step="1" value="2" required></label>
+            <label class="field"><span>Key slots</span><input id="key-count" name="key_count" type="number" min="2" max="15" step="1" value="3" required></label>
+          </div>
+        </section>
+
         <section class="form-section" aria-labelledby="keys-title">
           <div class="form-section-heading">
-            <p class="eyebrow">01 / Keys</p>
-            <h2 id="keys-title">The three keys</h2>
+            <p class="eyebrow">02 / Keys</p>
+            <h2 id="keys-title">The keys</h2>
           </div>
           <p class="field-help">The name you enter is the product name of that key everywhere: the check form, the alerts, the history, and the CSV export. Names must be unique.</p>
           <p class="field-help">A hardware key is a device you hold yourself. A cloud key is held by a provider; its own name is also offered as wallet software for the other keys.</p>
           <p class="field-help">The address path is the public derivation path the key is used at, for example <code>m/48'/0'/0'/2'</code>. It is the identity of the key, together with its type, and it holds no secret.</p>
-          <div class="form-stack">
+          <div class="form-stack" id="key-fields">
             <fieldset class="check-card">
               <legend>Key 1</legend>
               <div class="field-grid">
