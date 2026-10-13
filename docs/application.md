@@ -13,7 +13,7 @@ The English dashboard shows the three key profiles, the latest saved check dates
 
 The form is in six sections, in this order: 01 Schedule, 02 Key, 03 Compatibility, 04 External research, 05 Contact confirmation, 06 Notes.
 
-The key setup is configured once, on a new database, at `/setup`: the user gives each of the three key slots a name, a type (`hardware` or `cloud`), and an **address path**. The name is a label that the settings can change later. The type and the address path are locked once the setup is saved, and together they are the identity of the key. **No two keys may share an address path.**
+The key setup is configured once, on a new database, at `/setup`: the user chooses the multisig threshold and the number of key slots, then gives each key a name, a type (`hardware` or `cloud`), an **address path**, and optionally a model or service. The name and the model are labels that the settings can change later. The type and the address path are locked once the setup is saved, and together they are the identity of the key. **No two keys may share an address path.**
 
 Each key has its own next-check date, calculated on the server as one calendar year after the check date (29 February is clamped to 28 February). The date is not editable in the form, and a submission for one key never changes another key's interval.
 
@@ -46,40 +46,42 @@ python3 -m unittest discover -s tests
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/health` | Returns `{"status":"ok"}` for service health checks. |
-| GET | `/api/setup` | Returns whether the key setup is stored, with the stored keys. |
-| POST | `/api/setup` | Stores the key setup once, for the three key slots. |
-| GET | `/api/keys` | Returns the three configured key profiles, or `[]` on a new database. |
-| GET | `/api/key-status` | Returns each key with the dates of its newest saved check. |
+| GET | `/api/setup` | Returns whether the key setup is stored, its shape, and the stored keys. |
+| POST | `/api/setup` | Stores the key setup once, for the configured key slots. |
+| GET | `/api/keys` | Returns the configured key profiles, or `[]` on a new database. |
+| GET | `/api/key-status` | Returns each key with its address path, its model, and the dates of its newest saved check. |
 | GET | `/api/settings` | Returns the keys with their address paths and the wallet software list. |
-| POST | `/api/settings/keys` | Stores the name of one key, and its address path while it is unlocked. |
+| POST | `/api/settings/keys` | Stores the name and the model of one key, and its address path while it is unlocked. |
 | POST | `/api/settings/wallet-software` | Stores the whole wallet software list, and closes the alerts of a removed name. |
 | POST | `/api/keys/<id>/rotate` | Rotates one key with a new address path and closes the alerts it raised. |
 | GET | `/api/health-checks` | Returns saved check summaries, newest first, including the checked key numbers. |
 | GET | `/api/health-checks/<id>` | Returns one saved check with its related rows and the closures it has. |
 | GET | `/api/alerts` | Returns the merged follow-up alerts of every saved check. |
 | POST | `/api/alerts/acknowledge` | Closes one alert with the action that belongs to it. |
-| GET | `/api/export` | Returns every saved key check as a CSV download. |
+| GET | `/api/export` | Returns every saved key check as a dated CSV download. |
 | POST | `/api/health-checks` | Validates and stores one check for one selected key. |
 
 ## Key setup
 
-`POST /api/setup` accepts exactly three keys, one per slot, and writes them once:
+`POST /api/setup` accepts a `threshold`, a `key_count`, and exactly `key_count` keys, and writes them once:
 
 ```json
-{"keys": [
-  {"key_number": 1, "name": "ColdCard", "type": "hardware", "address_path": "m/48'/0'/0'/2'"},
+{"threshold": 2, "key_count": 3, "keys": [
+  {"key_number": 1, "name": "ColdCard", "type": "hardware", "address_path": "m/48'/0'/0'/2'", "model": "ColdCard Q"},
   {"key_number": 2, "name": "Blockstream Jade", "type": "hardware", "address_path": "m/48'/1'/0'/2'"},
-  {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": "m/48'/2'/0'/2'"}
+  {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": "m/48'/2'/0'/2'", "model": "Casa"}
 ]}
 ```
 
-A name that is empty, a name that repeats another name (compared without regard to case), a type other than `hardware` or `cloud`, an address path that is empty or longer than 200 characters, a missing key number, or a key number outside 1–3 is rejected with `400`.
+`threshold` and `key_count` are optional: a payload without them keeps the 2-of-3 default. The bounds are `2 ≤ key_count ≤ 15` and `1 ≤ threshold ≤ key_count`, and the number of keys has to match `key_count`. `model` is optional documentation — the hardware model or the service a cloud key comes from — trimmed, at most 60 characters, and an empty value means "not recorded".
+
+A name that is empty, a name that repeats another name (compared without regard to case), a type other than `hardware` or `cloud`, an address path that is empty or longer than 200 characters, a missing key number, or a key number outside 1–`key_count` is rejected with `400`.
 
 **Every key needs its own address path.** A path that another key already has is rejected with `400`, and the message names the key that has it. The comparison ignores surrounding whitespace and letter case, so two paths that differ only in case count as the same one. A database that already holds a setup is answered with `409`, because the type and the address path are locked. A database that holds only part of a setup is answered with `500` and is never treated as a new installation.
 
-`GET /api/setup` returns `{"configured": false, "keys": []}` on a new database, and `{"configured": true, "keys": [...]}` once the setup is stored.
+`GET /api/setup` returns `{"configured": false, "threshold": 2, "key_count": 3, "keys": []}` on a new database, and the stored shape and keys once the setup is stored.
 
-`GET /api/key-status` returns one entry per key with `key_id`, `key_number`, `name`, `type`, `last_checked_at`, and `next_check_due`. A key that has never been checked has `null` dates. Whether a date is overdue is decided by the client from `next_check_due`, so the endpoint stays independent of the current date.
+`GET /api/key-status` returns one entry per key with `key_id`, `key_number`, `name`, `type`, `address_path`, `model`, `last_checked_at`, and `next_check_due`. A key that has never been checked has `null` dates, and a key the migration left without an address path answers with an empty one, which the card leaves out. Whether a date is overdue is decided by the client from `next_check_due`, so the endpoint stays independent of the current date.
 
 ## Settings
 
@@ -88,21 +90,21 @@ A name that is empty, a name that repeats another name (compared without regard 
 ```json
 {"keys": [
   {"id": 1, "key_number": 1, "name": "ColdCard", "type": "hardware",
-   "address_path": "m/48'/0'/0'/2'", "has_checks": false}
+   "address_path": "m/48'/0'/0'/2'", "model": "ColdCard Q", "has_checks": false}
 ], "wallet_software": ["Sparrow Wallet"]}
 ```
 
 `has_checks` tells the page whether the address path of a key is still editable.
 
-The settings page has two sections, `01 / Wallet software` and `02 / Key rotation`, and each saves on its own. The keys themselves are changed in the rotation section: the name of a key can be changed there on its own, the address path of a key that has no saved check can be changed with it, and the type and a new path are recorded together with a rotation.
+The settings page has two sections, `01 / Wallet software` and `02 / Key rotation`, and each saves on its own. The keys themselves are changed in the rotation section: the name and the model of a key can be changed there on their own, the address path of a key that has no saved check can be changed with them, and the type and a new path are recorded together with a rotation.
 
 `POST /api/settings/keys` stores one key at a time:
 
 ```json
-{"key_id": 1, "name": "ColdCard", "address_path": "m/48'/0'/0'/2'"}
+{"key_id": 1, "name": "ColdCard", "address_path": "m/48'/0'/0'/2'", "model": "ColdCard Q"}
 ```
 
-The name is only a label and may be changed at any time; it must be non-empty, at most 60 characters, and must not repeat another key's name. The type is never part of the payload: it is part of the identity of the key, and only a rotation changes it (section 28). The address path is part of the identity too, so it may only be changed while the key has **no saved check**: sending the stored path again is accepted, while a different path for a key that already has a check is answered with `409`. A path that another key already has is also answered with `409`, and the message names the key that has it. The answer is the same payload as `GET /api/settings`. An unknown key, an empty name, or a missing address path is a `400`.
+The name is only a label and may be changed at any time; it must be non-empty, at most 60 characters, and must not repeat another key's name. The model is a label too, so it is written as given, including an empty value that clears it. The type is never part of the payload: it is part of the identity of the key, and only a rotation changes it (section 28). The address path is part of the identity too, so it may only be changed while the key has **no saved check**: sending the stored path again is accepted, while a different path for a key that already has a check is answered with `409`. A path that another key already has is also answered with `409`, and the message names the key that has it. The answer is the same payload as `GET /api/settings`. An unknown key, an empty name, or a missing address path is a `400`.
 
 `POST /api/settings/wallet-software` stores the whole list, not one entry at a time:
 
@@ -125,10 +127,10 @@ A cloud key name can never be removed this way, because the validation refuses i
 `POST /api/keys/<id>/rotate` records that a key has been replaced by a new one:
 
 ```json
-{"replaced": true, "keep_name": true, "name": "", "type": "cloud", "address_path": "m/48'/7'/0'/2'"}
+{"replaced": true, "keep_name": true, "name": "", "type": "cloud", "address_path": "m/48'/7'/0'/2'", "model": "Casa"}
 ```
 
-`replaced` must be `true`, and `keep_name` must be `true` or `false`. When the name changes, `name` must be non-empty and must not repeat another key's name.
+`replaced` must be `true`, and `keep_name` must be `true` or `false`. When the name changes, `name` must be non-empty and must not repeat another key's name. `model` is optional; when it is left out, the stored model is kept, because it is only a label.
 
 **The address path must change.** The rotation replaces the key, so the key is a new one and the path is part of its identity: the new path is required, the stored path is refused, and a path that another key already has is refused, all with `400`. An empty value is a `400` as well. The comparison ignores surrounding whitespace and letter case.
 
@@ -182,7 +184,9 @@ Unknown statuses, unknown key ids, a missing `available`, a missing `hardware_wo
 
 ## CSV export
 
-`GET /api/export` sends `vardkey-export.csv` as a download: UTF-8, comma separated, CRLF line endings, with a header row. It contains every saved key check, oldest first.
+`GET /api/export` sends a dated file as a download: `YYYY-MM-DD-vardkey-export.csv`, where the date is the server's own date when it answers the download. The file is UTF-8, comma separated, CRLF line endings, with a header row. It contains every saved key check, oldest first.
+
+The dashboard link carries no `download` attribute of its own, so the browser uses the filename from the server's `Content-Disposition` header; a `download` attribute with a value would override it.
 
 One row is one key check. The `Check id` column identifies the submission a row belongs to, so records saved before section 19 (up to three keys in one submission) stay grouped. The `Security status` column has more than one value per submission, so those values are joined into a single cell as `Label: value; Label: value`.
 
@@ -271,9 +275,13 @@ The address path is a public derivation path and holds no secret. It is part of 
 
 The type is part of the identity of a key too, so the setup locks it and the settings never change it. Only a rotation, which replaces the key with a new one, may pick the other type. A key that becomes a cloud key offers its own name as a wallet software choice, so a name the settings list already holds is refused with `409`: the same name cannot be both a cloud key and a settings entry, and the user has to remove that entry first. The rule lives in the validation layer as well.
 
+The name and the model are labels, so neither is locked: the settings may change both at any time, and a rotation may carry a model as well. The model is documentation only — a hardware model or a cloud service — so it never opens or closes an alert and is never part of the alert source.
+
 An alert names the actions that close it, and the acknowledgement stores the action name in `reason`. The actions are fixed per alert code and source, so no alert can be closed by an action it does not offer, and no alert can be left without one. An acknowledgement also stores the key the alert belonged to, so an alert that belongs to a key stays closed across a rename, and the closures that belong to a key can be listed in the history and the export.
 
-The schema is version 11. `keys.address_path`, the `wallet_software` table, and the `alert_acknowledgements` table were added, the two derived cloud results were dropped from `key_checks`, and `alert_acknowledgements.key_id` was added. The application is still under development, so no data migration is written for an older database: delete the `data` folder and configure the setup again. Databases created by earlier versions are still migrated on startup where the older migrations exist:
+The number of key slots and the multisig threshold are configurable, so they are stored in the `app_settings` table rather than being fixed in the code. `keys.key_number` is only `UNIQUE`, not bounded by a `CHECK`: the bounds live in the validation layer, which is what the `400` answers are built on. The setup is still exactly one setup.
+
+The schema is version 12. `keys.address_path`, `keys.model`, the `wallet_software` table, the `app_settings` table, and the `alert_acknowledgements` table were added, the two derived cloud results were dropped from `key_checks`, `alert_acknowledgements.key_id` was added, and the `key_number` `CHECK` was loosened. The application is still under development, so no data migration is written for an older database: delete the `data` folder and configure the setup again. Databases created by earlier versions are still migrated on startup where the older migrations exist:
 
 - The removed columns are dropped, and the old boolean verification flags become `OK`/`PROBLEM`.
 - The Norwegian security status values become the English ones.
@@ -283,6 +291,7 @@ The schema is version 11. `keys.address_path`, the `wallet_software` table, and 
 - The `tool_checks` table is dropped, together with the BIP327/SLIP39 results it held. It is a child table, so the drop needs no rebuild of a parent table, and the rest of the history is kept.
 - The two derived cloud results are dropped from `key_checks`, and a key that predates the address path starts with an empty one.
 - `alert_acknowledgements.key_id` is added to a database that predates version 11. An acknowledgement written before the change has no key, and the older contact alert used the source `Contact information`, which no longer matches; an acknowledgement from before the change is therefore not carried over, and the alert it closed is raised again. No data migration is written for it, because the database is a test database.
+- `keys` is rebuilt once for a database that predates version 12, to loosen the `key_number` `CHECK` and to add the `model` column, and the `app_settings` table is created empty, so a database without the stored shape keeps the 2-of-3 default.
 
 Because `health_checks` is a parent table with foreign keys from the child tables, the migration disables foreign keys for the transaction, checks them with `PRAGMA foreign_key_check` before committing, and rolls back if anything is wrong. Older records keep rendering in the history.
 
