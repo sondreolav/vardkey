@@ -54,17 +54,20 @@ def path_for(key_number):
     return SLOT_PATHS.get(key_number, ADDRESS_PATH)
 
 
-def entry(key_number, name, key_type, address_path=None):
+def entry(key_number, name, key_type, address_path=None, model=None):
     """Return one key of a setup payload.
 
     The address path defaults to the path of that key slot, so a valid setup
     keeps one path per key unless a test asks for another one (section 26.2).
+    The model is optional documentation, so it defaults to an empty value
+    (section 31 point 5).
     """
     return {
         "key_number": key_number,
         "name": name,
         "type": key_type,
         "address_path": path_for(key_number) if address_path is None else address_path,
+        "model": model,
     }
 
 
@@ -293,6 +296,74 @@ class KeySetupTests(unittest.TestCase):
             [item["address_path"] for item in result],
             [ADDRESS_PATH, SECOND_ADDRESS_PATH, THIRD_ADDRESS_PATH],
         )
+
+
+class ModelTests(unittest.TestCase):
+    def test_a_setup_records_the_optional_model(self):
+        # The model is documentation only, so it is trimmed and kept per key
+        # (section 31 point 5).
+        result = validate_key_setup({"keys": [
+            entry(1, "ColdCard", "hardware", model="  ColdCard Q  "),
+            entry(2, "Jade", "hardware"),
+            entry(3, "Nunchuk", "cloud", model="Casa"),
+        ]})
+
+        self.assertEqual([item["model"] for item in result], ["ColdCard Q", None, "Casa"])
+
+    def test_an_empty_model_is_not_recorded(self):
+        for value in ("", "   ", None):
+            result = validate_key_setup({"keys": [
+                entry(1, "ColdCard", "hardware", model=value),
+                entry(2, "Jade", "hardware"),
+                entry(3, "Nunchuk", "cloud"),
+            ]})
+            self.assertIsNone(result[0]["model"])
+
+    def test_an_over_long_or_non_text_model_is_rejected(self):
+        for value in ("x" * 61, 12):
+            with self.assertRaises(ValidationError):
+                validate_key_setup({"keys": [
+                    entry(1, "ColdCard", "hardware", model=value),
+                    entry(2, "Jade", "hardware"),
+                    entry(3, "Nunchuk", "cloud"),
+                ]})
+
+    def test_the_settings_normalize_the_model(self):
+        result = validate_key_settings(
+            {"key_id": 1, "name": "ColdCard", "address_path": ADDRESS_PATH, "model": "  ColdCard Q "},
+            KEYS,
+        )
+        self.assertEqual(result["model"], "ColdCard Q")
+
+        # The model is optional, so a missing or empty one means "not recorded".
+        for value in ("", "   ", None):
+            empty = validate_key_settings(
+                {"key_id": 1, "name": "ColdCard", "address_path": ADDRESS_PATH, "model": value},
+                KEYS,
+            )
+            self.assertIsNone(empty["model"])
+
+    def test_the_rotation_normalizes_the_model(self):
+        result = validate_rotation(
+            {
+                "replaced": True,
+                "keep_name": True,
+                "address_path": NEW_ADDRESS_PATH,
+                "model": "  Ledger Nano S  ",
+            },
+            KEYS,
+            1,
+        )
+        self.assertEqual(result["model"], "Ledger Nano S")
+
+        # A rotation that says nothing about the model leaves it out, so the
+        # caller can keep the stored value (section 31 point 5).
+        missing = validate_rotation(
+            {"replaced": True, "keep_name": True, "address_path": NEW_ADDRESS_PATH},
+            KEYS,
+            1,
+        )
+        self.assertIsNone(missing["model"])
 
 
 class ValidationTests(unittest.TestCase):
@@ -727,7 +798,10 @@ class KeySettingsTests(unittest.TestCase):
             KEYS,
         )
 
-        self.assertEqual(result, {"key_id": 1, "name": "ColdCard", "address_path": ADDRESS_PATH})
+        self.assertEqual(
+            result,
+            {"key_id": 1, "name": "ColdCard", "address_path": ADDRESS_PATH, "model": None},
+        )
 
     def test_the_type_is_never_part_of_the_settings(self):
         # The type is part of the identity of a key, so only a rotation may
@@ -861,6 +935,7 @@ class RotationTests(unittest.TestCase):
             "name": None,
             "type": "hardware",
             "address_path": NEW_ADDRESS_PATH,
+            "model": None,
         })
 
     def test_changing_the_name_requires_a_unique_non_empty_name(self):
@@ -893,6 +968,7 @@ class RotationTests(unittest.TestCase):
             "name": "ColdCard",
             "type": "hardware",
             "address_path": NEW_ADDRESS_PATH,
+            "model": None,
         })
 
     def test_the_replacement_must_be_confirmed(self):
