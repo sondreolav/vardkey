@@ -904,15 +904,23 @@ def list_alert_acknowledgements(database_path="data/vardkey.sqlite3", check_id=N
         connection.close()
 
 
-def delete_history(database_path="data/vardkey.sqlite3"):
-    """Delete every saved health check and the follow-up it closed.
+def delete_all_data(database_path="data/vardkey.sqlite3"):
+    """Delete the key setup, the history, and the follow-up, and keep the admin.
 
-    The child rows of a check (``key_checks`` and ``ai_security_checks``) go with
-    it through ``ON DELETE CASCADE``, but ``alert_acknowledgements`` has no
-    foreign key, so its rows are deleted explicitly. The key setup, the multisig
-    settings, the admin credentials and the wallet software list are never
-    touched (section 31 point 2). The number of deleted checks is returned, so the
-    caller can report it.
+    The result is the state of a new database: no keys, no saved checks, no
+    closures, no wallet software entry beyond the seeded default, and no stored
+    multisig shape, so the app answers with the first-run setup step again
+    (section 31 point 2). The admin username, the admin password hash and the
+    session secret in ``app_settings`` are kept, so the user stays signed in and
+    does not have to create the account again.
+
+    The order matters: ``key_checks`` references ``keys`` with ``ON DELETE
+    RESTRICT``, so the checks have to go before the keys. The child rows of a
+    check (``key_checks`` and ``ai_security_checks``) go with it through ``ON
+    DELETE CASCADE``, while ``alert_acknowledgements`` has no foreign key and is
+    deleted explicitly.
+
+    The number of deleted checks is returned, so the caller can report it.
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.execute("PRAGMA foreign_keys = ON")
@@ -923,6 +931,20 @@ def delete_history(database_path="data/vardkey.sqlite3"):
             ).fetchone()[0]
             connection.execute("DELETE FROM alert_acknowledgements")
             connection.execute("DELETE FROM health_checks")
+            connection.execute("DELETE FROM keys")
+            # A new database starts with the one seeded entry, so the list is put
+            # back the way ``initialize_database`` would leave it.
+            connection.execute("DELETE FROM wallet_software")
+            connection.execute(
+                "INSERT INTO wallet_software (name) VALUES (?)",
+                (DEFAULT_WALLET_SOFTWARE,),
+            )
+            # Removing the two rows makes the 2-of-3 default apply again, which
+            # is what a database without a setup reports (section 31 point 7).
+            connection.execute(
+                "DELETE FROM app_settings WHERE name IN (?, ?)",
+                (MULTISIG_THRESHOLD_SETTING, MULTISIG_KEY_COUNT_SETTING),
+            )
         return deleted
     finally:
         connection.close()
