@@ -37,6 +37,14 @@ CSRF_HEADER = "X-CSRF-Token"
 # on every visit, and the cookie is still bounded.
 SESSION_TTL_SECONDS = 30 * 24 * 60 * 60
 
+# The bounds of the admin account. The username is a label; the password is the
+# only credential the app stores, and a short one is the easiest way to lose the
+# protection the login adds, so a minimum length is enforced on the server and
+# not only in the form (sections 15 and 31 point 1).
+ADMIN_USERNAME_MAX_LENGTH = 60
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_LENGTH = 200
+
 # ``hashlib.scrypt`` parameters. The salt is random per password, so two equal
 # passwords never share a hash. 2**14 needs 16 MiB, which is inside OpenSSL's
 # default memory limit.
@@ -95,6 +103,45 @@ def verify_password(password, stored):
     except (ValueError, TypeError):
         return False
     return hmac.compare_digest(digest, expected)
+
+
+def normalize_admin_username(value):
+    """Return a trimmed admin username, which must be non-empty text.
+
+    A value that does not fit raises ``ValueError`` with a message the caller
+    can show; the HTTP handler maps it to a ``400`` and the maintenance command
+    to a failed exit.
+    """
+    if not isinstance(value, str):
+        raise ValueError("admin username must be text")
+    username = value.strip()
+    if not username:
+        raise ValueError("admin username must not be empty")
+    if len(username) > ADMIN_USERNAME_MAX_LENGTH:
+        raise ValueError("admin username is too long")
+    return username
+
+
+def validate_admin_credentials(payload):
+    """Return the normalized ``(username, password)`` of a new admin account.
+
+    The account is created once, on the first run, and the password is stored
+    only as a scrypt hash (section 31 point 1). The password is not trimmed:
+    what the user typed is what is stored, and what the login form sends back.
+    """
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be a JSON object")
+    username = normalize_admin_username(payload.get("username"))
+    password = payload.get("password")
+    if not isinstance(password, str):
+        raise ValueError("password must be text")
+    if len(password) < PASSWORD_MIN_LENGTH:
+        raise ValueError(
+            f"password must be at least {PASSWORD_MIN_LENGTH} characters"
+        )
+    if len(password) > PASSWORD_MAX_LENGTH:
+        raise ValueError("password is too long")
+    return username, password
 
 
 def get_admin(database_path="data/vardkey.sqlite3"):
