@@ -18,6 +18,7 @@ function slot(number) {
   return {
     name: form.querySelector(`[name="key_${number}_name"]`),
     type: form.querySelector(`[name="key_${number}_type"]`),
+    model: form.querySelector(`[name="key_${number}_model"]`),
     addressPath: form.querySelector(`[name="key_${number}_address_path"]`),
   };
 }
@@ -28,6 +29,19 @@ function currentKeyCount() {
     return KEY_COUNT;
   }
   return Math.min(MAX_KEY_COUNT, Math.max(MIN_KEY_COUNT, value));
+}
+
+function modelFieldLabel(type) {
+  // The model is documentation only. The label switches with the type, because
+  // a hardware key has a model and a cloud key comes from a service
+  // (section 31 point 5).
+  if (type === "hardware") {
+    return "Model";
+  }
+  if (type === "cloud") {
+    return "Service";
+  }
+  return "Model or service";
 }
 
 function buildFieldset(number) {
@@ -70,6 +84,20 @@ function buildFieldset(number) {
 
   grid.append(nameLabel, typeLabel);
 
+  const modelLabel = document.createElement("label");
+  modelLabel.className = "field";
+  const modelSpan = document.createElement("span");
+  modelSpan.textContent = modelFieldLabel(typeSelect.value);
+  const modelInput = document.createElement("input");
+  modelInput.name = `key_${number}_model`;
+  modelInput.type = "text";
+  modelInput.maxLength = 60;
+  modelInput.autocomplete = "off";
+  modelLabel.append(modelSpan, modelInput);
+  typeSelect.addEventListener("change", () => {
+    modelSpan.textContent = modelFieldLabel(typeSelect.value);
+  });
+
   const pathLabel = document.createElement("label");
   pathLabel.className = "field";
   const pathSpan = document.createElement("span");
@@ -82,7 +110,7 @@ function buildFieldset(number) {
   pathInput.required = true;
   pathLabel.append(pathSpan, pathInput);
 
-  fieldset.append(grid, pathLabel);
+  fieldset.append(grid, modelLabel, pathLabel);
   return fieldset;
 }
 
@@ -98,6 +126,7 @@ function rebuildKeyFields() {
     existing[number] = {
       name: fields.name.value,
       type: fields.type.value,
+      model: fields.model ? fields.model.value : "",
       addressPath: fields.addressPath.value,
     };
   }
@@ -116,6 +145,9 @@ function rebuildKeyFields() {
     const fields = slot(Number(number));
     fields.name.value = values.name;
     fields.type.value = values.type;
+    if (fields.model) {
+      fields.model.value = values.model;
+    }
     fields.addressPath.value = values.addressPath;
   }
 }
@@ -127,6 +159,9 @@ function fillSlot(number, key) {
   }
   fields.name.value = key.name;
   fields.type.value = key.type;
+  if (fields.model) {
+    fields.model.value = key.model || "";
+  }
   fields.addressPath.value = key.address_path || "";
 }
 
@@ -147,6 +182,7 @@ function collectSetup() {
       key_number: number,
       name: fields.name.value.trim(),
       type: fields.type.value,
+      model: fields.model ? fields.model.value.trim() : "",
       address_path: fields.addressPath.value.trim(),
     });
   }
@@ -158,10 +194,11 @@ function collectSetup() {
 }
 
 function showLockedState() {
-  // The type and the address path are locked with the setup, while the name is
-  // only a label that the settings may change (sections 25.1 and 25.2).
+  // The type and the address path are locked with the setup, while the name and
+  // the model are only labels that the settings may change (sections 25.1,
+  // 25.2 and 31.5).
   const note = document.createElement("span");
-  note.textContent = "The key setup is already saved. The type and the address path are locked; the key names can be changed in the settings. ";
+  note.textContent = "The key setup is already saved. The type and the address path are locked; the key names and the models can be changed in the settings. ";
   const link = document.createElement("a");
   link.className = "back-link";
   link.href = "/settings";
