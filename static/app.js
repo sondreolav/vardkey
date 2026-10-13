@@ -121,11 +121,23 @@ function createKeyCard(entry) {
   const name = document.createElement("h3");
   name.textContent = entry.name;
 
+  // The address path is part of the identity of a key, so the card shows it.
+  // An empty path, which a migrated key can have, is left out (section 31.4).
+  const path = document.createElement("p");
+  path.className = "key-path";
+  if (entry.address_path) {
+    path.textContent = `Address path: ${entry.address_path}`;
+  }
+
   const type = document.createElement("p");
   type.textContent = entry.type === "cloud" ? "Cloud key" : "Hardware key";
 
   top.append(number, status);
-  card.append(top, name, type);
+  card.append(top, name);
+  if (entry.address_path) {
+    card.append(path);
+  }
+  card.append(type);
 
   // The model is documentation only: a hardware key has a model and a cloud key
   // comes from a service, and an empty value is left out (section 31 point 5).
