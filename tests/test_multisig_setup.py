@@ -12,10 +12,10 @@ import tempfile
 import threading
 import unittest
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
 
 from app import AppHandler
 from database import initialize_database
+from server_session import SessionMixin
 
 
 ADDRESS_PATHS = {
@@ -37,7 +37,7 @@ FIVE_KEY_SETUP = [
 ]
 
 
-class MultisigSetupApiTests(unittest.TestCase):
+class MultisigSetupApiTests(SessionMixin, unittest.TestCase):
     """The setup endpoint on a new database, before anything is stored."""
 
     def setUp(self):
@@ -51,6 +51,9 @@ class MultisigSetupApiTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base_url = f"http://127.0.0.1:{self.server.server_port}"
+        # The database has no key setup yet, but every route except /health
+        # still needs a session (section 31 point 1).
+        self.authenticate()
 
     def tearDown(self):
         self.server.shutdown()
@@ -63,28 +66,16 @@ class MultisigSetupApiTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def get_setup(self):
-        with urlopen(f"{self.base_url}/api/setup") as response:
-            self.assertEqual(response.status, 200)
-            return json.load(response)
+        return self.get_json("/api/setup")
 
     def get_keys(self):
-        with urlopen(f"{self.base_url}/api/keys") as response:
-            self.assertEqual(response.status, 200)
-            return json.load(response)
+        return self.get_json("/api/keys")
 
     def get_key_status(self):
-        with urlopen(f"{self.base_url}/api/key-status") as response:
-            self.assertEqual(response.status, 200)
-            return json.load(response)
+        return self.get_json("/api/key-status")
 
     def post_setup(self, payload):
-        request = Request(
-            f"{self.base_url}/api/setup",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        return urlopen(request)
+        return self.post_json("/api/setup", payload)
 
     def assert_setup_rejected(self, payload, status=400):
         try:
