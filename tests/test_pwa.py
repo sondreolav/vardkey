@@ -1,12 +1,13 @@
-"""Tests for the installable PWA shell (section 31 point 6).
+"""Tests for the installable PWA (section 31 point 6).
 
-Only the service worker is in place so far: the manifest and the PWA icons wait
-for the artwork of section 31 point 8, because the manifest needs a 192 and a
-512 px icon. The worker must cache only the shell, so it never names an API
-route, the health endpoint or the login page at all.
+The service worker caches only the shell, the manifest describes the app, and
+every page links the manifest. The icon is still the repository placeholder: the
+real 192 and 512 px PNGs arrive with the artwork, and only the manifest and its
+icons entry change then.
 """
 
 from http.server import ThreadingHTTPServer
+import json
 import threading
 import unittest
 from urllib.request import urlopen
@@ -31,13 +32,16 @@ class ServiceWorkerTests(unittest.TestCase):
     def read_static(self, filename):
         return (ROOT / "static" / filename).read_text(encoding="utf-8")
 
+    def fetch_text(self, path):
+        with urlopen(f"{self.base_url}{path}") as response:
+            self.assertEqual(response.status, 200)
+            return response.read().decode("utf-8")
+
     def test_the_service_worker_is_served_from_the_root(self):
         # The scope of a service worker is bounded by its path, so it has to be
         # served from the root.
-        with urlopen(f"{self.base_url}/sw.js") as response:
-            body = response.read().decode("utf-8")
+        body = self.fetch_text("/sw.js")
 
-        self.assertEqual(response.status, 200)
         self.assertIn("vardkey-shell", body)
 
     def test_the_service_worker_is_listed_in_static_files(self):
@@ -54,8 +58,18 @@ class ServiceWorkerTests(unittest.TestCase):
         # "/health" and "/login" are not, and must not appear.
         self.assertNotIn('"/health"', body)
         self.assertNotIn('"/login"', body)
-        # The shell it does cache is the five pages and their assets.
-        for path in ("/", "/setup", "/settings", "/health-check", "/history", "/styles.css"):
+        # The shell it does cache is the five pages, their assets, and the two
+        # files the browser reads when the app is installed.
+        for path in (
+            "/",
+            "/setup",
+            "/settings",
+            "/health-check",
+            "/history",
+            "/styles.css",
+            "/manifest.webmanifest",
+            "/icon.svg",
+        ):
             self.assertIn(f'"{path}"', body)
 
     def test_the_dashboard_registers_the_service_worker(self):
@@ -70,6 +84,61 @@ class ServiceWorkerTests(unittest.TestCase):
 
         self.assertIn('addEventListener("offline"', body)
         self.assertIn("You are offline", body)
+
+
+class ManifestTests(unittest.TestCase):
+    """The manifest and the icon that make the app installable."""
+
+    def setUp(self):
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), AppHandler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.base_url = f"http://127.0.0.1:{self.server.server_port}"
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
+
+    def fetch_text(self, path):
+        with urlopen(f"{self.base_url}{path}") as response:
+            self.assertEqual(response.status, 200)
+            return response.read().decode("utf-8")
+
+    def test_the_manifest_is_served_and_describes_the_app(self):
+        body = self.fetch_text("/manifest.webmanifest")
+        manifest = json.loads(body)
+
+        self.assertEqual(manifest["name"], "VardKey")
+        self.assertEqual(manifest["short_name"], "VardKey")
+        self.assertEqual(manifest["description"], "Bitcoin Multisig Health Monitor")
+        self.assertEqual(manifest["start_url"], "/")
+        self.assertEqual(manifest["display"], "standalone")
+        # The colours are the ones the pages already declare in their
+        # theme-color meta and use as the page background.
+        self.assertEqual(manifest["theme_color"], "#f4f6f2")
+        self.assertEqual(manifest["background_color"], "#f4f6f2")
+        self.assertTrue(manifest["icons"])
+
+    def test_the_manifest_lists_the_served_icon(self):
+        manifest = json.loads(self.fetch_text("/manifest.webmanifest"))
+
+        entry = manifest["icons"][0]
+        self.assertEqual(entry["src"], "/icon.svg")
+        self.assertEqual(entry["type"], "image/svg+xml")
+        # The icon is served, so the manifest never points at a 404.
+        self.assertIn("svg", self.fetch_text(entry["src"]))
+
+    def test_the_manifest_and_the_icon_are_listed_in_static_files(self):
+        # A file that is not listed answers 404, which would make the app
+        # uninstallable without failing a single page test.
+        self.assertIn("/manifest.webmanifest", STATIC_FILES)
+        self.assertIn("/icon.svg", STATIC_FILES)
+
+    def test_every_page_links_the_manifest(self):
+        for path in ("/", "/setup", "/settings", "/health-check", "/history"):
+            body = self.fetch_text(path)
+            self.assertIn('<link rel="manifest" href="/manifest.webmanifest">', body)
 
 
 if __name__ == "__main__":
