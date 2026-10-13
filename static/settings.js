@@ -70,6 +70,19 @@ function makeCheckbox(className, text, checked = false) {
   return label;
 }
 
+function modelFieldLabel(type) {
+  // The model is documentation only. The label switches with the type, because
+  // a hardware key has a model and a cloud key comes from a service
+  // (section 31 point 5).
+  if (type === "hardware") {
+    return "Model";
+  }
+  if (type === "cloud") {
+    return "Service";
+  }
+  return "Model or service";
+}
+
 function alertCountText(count) {
   return count === 1 ? "1 alert" : `${count} alerts`;
 }
@@ -173,12 +186,23 @@ function rotationCard(key) {
   typeSelect.className = "rotation-type";
   card.append(makeField("Type", `rotation_type_${key.id}`, typeSelect));
 
-  // The name is only a label, so the field starts on the name the key has now,
-  // and a name that is changed without a rotation is saved on its own
-  // (sections 25.2 and 26.3).
+  // The name and the model are only labels, so the fields start on the values
+  // the key has now, and either can be changed without a rotation
+  // (sections 25.2, 26.3 and 31.5).
   const nameInput = makeTextInput(key.name, 60);
   nameInput.className = "rotation-name";
   nameInput.disabled = true;
+
+  // The model is documentation only, so it is always editable, and its label
+  // follows the type the key has (section 31 point 5).
+  const modelInput = makeTextInput(key.model || "", 60);
+  modelInput.className = "rotation-model";
+  const modelLabel = makeField(modelFieldLabel(key.type), `rotation_model_${key.id}`, modelInput);
+  const modelSpan = modelLabel.querySelector("span");
+  typeSelect.addEventListener("change", () => {
+    modelSpan.textContent = modelFieldLabel(typeSelect.value);
+  });
+  card.append(modelLabel);
 
   const keep = document.createElement("input");
   keep.type = "radio";
@@ -256,10 +280,13 @@ function collectKeys() {
     const rotating = card.querySelector(".rotation-select").checked;
     const change = card.querySelector(".rotation-change");
     const nameInput = card.querySelector(".rotation-name");
+    const modelInput = card.querySelector(".rotation-model");
     const typeSelect = card.querySelector(".rotation-type");
     const pathInput = card.querySelector(".rotation-path");
     const keepName = !(change && change.checked);
     const name = keepName ? key.name : nameInput.value.trim();
+    const model = modelInput ? modelInput.value.trim() : "";
+    const storedModel = key.model || "";
     const storedPath = key.address_path || "";
     // A key that is not rotated keeps its stored path, because only a key that
     // has no saved check can change it here (section 25.1).
@@ -270,9 +297,10 @@ function collectKeys() {
       rotating,
       keep_name: keepName,
       name: keepName ? "" : name,
+      model,
       type: typeSelect ? typeSelect.value : key.type,
       address_path: path,
-      changed: name !== key.name || path !== storedPath,
+      changed: name !== key.name || path !== storedPath || model !== storedModel,
     });
   }
   return entries;
@@ -284,7 +312,7 @@ async function saveKeys() {
   const changes = entries.filter((entry) => !entry.rotating && entry.changed);
 
   if (!rotations.length && !changes.length) {
-    rotationStatus.textContent = "Nothing to save. Change a name, or mark a key for rotation.";
+    rotationStatus.textContent = "Nothing to save. Change a name or a model, or mark a key for rotation.";
     return;
   }
   // A rotation records a new key, so its address path has to change
@@ -308,8 +336,9 @@ async function saveKeys() {
   const failed = [];
   const closed = [];
 
-  // A name that is only changed, and the path of a key that has no saved check,
-  // go through the settings endpoint (sections 25.1 and 25.2).
+  // A name or a model that is only changed, and the path of a key that has no
+  // saved check, go through the settings endpoint (sections 25.1, 25.2 and
+  // 31.5).
   for (const entry of changes) {
     try {
       const response = await fetch("/api/settings/keys", {
@@ -318,6 +347,7 @@ async function saveKeys() {
         body: JSON.stringify({
           key_id: entry.key_id,
           name: entry.name,
+          model: entry.model,
           address_path: entry.address_path,
         }),
       });
@@ -341,6 +371,7 @@ async function saveKeys() {
           replaced: true,
           keep_name: entry.keep_name,
           name: entry.name,
+          model: entry.model,
           type: entry.type,
           address_path: entry.address_path,
         }),
