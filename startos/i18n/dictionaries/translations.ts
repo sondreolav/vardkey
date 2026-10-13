@@ -13,6 +13,7 @@ export default {
     8: 'Confirmo que el historial guardado se eliminará y no se podrá recuperar',
     9: 'Historial eliminado',
     10: 'Se requiere la confirmación antes de poder eliminar el historial.',
+    11: 'No se pudo eliminar el historial.',
   },
   de_DE: {
     0: 'Starte VardKey',
@@ -26,6 +27,7 @@ export default {
     8: 'Ich bestätige, dass der gespeicherte Verlauf gelöscht wird und nicht wiederhergestellt werden kann',
     9: 'Verlauf gelöscht',
     10: 'Die Bestätigung ist erforderlich, bevor der Verlauf gelöscht werden kann.',
+    11: 'Der Verlauf konnte nicht gelöscht werden.',
   },
   pl_PL: {
     0: 'Uruchamianie VardKey',
@@ -39,6 +41,7 @@ export default {
     8: 'Potwierdzam, że zapisana historia zostanie usunięta i nie można jej odzyskać',
     9: 'Historia usunięta',
     10: 'Potwierdzenie jest wymagane, zanim historia może zostać usunięta.',
+    11: 'Nie udało się usunąć historii.',
   },
   fr_FR: {
     0: 'Démarrage de VardKey',
@@ -52,5 +55,6 @@ export default {
     8: "Je confirme que l'historique enregistré sera supprimé et ne pourra pas être récupéré",
     9: 'Historique supprimé',
     10: "La confirmation est requise avant que l'historique puisse être supprimé.",
+    11: "L'historique n'a pas pu être supprimé.",
   },
 } satisfies Record<string, LangDict>
