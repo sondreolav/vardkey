@@ -1,0 +1,8 @@
+<!-- Placeholder icon for the installable PWA. It is the same minimal mark as
+     the package icon.svg in the repository root, kept so the manifest has an
+     icon to pack. The real 192 and 512 px PNGs arrive with the artwork; this
+     file is replaced then, and nothing else changes. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="VardKey placeholder icon">
+  <rect width="128" height="128" rx="20" fill="#1f2933"/>
+  <path d="M34 38 L64 96 L94 38" fill="none" stroke="#f5f7fa" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
