@@ -6,8 +6,10 @@ WORKDIR /app
 
 # The whole application. static/ MUST be copied: app.py answers /health from
 # code, but every page and asset is read from ./static, so an image without it
-# reports a healthy service whose entire UI answers 404.
-COPY app.py database.py alerts.py export.py validation.py ./
+# reports a healthy service whose entire UI answers 404. maintenance.py MUST be
+# copied too: the StartOS actions run it in a temporary subcontainer, so an
+# image without it fails at runtime on the box while the tests stay green.
+COPY app.py database.py alerts.py export.py validation.py maintenance.py ./
 COPY static ./static
 
 ENV PORT=8080
