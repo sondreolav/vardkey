@@ -36,12 +36,23 @@ let alerts = [];
 let walletSoftware = [];
 let keysLoaded = false;
 let alertsLoaded = false;
+// The browser's own view of the connection. The service worker keeps the shell,
+// but every API call needs the server, so the app says so plainly instead of
+// showing empty cards (section 31 point 6).
+let offline = navigator.onLine === false;
 
 function createEmptyState(text) {
   const message = document.createElement("p");
   message.className = "empty-state";
   message.textContent = text;
   return message;
+}
+
+function unavailableText(onlineText) {
+  if (offline) {
+    return "You are offline. VardKey needs the server for every page, so the data cannot be loaded right now. It reloads as soon as the connection is back.";
+  }
+  return onlineText;
 }
 
 async function fetchJson(path) {
@@ -426,9 +437,9 @@ async function redirectWhenSetupIsMissing() {
 
 function renderKeyCards() {
   if (!keysLoaded) {
-    keyList.replaceChildren(createEmptyState(
+    keyList.replaceChildren(createEmptyState(unavailableText(
       "Key status is unavailable. Please reload the page or contact the service administrator.",
-    ));
+    )));
     keyCount.textContent = "Unavailable";
     nextCheckTitle.textContent = "Unavailable";
     nextCheckDetail.textContent = "The next check dates could not be loaded.";
@@ -443,9 +454,9 @@ function renderKeyCards() {
 
 function renderAlerts() {
   if (!alertsLoaded) {
-    alertsList.replaceChildren(createEmptyState(
+    alertsList.replaceChildren(createEmptyState(unavailableText(
       "Alerts could not be loaded. Please reload the page.",
-    ));
+    )));
     alertCount.textContent = "Unavailable";
     return;
   }
@@ -493,5 +504,34 @@ async function loadDashboard() {
   renderAlerts();
 }
 
+function registerServiceWorker() {
+  // The worker caches only the shell, so the pages stay reachable while the
+  // server is down. It only registers in a secure context, which StartOS
+  // provides over HTTPS and which http://localhost also is; a LAN IP over plain
+  // HTTP does not register one (section 31 point 6).
+  if (!("serviceWorker" in navigator)) {
+    return;
+  }
+  navigator.serviceWorker.register("/sw.js").catch(() => {
+    // A browser that refuses the worker still gets the whole app; only the
+    // offline shell is lost.
+  });
+}
+
+window.addEventListener("online", () => {
+  // The shell may have come from the cache, so a reload is what fetches the
+  // live data again.
+  window.location.reload();
+});
+
+window.addEventListener("offline", () => {
+  offline = true;
+  keysLoaded = false;
+  alertsLoaded = false;
+  renderKeyCards();
+  renderAlerts();
+});
+
+registerServiceWorker();
 redirectWhenSetupIsMissing();
 loadDashboard();
