@@ -11,13 +11,13 @@ const dict = {
   'Web UI': 4,
   'The web interface of VardKey': 5,
 
-  // actions/deleteHistory.ts
-  'Delete history': 6,
-  'Delete every saved health check, with the follow-up it closed. The key setup and the wallet software list are kept.': 7,
-  'I confirm that the stored history will be deleted and cannot be recovered': 8,
-  'History deleted': 9,
-  'The confirmation is required before the history can be deleted.': 10,
-  'The history could not be deleted.': 11,
+  // actions/deleteAllData.ts
+  'Delete all data': 6,
+  'Delete the key setup, the saved checks and the wallet software list, so the app is back at the first-run setup step. The admin account is kept.': 7,
+  'I confirm that the key setup, the saved checks and the wallet software list will be deleted and cannot be recovered': 8,
+  'Data deleted': 9,
+  'The confirmation is required before the data can be deleted.': 10,
+  'The data could not be deleted.': 11,
 
   // actions/setAdminPassword.ts
   'Set Admin Password': 12,
