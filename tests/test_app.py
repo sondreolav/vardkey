@@ -2,11 +2,17 @@
 
 Every test gets its own database and server, so the tests stay independent of
 each other and of the order they run in. ``AppHandlerTests`` starts from a
-stored key setup; ``KeySetupApiTests`` starts from a new, empty database.
+stored key setup; ``KeySetupApiTests`` starts from a new, empty database, and
+``AuthApiTests`` from a database with no admin yet.
+
+Section 31 point 1 puts every route except ``GET /health`` behind a session, so
+``ServerTestCase`` keeps the session and CSRF cookies a sign-in returns and
+sends them with every later request, exactly as the browser does.
 """
 
-from http.server import ThreadingHTTPServer
 import csv
+from http.cookies import SimpleCookie
+from http.server import ThreadingHTTPServer
 import io
 import json
 import os
@@ -14,9 +20,10 @@ import tempfile
 import threading
 import unittest
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 from app import AppHandler
+from auth import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE, set_admin
 from database import initialize_database, save_key_setup
 from export import HEADERS
 
@@ -45,6 +52,13 @@ RENAMED_SETUP = [
     {"key_number": 2, "name": "ColdCard", "type": "hardware", "address_path": SECOND_ADDRESS_PATH},
     {"key_number": 3, "name": "Jade", "type": "hardware", "address_path": THIRD_ADDRESS_PATH},
 ]
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    """Refuse to follow a redirect, so a test can read the 302 itself."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def sample_payload(key, wallet_software=None, address_path=None):
@@ -120,7 +134,12 @@ def mismatch_payload(key, address_path="m/48'/9'/0'/2'"):
 
 
 class ServerTestCase(unittest.TestCase):
-    """Start a server on a temporary database."""
+    """Start a server on a temporary database, and act as the single user.
+
+    A test either creates the admin directly and signs in through the API
+    (``authenticate``), or creates it through the first-run endpoint
+    (``create_admin_via_api``). ``AuthApiTests`` starts from no admin at all.
+    """
 
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -133,6 +152,10 @@ class ServerTestCase(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base_url = f"http://127.0.0.1:{self.server.server_port}"
+        self.admin_username = "admin"
+        self.admin_password = "test-password"
+        # The session and the CSRF token a sign-in returned (section 31 point 1).
+        self.cookies = {}
 
     def tearDown(self):
         self.server.shutdown()
@@ -144,42 +167,144 @@ class ServerTestCase(unittest.TestCase):
             os.environ["DATABASE_PATH"] = self.previous_database_path
         self.temp_dir.cleanup()
 
+    # -- setup helpers ----------------------------------------------------
+
     def store_setup(self, setup=DEFAULT_SETUP):
         """Store the key setup directly, without going through the API."""
         save_key_setup(setup, self.database_path)
 
-    def key_profiles(self):
-        with urlopen(f"{self.base_url}/api/keys") as response:
-            return json.load(response)
+    def store_admin(self):
+        """Store the admin account directly, without going through the API."""
+        set_admin(self.admin_username, self.admin_password, self.database_path)
 
-    def get_setup(self):
-        with urlopen(f"{self.base_url}/api/setup") as response:
-            self.assertEqual(response.status, 200)
-            return json.load(response)
+    def authenticate(self):
+        """Store the admin and sign in, so the tests act as the single user."""
+        self.store_admin()
+        self.sign_in()
 
-    def get_settings(self):
-        with urlopen(f"{self.base_url}/api/settings") as response:
-            self.assertEqual(response.status, 200)
-            return json.load(response)
+    # -- HTTP helpers -----------------------------------------------------
 
-    def get_health_checks(self):
-        with urlopen(f"{self.base_url}/api/health-checks") as response:
-            self.assertEqual(response.status, 200)
-            return json.load(response)
+    def cookie_header(self):
+        return "; ".join(f"{name}={value}" for name, value in self.cookies.items())
 
-    def get_key_status(self):
-        with urlopen(f"{self.base_url}/api/key-status") as response:
+    def remember_cookies(self, response):
+        """Keep the cookies a response set, so the next request carries them."""
+        for header in response.headers.get_all("Set-Cookie") or []:
+            jar = SimpleCookie()
+            jar.load(header)
+            for name, morsel in jar.items():
+                self.cookies[name] = morsel.value
+
+    def request(self, path, method="GET", payload=None, csrf=True, headers=None):
+        """Build a request that carries the session, and the CSRF token."""
+        request_headers = {"Accept": "application/json"}
+        if self.cookies:
+            request_headers["Cookie"] = self.cookie_header()
+        if method == "POST" and csrf and self.cookies.get(CSRF_COOKIE):
+            request_headers[CSRF_HEADER] = self.cookies[CSRF_COOKIE]
+        if payload is not None:
+            request_headers["Content-Type"] = "application/json"
+        if headers:
+            request_headers.update(headers)
+        data = None if payload is None else json.dumps(payload).encode("utf-8")
+        return Request(
+            f"{self.base_url}{path}",
+            data=data,
+            headers=request_headers,
+            method=method,
+        )
+
+    def get(self, path):
+        return urlopen(self.request(path))
+
+    def get_json(self, path):
+        with self.get(path) as response:
             self.assertEqual(response.status, 200)
             return json.load(response)
 
     def post_json(self, path, payload):
-        request = Request(
-            f"{self.base_url}{path}",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+        return urlopen(self.request(path, method="POST", payload=payload))
+
+    def sign_in(self):
+        """Sign in through the API and keep the session and CSRF cookies."""
+        request = self.request(
+            "/api/login",
             method="POST",
+            csrf=False,
+            payload={"username": self.admin_username, "password": self.admin_password},
         )
-        return urlopen(request)
+        with urlopen(request) as response:
+            self.assertEqual(response.status, 200)
+            self.remember_cookies(response)
+        return self.cookies
+
+    def create_admin_via_api(self):
+        """Create the admin through the first-run endpoint and start a session."""
+        request = self.request(
+            "/api/admin",
+            method="POST",
+            csrf=False,
+            payload={"username": self.admin_username, "password": self.admin_password},
+        )
+        with urlopen(request) as response:
+            self.assertEqual(response.status, 201)
+            self.remember_cookies(response)
+        return self.cookies
+
+    def assert_status(self, path, status, method="GET", payload=None, csrf=True, headers=None):
+        """Send a request and expect an error status."""
+        request = self.request(
+            path, method=method, payload=payload, csrf=csrf, headers=headers
+        )
+        try:
+            with urlopen(request) as response:
+                self.fail(f"Expected {status}, received {response.status}")
+        except HTTPError as error:
+            try:
+                self.assertEqual(error.code, status)
+                error.read()
+            finally:
+                error.close()
+
+    def assert_redirects_to_login(self, path):
+        """Expect a page to redirect to the login page (section 31 point 1)."""
+        opener = build_opener(_NoRedirect)
+        try:
+            with opener.open(self.request(path)) as response:
+                self.fail(f"Expected a redirect, received {response.status}")
+        except HTTPError as error:
+            try:
+                self.assertEqual(error.code, 302)
+                self.assertEqual(error.headers["Location"], "/login")
+                error.read()
+            finally:
+                error.close()
+
+    # -- endpoint helpers -------------------------------------------------
+
+    def key_profiles(self):
+        return self.get_json("/api/keys")
+
+    def get_setup(self):
+        return self.get_json("/api/setup")
+
+    def get_settings(self):
+        return self.get_json("/api/settings")
+
+    def get_health_checks(self):
+        return self.get_json("/api/health-checks")
+
+    def get_key_status(self):
+        return self.get_json("/api/key-status")
+
+    def get_previous_values(self):
+        return self.get_json("/api/previous-values")
+
+    def get_alerts(self):
+        return self.get_json("/api/alerts")
+
+    def get_record(self, health_check_id):
+        return self.get_json(f"/api/health-checks/{health_check_id}")
 
     def post_health_check(self, payload):
         """Store one check and return its id."""
@@ -202,33 +327,15 @@ class ServerTestCase(unittest.TestCase):
     def post_acknowledgement(self, payload):
         return self.post_json("/api/alerts/acknowledge", payload)
 
-    def get_record(self, health_check_id):
-        with urlopen(f"{self.base_url}/api/health-checks/{health_check_id}") as response:
-            self.assertEqual(response.status, 200)
-            return json.load(response)
-
-    def get_alerts(self):
-        with urlopen(f"{self.base_url}/api/alerts") as response:
-            self.assertEqual(response.status, 200)
-            return json.load(response)
-
     def get_export_rows(self):
         """Return the CSV export as parsed rows."""
-        with urlopen(f"{self.base_url}/api/export") as response:
+        with self.get("/api/export") as response:
             body = response.read().decode("utf-8")
         return list(csv.reader(io.StringIO(body)))
 
     def assert_rejected_at(self, path, payload, status=400):
         """Post a payload to one endpoint and expect an error status."""
-        try:
-            with self.post_json(path, payload) as response:
-                self.fail(f"Expected {status}, received {response.status}")
-        except HTTPError as error:
-            try:
-                self.assertEqual(error.code, status)
-                error.read()
-            finally:
-                error.close()
+        self.assert_status(path, status, method="POST", payload=payload)
 
     def assert_rejected(self, payload, status=400):
         self.assert_rejected_at("/api/health-checks", payload, status)
@@ -260,6 +367,7 @@ class AppHandlerTests(ServerTestCase):
     def setUp(self):
         super().setUp()
         self.store_setup()
+        self.authenticate()
 
     def test_health_endpoint_returns_json(self):
         with urlopen(f"{self.base_url}/health") as response:
@@ -321,10 +429,8 @@ class AppHandlerTests(ServerTestCase):
         self.assertIsNone(status[2]["last_checked_at"])
 
     def test_previous_values_api_is_empty_before_anything_is_saved(self):
-        with urlopen(f"{self.base_url}/api/previous-values") as response:
-            values = json.load(response)
+        values = self.get_previous_values()
 
-        self.assertEqual(response.status, 200)
         self.assertEqual([entry["key_id"] for entry in values["keys"]], [1, 2, 3])
         self.assertIsNone(values["keys"][0]["firmware_version"])
         self.assertIsNone(values["keys"][0]["software_version"])
@@ -337,10 +443,8 @@ class AppHandlerTests(ServerTestCase):
         payload["key_check"]["firmware_version"] = "1.2.3"
         self.post_health_check(payload)
 
-        with urlopen(f"{self.base_url}/api/previous-values") as response:
-            values = json.load(response)
+        values = self.get_previous_values()
 
-        self.assertEqual(response.status, 200)
         by_key = {entry["key_id"]: entry for entry in values["keys"]}
         self.assertEqual(by_key[key["id"]]["firmware_version"], "1.2.3")
         self.assertEqual(by_key[key["id"]]["address_path"], ADDRESS_PATH)
@@ -352,7 +456,7 @@ class AppHandlerTests(ServerTestCase):
         payload["checked_at"] = "2027-04-01"
         saved_id = self.post_health_check(payload)
 
-        with urlopen(f"{self.base_url}/api/export") as response:
+        with self.get("/api/export") as response:
             body = response.read().decode("utf-8")
             content_type = response.headers["Content-Type"]
             disposition = response.headers["Content-Disposition"]
@@ -418,7 +522,7 @@ class AppHandlerTests(ServerTestCase):
         )
 
     def test_health_check_form_is_served_in_english(self):
-        with urlopen(f"{self.base_url}/health-check") as response:
+        with self.get("/health-check") as response:
             body = response.read().decode("utf-8")
 
         self.assertEqual(response.status, 200)
@@ -433,7 +537,7 @@ class AppHandlerTests(ServerTestCase):
         self.assertIn("Save health check", body)
 
     def test_setup_page_is_served_in_english(self):
-        with urlopen(f"{self.base_url}/setup") as response:
+        with self.get("/setup") as response:
             body = response.read().decode("utf-8")
 
         self.assertEqual(response.status, 200)
@@ -444,7 +548,7 @@ class AppHandlerTests(ServerTestCase):
         self.assertIn("Save key setup", body)
 
     def test_settings_page_is_served_in_english(self):
-        with urlopen(f"{self.base_url}/settings") as response:
+        with self.get("/settings") as response:
             body = response.read().decode("utf-8")
 
         self.assertEqual(response.status, 200)
@@ -464,7 +568,7 @@ class AppHandlerTests(ServerTestCase):
         self.assertIn("Never enter seed phrases", body)
 
     def test_history_page_is_served_in_english(self):
-        with urlopen(f"{self.base_url}/history") as response:
+        with self.get("/history") as response:
             body = response.read().decode("utf-8")
 
         self.assertEqual(response.status, 200)
@@ -472,8 +576,18 @@ class AppHandlerTests(ServerTestCase):
         self.assertIn('id="history-list"', body)
         self.assertIn("Saved health checks", body)
 
+    def test_every_page_loads_the_session_script(self):
+        # The five pages load session.js, which puts the CSRF header on every
+        # fetch, so the existing page scripts do not have to change
+        # (section 31 point 1).
+        for path in ("/", "/setup", "/settings", "/health-check", "/history"):
+            with self.get(path) as response:
+                body = response.read().decode("utf-8")
+            self.assertEqual(response.status, 200)
+            self.assertIn('<script src="/session.js"', body)
+
     def test_dashboard_links_to_the_form_the_history_the_export_and_the_settings(self):
-        with urlopen(self.base_url) as response:
+        with self.get("/") as response:
             body = response.read().decode("utf-8")
 
         self.assertIn('href="/health-check"', body)
@@ -484,7 +598,7 @@ class AppHandlerTests(ServerTestCase):
         self.assertNotIn("Report export is not implemented", body)
 
     def test_the_dashboard_shows_the_product_name_and_the_description(self):
-        with urlopen(self.base_url) as response:
+        with self.get("/") as response:
             body = response.read().decode("utf-8")
 
         self.assertEqual(response.status, 200)
@@ -495,8 +609,7 @@ class AppHandlerTests(ServerTestCase):
         self.assertIn("Bitcoin Multisig Health Monitor", body)
 
     def test_alerts_api_is_empty_before_anything_is_saved(self):
-        with urlopen(f"{self.base_url}/api/alerts") as response:
-            self.assertEqual(json.load(response), [])
+        self.assertEqual(self.get_alerts(), [])
 
     def test_alerts_api_reports_follow_up_from_the_saved_check(self):
         saved_id = self.post_health_check(unavailable_payload(self.key_profiles()[1]))
@@ -1006,30 +1119,162 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual(self.get_record(saved_id)["wallet_software"], "Nunchuk")
 
     def test_a_renamed_key_records_its_own_name(self):
-        with urlopen(f"{self.base_url}/api/setup") as response:
-            self.assertEqual(response.status, 200)
+        self.assertTrue(self.get_setup()["configured"])
 
     def test_unknown_health_check_returns_not_found(self):
-        try:
-            with urlopen(f"{self.base_url}/api/health-checks/999999") as response:
-                self.fail(f"Expected 404, received {response.status}")
-        except HTTPError as error:
-            try:
-                self.assertEqual(error.code, 404)
-                error.read()
-            finally:
-                error.close()
+        self.assert_status("/api/health-checks/999999", 404)
 
     def test_unknown_path_returns_not_found(self):
-        try:
-            with urlopen(f"{self.base_url}/missing") as response:
-                self.fail(f"Expected 404, received {response.status}")
-        except HTTPError as error:
-            try:
-                self.assertEqual(error.code, 404)
-                error.read()
-            finally:
-                error.close()
+        self.assert_status("/missing", 404)
+
+
+class AuthApiTests(ServerTestCase):
+    """The login step, on a database with no admin yet (section 31 point 1)."""
+
+    def test_health_stays_open_without_a_session(self):
+        with urlopen(f"{self.base_url}/health") as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(json.load(response), {"status": "ok"})
+
+    def test_the_login_page_and_its_scripts_stay_open(self):
+        with urlopen(f"{self.base_url}/login") as response:
+            body = response.read().decode("utf-8")
+
+        self.assertEqual(response.status, 200)
+        self.assertIn('<html lang="en">', body)
+        self.assertIn('id="login-form"', body)
+        self.assertIn('id="create-admin-form"', body)
+        self.assertIn("Sign in", body)
+        self.assertIn("Create admin", body)
+        # The login page must not load session.js: there is no session and no
+        # CSRF token yet.
+        self.assertNotIn("session.js", body)
+
+        for path in ("/login.js", "/session.js"):
+            with urlopen(f"{self.base_url}{path}") as asset:
+                self.assertEqual(asset.status, 200)
+
+    def test_the_session_api_reports_the_first_run(self):
+        with urlopen(f"{self.base_url}/api/session") as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(
+                json.load(response),
+                {"admin_configured": False, "authenticated": False},
+            )
+
+    def test_a_page_redirects_to_the_login_without_a_session(self):
+        for path in ("/", "/setup", "/settings", "/health-check", "/history"):
+            self.assert_redirects_to_login(path)
+
+    def test_an_api_call_answers_401_without_a_session(self):
+        for path in (
+            "/api/keys",
+            "/api/setup",
+            "/api/key-status",
+            "/api/previous-values",
+            "/api/settings",
+            "/api/health-checks",
+            "/api/alerts",
+            "/api/export",
+        ):
+            self.assert_status(path, 401)
+
+    def test_a_state_changing_post_is_refused_without_a_session(self):
+        for path in ("/api/health-checks", "/api/settings/keys", "/api/logout"):
+            self.assert_status(path, 401, method="POST", payload={})
+
+    def test_the_admin_is_created_once_on_the_first_run(self):
+        self.create_admin_via_api()
+
+        # The account is stored and the response started a session.
+        self.assertTrue(self.cookies.get(SESSION_COOKIE))
+        self.assertTrue(self.cookies.get(CSRF_COOKIE))
+        self.assertEqual(
+            self.get_json("/api/session"),
+            {"admin_configured": True, "authenticated": True},
+        )
+        # The first-run key setup step is still ahead, so there are no keys yet.
+        self.assertEqual(self.get_settings()["keys"], [])
+
+    def test_the_admin_cannot_be_created_twice(self):
+        self.create_admin_via_api()
+
+        self.assert_status(
+            "/api/admin",
+            409,
+            method="POST",
+            payload={"username": "other", "password": "long-enough"},
+        )
+
+    def test_a_bad_admin_payload_is_rejected(self):
+        for payload in (
+            {},
+            {"username": "", "password": "long-enough"},
+            {"username": "   ", "password": "long-enough"},
+            {"username": "keeper", "password": ""},
+            {"username": "keeper", "password": "short"},
+            {"username": "x" * 61, "password": "long-enough"},
+            {"username": "keeper"},
+            {"username": 12, "password": "long-enough"},
+        ):
+            self.assert_status("/api/admin", 400, method="POST", payload=payload)
+
+    def test_the_admin_signs_in_and_out(self):
+        self.authenticate()
+        self.assertEqual(
+            self.get_json("/api/session"),
+            {"admin_configured": True, "authenticated": True},
+        )
+
+        with urlopen(self.request("/api/logout", method="POST")) as response:
+            self.assertEqual(response.status, 200)
+            self.remember_cookies(response)
+
+        # Both cookies are cleared, so the next call is refused again.
+        self.assert_status("/api/keys", 401)
+        self.assertEqual(
+            self.get_json("/api/session"),
+            {"admin_configured": True, "authenticated": False},
+        )
+
+    def test_a_wrong_username_or_password_is_refused(self):
+        self.store_admin()
+
+        for payload in (
+            {"username": "root", "password": self.admin_password},
+            {"username": self.admin_username, "password": "wrong"},
+            {"username": self.admin_username},
+            {"username": None, "password": self.admin_password},
+        ):
+            self.assert_status("/api/login", 401, method="POST", payload=payload)
+
+    def test_the_login_is_refused_before_an_admin_exists(self):
+        self.assert_status(
+            "/api/login",
+            409,
+            method="POST",
+            payload={"username": "admin", "password": "long-enough"},
+        )
+
+    def test_a_state_changing_post_needs_the_csrf_token(self):
+        self.authenticate()
+        path = "/api/settings/wallet-software"
+        payload = {"wallet_software": ["Sparrow Wallet"]}
+
+        # The token is in the cookies, so dropping the header is what the check
+        # is about, and a different token is refused as well.
+        self.assert_status(path, 403, method="POST", payload=payload, csrf=False)
+        self.assert_status(
+            path,
+            403,
+            method="POST",
+            payload=payload,
+            headers={CSRF_HEADER: "not-the-token"},
+        )
+
+        # The right token is accepted.
+        with self.post_wallet_software(["Sparrow Wallet"]) as response:
+            self.assertEqual(response.status, 200)
 
 
 class RenamedSetupTests(ServerTestCase):
@@ -1038,6 +1283,7 @@ class RenamedSetupTests(ServerTestCase):
     def setUp(self):
         super().setUp()
         self.store_setup(RENAMED_SETUP)
+        self.authenticate()
 
     def test_the_cloud_key_records_its_own_name(self):
         key = self.key_profiles()[0]
@@ -1104,6 +1350,7 @@ class SettingsApiTests(ServerTestCase):
     def setUp(self):
         super().setUp()
         self.store_setup()
+        self.authenticate()
 
     def test_the_settings_api_returns_the_keys_and_the_software_list(self):
         settings = self.get_settings()
@@ -1340,6 +1587,7 @@ class RotationApiTests(ServerTestCase):
     def setUp(self):
         super().setUp()
         self.store_setup()
+        self.authenticate()
 
     def test_a_rotation_keeps_the_name_and_records_the_new_path(self):
         key = self.key_profiles()[0]
@@ -1540,6 +1788,7 @@ class AcknowledgementApiTests(ServerTestCase):
     def setUp(self):
         super().setUp()
         self.store_setup()
+        self.authenticate()
 
     def test_an_acknowledged_alert_disappears(self):
         key = self.key_profiles()[0]
@@ -1674,7 +1923,16 @@ class AcknowledgementApiTests(ServerTestCase):
 
 
 class KeySetupApiTests(ServerTestCase):
-    """The endpoints on a new database, before the key setup is stored."""
+    """The endpoints on a new database, before the key setup is stored.
+
+    The class starts from a database with no admin either, so the account is
+    created through the first-run endpoint, which is exactly what the app does
+    (section 31 point 1).
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.create_admin_via_api()
 
     def test_setup_api_reports_an_unconfigured_database(self):
         setup = self.get_setup()
@@ -1782,8 +2040,7 @@ class KeySetupApiTests(ServerTestCase):
         self.assert_rejected(sample_payload(key))
 
     def test_the_key_status_is_empty_before_the_setup(self):
-        with urlopen(f"{self.base_url}/api/key-status") as response:
-            self.assertEqual(json.load(response), [])
+        self.assertEqual(self.get_key_status(), [])
 
     def test_the_settings_report_an_empty_setup_and_the_software_list(self):
         settings = self.get_settings()
