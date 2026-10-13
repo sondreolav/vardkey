@@ -10,6 +10,7 @@ from database import (
     DEFAULT_WALLET_SOFTWARE,
     SCHEMA_VERSION,
     get_health_check,
+    get_multisig_settings,
     initialize_database,
     key_has_check,
     list_alert_acknowledgements,
@@ -23,6 +24,7 @@ from database import (
     save_health_check,
     save_key_settings,
     save_key_setup,
+    save_multisig_settings,
     save_wallet_software,
 )
 from validation import validate_health_check
@@ -512,6 +514,90 @@ SCHEMA_VERSION_10 = """
     PRAGMA user_version = 10;
 """
 
+# The schema version 11 layout, which is the current one before section 31: the
+# key_number CHECK still bounds the three fixed slots, there is no model column,
+# and there is no app_settings table. The migration loosens the CHECK, which
+# rebuilds keys, and creates app_settings (sections 31.5 and 31.7).
+SCHEMA_VERSION_11 = """
+    CREATE TABLE keys (
+        id INTEGER PRIMARY KEY,
+        key_number INTEGER NOT NULL UNIQUE CHECK (key_number BETWEEN 1 AND 3),
+        name TEXT NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('hardware', 'cloud')),
+        address_path TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE health_checks (
+        id INTEGER PRIMARY KEY,
+        checked_at TEXT NOT NULL,
+        next_check_due TEXT NOT NULL,
+        wallet_software TEXT,
+        software_version TEXT,
+        software_compatibility_status TEXT NOT NULL DEFAULT 'NOT_ASSESSED'
+            CHECK (software_compatibility_status IN ('OK', 'PROBLEM', 'NOT_ASSESSED')),
+        sparrow_version TEXT,
+        nunchuk_version TEXT,
+        software_comments TEXT,
+        contact_info_verified TEXT
+            CHECK (contact_info_verified IN ('Confirmed current', 'Needs external update')),
+        comments TEXT
+    );
+    CREATE TABLE key_checks (
+        id INTEGER PRIMARY KEY,
+        health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
+        key_id INTEGER NOT NULL REFERENCES keys(id) ON DELETE RESTRICT,
+        available INTEGER CHECK (available IN (0, 1)),
+        hardware_works INTEGER CHECK (hardware_works IN (0, 1)),
+        firmware_version TEXT,
+        seed_backup_verified TEXT CHECK (seed_backup_verified IN ('OK', 'PROBLEM')),
+        address_path_verified TEXT CHECK (address_path_verified IN ('OK', 'PROBLEM')),
+        address_path TEXT,
+        comments TEXT,
+        UNIQUE (health_check_id, key_id)
+    );
+    CREATE TABLE ai_security_checks (
+        id INTEGER PRIMARY KEY,
+        health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('SECURE', 'PATCHED', 'VULNERABLE', 'COMPROMISED')),
+        comments TEXT,
+        UNIQUE (health_check_id, provider)
+    );
+    CREATE TABLE wallet_software (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE alert_acknowledgements (
+        id INTEGER PRIMARY KEY,
+        code TEXT NOT NULL,
+        source TEXT NOT NULL,
+        key_id INTEGER,
+        check_id INTEGER,
+        reason TEXT NOT NULL,
+        acknowledged_at TEXT NOT NULL
+    );
+    INSERT INTO keys (id, key_number, name, type, address_path) VALUES
+        (1, 1, 'SeedSigner', 'hardware', 'm/48''/0''/0''/2'''),
+        (2, 2, 'Blockstream Jade', 'hardware', 'm/48''/1''/0''/2'''),
+        (3, 3, 'Nunchuk', 'cloud', 'm/48''/2''/0''/2''');
+    INSERT INTO health_checks (
+        id, checked_at, next_check_due, wallet_software, software_version,
+        software_compatibility_status, contact_info_verified, comments
+    ) VALUES (1, '2026-01-01', '2027-01-01', 'Sparrow Wallet', '1.8.0', 'OK', 'Confirmed current', 'Annual review');
+    INSERT INTO key_checks (
+        health_check_id, key_id, available, hardware_works, firmware_version,
+        seed_backup_verified, address_path_verified, address_path
+    ) VALUES (1, 1, 1, 1, '1.0.0', 'OK', 'OK', 'm/48''/0''/0''/2''');
+    INSERT INTO ai_security_checks (health_check_id, provider, status) VALUES
+        (1, 'SeedSigner', 'SECURE'),
+        (1, 'Sparrow Wallet', 'SECURE');
+    INSERT INTO wallet_software (name) VALUES ('Sparrow Wallet');
+    INSERT INTO alert_acknowledgements (code, source, key_id, check_id, reason, acknowledged_at) VALUES
+        ('key_unavailable', 'Key 1: SeedSigner', 1, 1, 'rotate', '2026-02-01T09:00:00');
+    PRAGMA user_version = 11;
+"""
+
 
 class DatabaseInitializationTests(unittest.TestCase):
     def setUp(self):
@@ -581,7 +667,7 @@ class DatabaseInitializationTests(unittest.TestCase):
             }
 
         self.assertEqual(version, SCHEMA_VERSION)
-        self.assertEqual(version, 11)
+        self.assertEqual(version, 12)
         self.assertTrue(
             {
                 "keys",
@@ -590,6 +676,7 @@ class DatabaseInitializationTests(unittest.TestCase):
                 "ai_security_checks",
                 "wallet_software",
                 "alert_acknowledgements",
+                "app_settings",
             } <= tables
         )
         # The BIP327/SLIP39 table is not part of the schema any more
@@ -600,6 +687,16 @@ class DatabaseInitializationTests(unittest.TestCase):
         initialize_database(self.database_path)
 
         self.assertEqual(list_keys(self.database_path), [])
+
+    def test_a_new_database_has_no_stored_multisig_shape(self):
+        initialize_database(self.database_path)
+
+        # A database without the two settings falls back to the 2-of-3 default
+        # the app was built for (section 31 point 7).
+        self.assertEqual(
+            get_multisig_settings(self.database_path),
+            {"threshold": 2, "key_count": 3},
+        )
 
     def test_a_new_database_starts_with_one_wallet_software_entry(self):
         initialize_database(self.database_path)
@@ -645,6 +742,47 @@ class DatabaseInitializationTests(unittest.TestCase):
         # The refused write left the stored setup untouched.
         self.assertEqual([key["name"] for key in list_keys(self.database_path)],
                          ["Coinbase", "ColdCard", "Jade"])
+
+    def test_a_five_key_setup_is_stored_and_read_back(self):
+        # The number of key slots is configurable, so a setup with more than the
+        # three default slots is stored and read back with its own shape
+        # (section 31 point 7).
+        initialize_database(self.database_path)
+        setup = [
+            {
+                "key_number": number,
+                "name": f"Key {number}",
+                "type": "hardware",
+                "address_path": f"m/48'/{number}'/0'/2'",
+            }
+            for number in range(1, 6)
+        ]
+
+        save_key_setup(setup, self.database_path, threshold=3, key_count=5)
+
+        keys = list_keys(self.database_path)
+        self.assertEqual([key["key_number"] for key in keys], [1, 2, 3, 4, 5])
+        self.assertEqual([key["name"] for key in keys], [f"Key {n}" for n in range(1, 6)])
+        self.assertEqual(
+            get_multisig_settings(self.database_path),
+            {"threshold": 3, "key_count": 5},
+        )
+
+    def test_the_multisig_settings_can_be_stored_on_their_own(self):
+        initialize_database(self.database_path)
+
+        save_multisig_settings(2, 3, self.database_path)
+        self.assertEqual(
+            get_multisig_settings(self.database_path),
+            {"threshold": 2, "key_count": 3},
+        )
+
+        # A stored setting replaces the earlier one.
+        save_multisig_settings(4, 7, self.database_path)
+        self.assertEqual(
+            get_multisig_settings(self.database_path),
+            {"threshold": 4, "key_count": 7},
+        )
 
     def test_a_partial_key_setup_is_reported_as_an_error(self):
         initialize_database(self.database_path)
@@ -794,7 +932,7 @@ class DatabaseInitializationTests(unittest.TestCase):
             ).fetchall()
 
         self.assertEqual(version, SCHEMA_VERSION)
-        self.assertEqual(version, 11)
+        self.assertEqual(version, 12)
         self.assertIn("wallet_software", self.table_names())
         self.assertIn("alert_acknowledgements", self.table_names())
         # The two derived cloud results are gone, and the rest of the history is
@@ -827,7 +965,7 @@ class DatabaseInitializationTests(unittest.TestCase):
             ).fetchall()
 
         self.assertEqual(version, SCHEMA_VERSION)
-        self.assertEqual(version, 11)
+        self.assertEqual(version, 12)
         self.assertIn("key_id", self.columns_of("alert_acknowledgements"))
         # The older acknowledgement survives, with an empty key id, because it
         # predates the column (section 27).
@@ -835,6 +973,62 @@ class DatabaseInitializationTests(unittest.TestCase):
             stored,
             [("key_unavailable", "Key 1: SeedSigner", None, 1, "rotate")],
         )
+
+    def test_a_version_11_database_gains_app_settings_and_a_free_key_number(self):
+        self.write_schema(SCHEMA_VERSION_11)
+        # The old table really bounds key_number before the migration runs
+        # (section 31 point 7).
+        with self.connect() as connection:
+            with self.assertRaises(sqlite3.IntegrityError):
+                connection.execute(
+                    "INSERT INTO keys (key_number, name, type, address_path) "
+                    "VALUES (4, 'Fourth', 'hardware', 'm/48''/9''/0''/2''')"
+                )
+
+        initialize_database(self.database_path)
+
+        with self.connect() as connection:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            keys = connection.execute(
+                "SELECT key_number, name, type, address_path FROM keys ORDER BY key_number"
+            ).fetchall()
+            acknowledgements = connection.execute(
+                "SELECT code, key_id FROM alert_acknowledgements"
+            ).fetchall()
+            violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+            # The loosened CHECK accepts a key number above three now.
+            connection.execute(
+                "INSERT INTO keys (key_number, name, type, address_path) "
+                "VALUES (4, 'Fourth', 'hardware', 'm/48''/9''/0''/2''')"
+            )
+
+        self.assertEqual(version, SCHEMA_VERSION)
+        self.assertEqual(version, 12)
+        self.assertIn("app_settings", self.table_names())
+        self.assertIn("model", self.columns_of("keys"))
+        # The rebuilt table kept the rows and did not break a foreign key.
+        self.assertEqual(violations, [])
+        self.assertEqual(
+            keys,
+            [
+                (1, "SeedSigner", "hardware", "m/48'/0'/0'/2'"),
+                (2, "Blockstream Jade", "hardware", "m/48'/1'/0'/2'"),
+                (3, "Nunchuk", "cloud", "m/48'/2'/0'/2'"),
+            ],
+        )
+        self.assertEqual(acknowledgements, [("key_unavailable", 1)])
+        # A database without the stored shape still falls back to 2-of-3.
+        self.assertEqual(
+            get_multisig_settings(self.database_path),
+            {"threshold": 2, "key_count": 3},
+        )
+
+        # The migrated database still records new checks for its three keys.
+        save_multisig_settings(2, 3, self.database_path)
+        keys = list_keys(self.database_path)
+        self.assertEqual([key["key_number"] for key in keys], [1, 2, 3])
+        new_id = save_health_check(validate(sample_payload(keys[0]), keys), self.database_path)
+        self.assertEqual(get_health_check(new_id, self.database_path)["checked_at"], "2026-10-01")
 
     def test_status_values_migrate_to_english(self):
         self.write_schema(SCHEMA_VERSION_5)
