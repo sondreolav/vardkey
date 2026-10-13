@@ -2,6 +2,8 @@
 
 const keyList = document.querySelector("#key-list");
 const keyCount = document.querySelector("#key-count");
+const setupTitle = document.querySelector("#setup-title");
+const setupDescription = document.querySelector("#setup-description");
 const nextCheckTitle = document.querySelector("#next-check-title");
 const nextCheckDetail = document.querySelector("#next-check-detail");
 const overdueTitle = document.querySelector("#overdue-title");
@@ -166,6 +168,16 @@ function createKeyAlertNote(entry, open) {
   link.textContent = "Open the alert list";
   note.append(link);
   return note;
+}
+
+function renderSetupShape(setup) {
+  // The setup card reads the threshold and the key count from the API, because
+  // the single setup may be any shape, not only 2-of-3 (section 31 point 7).
+  if (!setup || typeof setup.threshold !== "number" || typeof setup.key_count !== "number") {
+    return;
+  }
+  setupTitle.textContent = `${setup.threshold}-of-${setup.key_count}`;
+  setupDescription.textContent = `${setup.threshold} of ${setup.key_count} keys are required to sign. This app records check results only — never keys or seed phrases.`;
 }
 
 function renderSummary(status) {
@@ -432,10 +444,11 @@ function renderAlerts() {
 }
 
 async function loadDashboard() {
-  const [statusResult, alertResult, settingsResult] = await Promise.allSettled([
+  const [statusResult, alertResult, settingsResult, setupResult] = await Promise.allSettled([
     fetchJson("/api/key-status"),
     fetchJson("/api/alerts"),
     fetchJson("/api/settings"),
+    fetchJson("/api/setup"),
   ]);
 
   if (settingsResult.status === "fulfilled") {
@@ -450,6 +463,9 @@ async function loadDashboard() {
   if (statusResult.status === "fulfilled") {
     keyStatus = statusResult.value;
     keysLoaded = true;
+  }
+  if (setupResult.status === "fulfilled") {
+    renderSetupShape(setupResult.value);
   }
 
   renderKeyCards();
