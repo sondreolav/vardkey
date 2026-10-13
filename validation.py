@@ -23,6 +23,11 @@ count (section 31 point 7). Both fields are optional: a payload without them
 keeps the 2-of-3 default, so an older client that only sends the keys keeps
 working, and the bounds are enforced here rather than by a database CHECK.
 
+The model is the optional model or service label of a key. It is documentation
+only: it is not a wallet software choice, it is not part of the alert source, and
+it is not part of the key's identity, so it is never locked. An empty value means
+"not recorded" (section 31 point 5).
+
 ``available`` is always recorded (section 22). When the key was not available,
 the wallet software and the security statuses are not recorded either, so they
 may be left out of the payload.
@@ -120,13 +125,14 @@ def validate_multisig_settings(payload):
 def validate_key_setup(payload):
     """Return the normalized key setup for the configured key slots.
 
-    The user names each key, picks its type, and records its address path once,
-    and all of them are locked after the setup is saved (sections 23.2 and 25.1).
-    The names must be non-empty and unique, compared without regard to case. The
-    address paths must be unique as well, so no two keys share one, because the
-    path is part of the identity of a key (section 26.2). The number of keys has
-    to match the setup's ``key_count``, which defaults to the 2-of-3 shape when it
-    is left out (section 31 point 7).
+    The user names each key, picks its type, records its address path, and may
+    record its model, and all of it is locked after the setup is saved except the
+    name and the model (sections 23.2, 25.1 and 31.5). The names must be
+    non-empty and unique, compared without regard to case. The address paths must
+    be unique as well, so no two keys share one, because the path is part of the
+    identity of a key (section 26.2). The number of keys has to match the setup's
+    ``key_count``, which defaults to the 2-of-3 shape when it is left out
+    (section 31 point 7).
     """
     if not isinstance(payload, dict):
         raise ValidationError("payload must be a JSON object")
@@ -175,6 +181,7 @@ def validate_key_setup(payload):
             "name": name,
             "type": key_type,
             "address_path": address_path,
+            "model": _model(entry.get("model")),
         })
 
     return sorted(normalized, key=lambda entry: entry["key_number"])
@@ -233,11 +240,12 @@ def validate_health_check(payload, keys, software_names=()):
 def validate_key_settings(payload, keys):
     """Return the normalized settings of one key.
 
-    The name is only a label and may be changed at any time; the address path is
-    part of the key's identity and may only be changed while the key has no saved
-    check, which the caller decides (sections 25.1 and 25.2). The type is never
-    part of the payload: it only changes when the key is rotated (section 28). A
-    path that another key already has is refused (section 26.2).
+    The name and the model are only labels and may be changed at any time; the
+    address path is part of the key's identity and may only be changed while the
+    key has no saved check, which the caller decides (sections 25.1, 25.2 and
+    31.5). The type is never part of the payload: it only changes when the key is
+    rotated (section 28). A path that another key already has is refused
+    (section 26.2).
     """
     if not isinstance(payload, dict):
         raise ValidationError("payload must be a JSON object")
@@ -255,6 +263,7 @@ def validate_key_settings(payload, keys):
         "key_id": key["id"],
         "name": name,
         "address_path": address_path,
+        "model": _model(payload.get("model")),
     }
 
 
@@ -300,7 +309,8 @@ def validate_rotation(payload, keys, key_id, software_names=()):
     stays or changes, records the new address path, and may pick the other type
     for the replacement (section 28). The path must change, because the rotation
     replaces the key and the path is its identity, and it must not belong to
-    another key (sections 26.2 and 26.3).
+    another key (sections 26.2 and 26.3). The model may be recorded with the
+    replacement as well (section 31 point 5).
 
     ``software_names`` is the wallet software list from the settings, which the
     type change needs: a key that becomes a cloud key offers its own name as a
@@ -343,6 +353,7 @@ def validate_rotation(payload, keys, key_id, software_names=()):
         "name": name,
         "type": key_type,
         "address_path": address_path,
+        "model": _model(payload.get("model")),
     }
 
 
@@ -399,6 +410,24 @@ def _multisig_threshold(value, key_count):
             f"threshold must be between {MIN_THRESHOLD} and {key_count}"
         )
     return value
+
+
+def _model(value):
+    """Return the optional model or service label, or None when it is empty.
+
+    The field is documentation only, so it is trimmed and bounded like the key
+    name, and an empty value means "not recorded" (section 31 point 5).
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValidationError("model must be text")
+    model = value.strip()
+    if not model:
+        return None
+    if len(model) > MAX_MODEL_LENGTH:
+        raise ValidationError("model is too long")
+    return model
 
 
 def _rotation_type(value, key, name, software_names):
