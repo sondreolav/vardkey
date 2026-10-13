@@ -1,5 +1,9 @@
 import { LangDict } from './default'
 
+// Prettier's `singleQuote` rule decides the quote style in this file: a
+// translation with no apostrophe uses single quotes, and one that contains an
+// apostrophe uses double quotes. Write it the other way round and `make x86`
+// fails its `prettier --check`.
 export default {
   es_ES: {
     0: 'Iniciando VardKey',
@@ -85,9 +89,9 @@ export default {
     5: "L'interface web de VardKey",
     6: 'Supprimer toutes les données',
     7: "Supprime la configuration des clés, les vérifications enregistrées et la liste des logiciels de portefeuille, de sorte que l'application revient à la première étape de configuration. Le compte administrateur est conservé.",
-    8: "Je confirme que la configuration des clés, les vérifications enregistrées et la liste des logiciels de portefeuille seront supprimées et ne pourront pas être récupérées",
+    8: 'Je confirme que la configuration des clés, les vérifications enregistrées et la liste des logiciels de portefeuille seront supprimées et ne pourront pas être récupérées',
     9: 'Données supprimées',
-    10: "La confirmation est requise avant que les données puissent être supprimées.",
+    10: 'La confirmation est requise avant que les données puissent être supprimées.',
     11: "Les données n'ont pas pu être supprimées.",
     12: 'Définir le mot de passe administrateur',
     13: "Génère un nouveau mot de passe administrateur et l'affiche une seule fois. Remplace tout mot de passe existant.",
