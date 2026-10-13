@@ -12,6 +12,7 @@ import os
 import tempfile
 import threading
 import unittest
+from urllib.request import urlopen
 
 from app import ROOT, STATIC_FILES, AppHandler
 from database import initialize_database
