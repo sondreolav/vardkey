@@ -4,7 +4,7 @@ This module runs the maintenance tasks that do not need the HTTP server to be
 up. It is the entry point the StartOS actions call inside a temporary
 subcontainer, and it can be run by hand:
 
-    python3 maintenance.py delete-history
+    python3 maintenance.py delete-all-data
     python3 maintenance.py set-admin-password
 
 The database path comes from the ``DATABASE_PATH`` environment variable and
@@ -22,7 +22,7 @@ import sqlite3
 import sys
 
 from auth import get_admin, normalize_admin_username, set_admin
-from database import delete_history, initialize_database
+from database import delete_all_data, initialize_database
 
 
 DEFAULT_DATABASE_PATH = "data/vardkey.sqlite3"
@@ -55,16 +55,22 @@ def generate_password():
     )
 
 
-def delete_history_command(args):
-    """Delete the stored history and report how many checks went with it.
+def delete_all_data_command(args):
+    """Delete the stored checks, the key setup, and the follow-up, and report.
 
-    The key setup, the multisig settings, the admin credentials and the wallet
-    software list are never touched (section 31 point 2).
+    The app is left the way a new database starts: no keys, no checks, no
+    closures and no stored multisig shape, so the first-run setup step comes
+    back. The admin credentials and the session secret in ``app_settings`` are
+    never touched, so the user stays signed in (section 31 point 2).
     """
     initialize_database(args.database)
-    deleted = delete_history(args.database)
+    deleted = delete_all_data(args.database)
     plural = "" if deleted == 1 else "s"
-    print(f"Deleted {deleted} saved health check{plural}, with the follow-up they closed.")
+    print(
+        f"Deleted the key setup, {deleted} saved health check{plural}, the "
+        "follow-up they closed, and the wallet software list. "
+        "The admin account is kept."
+    )
     return 0
 
 
@@ -92,7 +98,7 @@ def build_parser():
     """Return the argument parser for the maintenance commands.
 
     ``--database`` is shared by every command, so it can be given after the
-    command name: ``maintenance.py delete-history --database /data/x.sqlite3``.
+    command name: ``maintenance.py delete-all-data --database /data/x.sqlite3``.
     """
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
@@ -110,11 +116,14 @@ def build_parser():
     )
     commands = parser.add_subparsers(dest="command", required=True)
     delete = commands.add_parser(
-        "delete-history",
+        "delete-all-data",
         parents=[common],
-        help="Delete every saved health check and the follow-up it closed.",
+        help=(
+            "Delete the key setup, every saved health check and the follow-up "
+            "it closed, and the wallet software list. The admin account is kept."
+        ),
     )
-    delete.set_defaults(handler=delete_history_command)
+    delete.set_defaults(handler=delete_all_data_command)
     password = commands.add_parser(
         "set-admin-password",
         parents=[common],
