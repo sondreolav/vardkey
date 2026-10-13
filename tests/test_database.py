@@ -996,11 +996,6 @@ class DatabaseInitializationTests(unittest.TestCase):
                 "SELECT code, key_id FROM alert_acknowledgements"
             ).fetchall()
             violations = connection.execute("PRAGMA foreign_key_check").fetchall()
-            # The loosened CHECK accepts a key number above three now.
-            connection.execute(
-                "INSERT INTO keys (key_number, name, type, address_path) "
-                "VALUES (4, 'Fourth', 'hardware', 'm/48''/9''/0''/2''')"
-            )
 
         self.assertEqual(version, SCHEMA_VERSION)
         self.assertEqual(version, 12)
@@ -1023,8 +1018,19 @@ class DatabaseInitializationTests(unittest.TestCase):
             {"threshold": 2, "key_count": 3},
         )
 
+        # The loosened CHECK accepts a key number above three now. The row is
+        # rolled back, so the stored setup stays the three migrated keys.
+        connection = sqlite3.connect(self.database_path)
+        try:
+            connection.execute(
+                "INSERT INTO keys (key_number, name, type, address_path) "
+                "VALUES (4, 'Fourth', 'hardware', 'm/48''/9''/0''/2''')"
+            )
+            connection.rollback()
+        finally:
+            connection.close()
+
         # The migrated database still records new checks for its three keys.
-        save_multisig_settings(2, 3, self.database_path)
         keys = list_keys(self.database_path)
         self.assertEqual([key["key_number"] for key in keys], [1, 2, 3])
         new_id = save_health_check(validate(sample_payload(keys[0]), keys), self.database_path)
