@@ -6,16 +6,15 @@ out instead of rendering an empty line (section 31 point 4).
 """
 
 from http.server import ThreadingHTTPServer
-import json
 import os
 from pathlib import Path
 import tempfile
 import threading
 import unittest
-from urllib.request import urlopen
 
 from app import AppHandler
 from database import initialize_database, save_key_setup
+from server_session import SessionMixin
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,7 +40,7 @@ def read_static(name):
     return (ROOT / "static" / name).read_text(encoding="utf-8")
 
 
-class KeyStatusAddressPathTests(unittest.TestCase):
+class KeyStatusAddressPathTests(SessionMixin, unittest.TestCase):
     """The address path across the key status and the dashboard card."""
 
     def setUp(self):
@@ -56,6 +55,8 @@ class KeyStatusAddressPathTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base_url = f"http://127.0.0.1:{self.server.server_port}"
+        # Every route except /health needs a session (section 31 point 1).
+        self.authenticate()
 
     def tearDown(self):
         self.server.shutdown()
@@ -66,11 +67,6 @@ class KeyStatusAddressPathTests(unittest.TestCase):
         else:
             os.environ["DATABASE_PATH"] = self.previous_database_path
         self.temp_dir.cleanup()
-
-    def get_json(self, path):
-        with urlopen(f"{self.base_url}{path}") as response:
-            self.assertEqual(response.status, 200)
-            return json.load(response)
 
     def test_the_key_status_carries_the_address_path(self):
         # The card reads the path from the key status, so the endpoint has to
@@ -90,6 +86,9 @@ class KeyStatusAddressPathTests(unittest.TestCase):
         initialize_database(migrated)
         save_key_setup(MIGRATED_SETUP, migrated)
         os.environ["DATABASE_PATH"] = migrated
+        # The session secret lives in the database, so the sign-in is repeated
+        # for the new file.
+        self.authenticate()
 
         status = self.get_json("/api/key-status")
 
