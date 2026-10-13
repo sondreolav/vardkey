@@ -12,10 +12,10 @@ import tempfile
 import threading
 import unittest
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
 
 from app import AppHandler
 from database import initialize_database, save_key_setup
+from server_session import SessionMixin
 
 
 ADDRESS_PATH = "m/48'/0'/0'/2'"
@@ -42,7 +42,7 @@ FRESH_SETUP = {
 }
 
 
-class KeyModelApiTests(unittest.TestCase):
+class KeyModelApiTests(SessionMixin, unittest.TestCase):
     """The model label across the key endpoints and the settings."""
 
     def setUp(self):
@@ -57,6 +57,8 @@ class KeyModelApiTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base_url = f"http://127.0.0.1:{self.server.server_port}"
+        # Every route except /health needs a session (section 31 point 1).
+        self.authenticate()
 
     def tearDown(self):
         self.server.shutdown()
@@ -68,19 +70,17 @@ class KeyModelApiTests(unittest.TestCase):
             os.environ["DATABASE_PATH"] = self.previous_database_path
         self.temp_dir.cleanup()
 
-    def get_json(self, path):
-        with urlopen(f"{self.base_url}{path}") as response:
-            self.assertEqual(response.status, 200)
-            return json.load(response)
+    def switch_to_a_fresh_database(self):
+        """Point the server at a new, empty database and sign in to it.
 
-    def post_json(self, path, payload):
-        request = Request(
-            f"{self.base_url}{path}",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        return urlopen(request)
+        The session secret lives in the database, so the sign-in is repeated for
+        the new file, or its cookie would be signed with the wrong secret.
+        """
+        fresh = os.path.join(self.temp_dir.name, "fresh.sqlite3")
+        initialize_database(fresh)
+        os.environ["DATABASE_PATH"] = fresh
+        self.authenticate()
+        return fresh
 
     def assert_rejected_at(self, path, payload, status=400):
         try:
@@ -108,9 +108,7 @@ class KeyModelApiTests(unittest.TestCase):
     def test_the_setup_endpoint_stores_the_model(self):
         # A new database has no setup yet, so the first-run step writes the model
         # with the rest of the key (section 31 point 5).
-        fresh = os.path.join(self.temp_dir.name, "fresh.sqlite3")
-        initialize_database(fresh)
-        os.environ["DATABASE_PATH"] = fresh
+        self.switch_to_a_fresh_database()
 
         with self.post_json("/api/setup", FRESH_SETUP) as response:
             self.assertEqual(response.status, 201)
@@ -121,9 +119,7 @@ class KeyModelApiTests(unittest.TestCase):
         self.assertEqual([key["model"] for key in keys], ["Ledger Nano S", None, "Casa"])
 
     def test_an_over_long_model_is_rejected_by_the_setup(self):
-        fresh = os.path.join(self.temp_dir.name, "fresh.sqlite3")
-        initialize_database(fresh)
-        os.environ["DATABASE_PATH"] = fresh
+        self.switch_to_a_fresh_database()
 
         payload = json.loads(json.dumps(FRESH_SETUP))
         payload["keys"][0]["model"] = "x" * 61
