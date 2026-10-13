@@ -10,7 +10,8 @@
 
 const CACHE_NAME = "vardkey-shell-v1";
 
-// The shell: the pages and the assets they need.
+// The shell: the pages, the assets they need, and the manifest and icon the
+// browser reads when the app is installed.
 const SHELL = [
   "/",
   "/setup",
@@ -24,6 +25,8 @@ const SHELL = [
   "/settings.js",
   "/health-check.js",
   "/history.js",
+  "/manifest.webmanifest",
+  "/icon.svg",
 ];
 const SHELL_PATHS = new Set(SHELL);
 
