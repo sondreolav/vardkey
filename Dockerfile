@@ -4,12 +4,17 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# The whole application. static/ MUST be copied: app.py answers /health from
-# code, but every page and asset is read from ./static, so an image without it
-# reports a healthy service whose entire UI answers 404. maintenance.py MUST be
-# copied too: the StartOS actions run it in a temporary subcontainer, so an
-# image without it fails at runtime on the box while the tests stay green.
-COPY app.py database.py alerts.py export.py validation.py maintenance.py ./
+# The application modules, all of them. The wildcard is deliberate: the build
+# context is the repository root and .dockerignore keeps everything else out
+# (tests, data, node_modules, the build output), so every top-level .py is an
+# application module. Listing them by hand is how auth.py was once left out,
+# which broke the admin login and the Set Admin Password action at runtime on
+# the box while every test stayed green: a module the image is missing is a
+# ModuleNotFoundError when the command runs, not a build error.
+COPY *.py ./
+# static/ MUST be copied: app.py answers /health from code, but every page and
+# asset is read from ./static, so an image without it reports a healthy service
+# whose entire UI answers 404.
 COPY static ./static
 
 ENV PORT=8080
