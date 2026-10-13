@@ -13,10 +13,10 @@ import re
 import tempfile
 import threading
 import unittest
-from urllib.request import urlopen
 
 from app import AppHandler, export_filename
 from database import initialize_database, save_key_setup
+from server_session import SessionMixin
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,7 +51,7 @@ class ExportFilenameTests(unittest.TestCase):
         self.assertNotIn('download="', html)
 
 
-class ExportFilenameApiTests(unittest.TestCase):
+class ExportFilenameApiTests(SessionMixin, unittest.TestCase):
     """The Content-Disposition the export endpoint sends."""
 
     def setUp(self):
@@ -66,6 +66,8 @@ class ExportFilenameApiTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base_url = f"http://127.0.0.1:{self.server.server_port}"
+        # Every route except /health needs a session (section 31 point 1).
+        self.authenticate()
 
     def tearDown(self):
         self.server.shutdown()
@@ -78,7 +80,7 @@ class ExportFilenameApiTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_the_export_answers_with_a_dated_filename(self):
-        with urlopen(f"{self.base_url}/api/export") as response:
+        with self.get("/api/export") as response:
             self.assertEqual(response.status, 200)
             disposition = response.headers["Content-Disposition"]
             response.read()
