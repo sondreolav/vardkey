@@ -14,7 +14,7 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 - §19–§30 er korte samandrag av rundane. Alle reglane deira står i §1–§18; den fulle grunngjevinga ligg i git-historikken.
 - §31 er **i gang**; planen hans står i §31 sjølv, sidan han endrar delar av §1–§18 når han blir gjennomført.
 - Eit punkt utan avkryssingsboks er implementert og verifisert. `[ ]` markerer det som står att.
-- **Status:** §1–§30 er implementerte og verifiserte, og **§31 er i gang**. Skjemaet er no **versjon 12**, og testsuiten er grøn (**397 testar**). **§30 er ferdig**: StartOS-pakka er bygd, sideloda og køyrd på ein eigen StartOS 0.4.0-boks, og §14, §16 og §17 er køyrde og verifiserte der. Att i §30 står berre det som er sett til 1.0.0-runden — det ekte ikonet og hevinga av pakkeversjonen — og §18 steg 12 ventar på same runden. I §31 er punkta 7, 5, 4, 3 og 2 ferdige, punkt 1 er påbyrja, og punkt 6 og 8 står att.
+- **Status:** §1–§30 er implementerte og verifiserte, og **§31 er i gang**. Skjemaet er no **versjon 12**, og testsuiten er venta grøn (**416 testar**). **§30 er ferdig**: StartOS-pakka er bygd, sideloda og køyrd på ein eigen StartOS 0.4.0-boks, og §14, §16 og §17 er køyrde og verifiserte der. Att i §30 står berre det som er sett til 1.0.0-runden — det ekte ikonet og hevinga av pakkeversjonen — og §18 steg 12 ventar på same runden. I §31 er punkta 7, 5, 4, 3, 2 og 1 ferdige, punkt 6 er ferdig utan manifestet og PWA-ikona (dei ventar på ikonet), og punkt 8 ventar på kunstverket til brukaren.
 
 ## Språkkrav
 
@@ -554,23 +554,23 @@ Skjemaet gjekk frå versjon 11 til **12** i denne runden. Pakkeversjonen står s
 
 **Kvar runden står (oppdatert 11.10.2026):**
 
-- **Ferdige:** punkt 7 (fleksibel terskel), punkt 5 (modell/teneste), punkt 4 (adressesti på nøkkelkortet), punkt 3 (datert CSV-namn) og punkt 2 (slett historikk). Skjemaet er versjon 12. I repoet ligg òg `maintenance.py` med `delete-history`, `startos/actions/deleteHistory.ts`, og testmodulane `test_multisig_setup.py`, `test_key_model.py`, `test_key_status.py`, `test_export_filename.py` og `test_maintenance.py`.
-- **I gang:** punkt 1 (adminpassord). `auth.py` og `tests/test_auth.py` er skrivne og grøne, men **ingenting importerer `auth.py` enno**. `auth.py` gjev `hash_password`, `verify_password`, `get_admin`, `admin_configured`, `set_admin`, `authenticate`, `session_secret`, `create_session_token`, `verify_session_token`, `new_csrf_token` og `csrf_tokens_match`, med konstantane `SESSION_COOKIE`, `CSRF_COOKIE` og `CSRF_HEADER`. Det som står att er stega under.
-- **Ikkje starta:** punkt 6 (installerbar PWA) og punkt 8 (nytt app-ikon).
-- **Rekkjefølgja vidare:** resten av punkt 1 → punkt 6 → punkt 8.
+- **Ferdige:** punkt 7 (fleksibel terskel), punkt 5 (modell/teneste), punkt 4 (adressesti på nøkkelkortet), punkt 3 (datert CSV-namn), punkt 2 (slett historikk) og punkt 1 (adminpassord). Skjemaet er versjon 12. I repoet ligg òg `maintenance.py` med `delete-history` og `set-admin-password`, `startos/actions/deleteHistory.ts`, `startos/actions/setAdminPassword.ts`, og testmodulane `test_multisig_setup.py`, `test_key_model.py`, `test_key_status.py`, `test_export_filename.py`, `test_maintenance.py` og `test_pwa.py`.
+- **I gang:** punkt 6 (installerbar PWA). `static/sw.js`, registreringa i `static/app.js` og offline-tilstanden er på plass, og `/sw.js` står i `STATIC_FILES`. Det som står att er `static/manifest.webmanifest`, `<link rel="manifest">` i dei fem sidene og oppføringa hans i `STATIC_FILES` — alt saman ventar på ikonet, sidan manifestet krev eit 192- og eit 512-px-ikon.
+- **Ikkje starta:** punkt 8 (nytt app-ikon). Det ventar på kunstverket til brukaren.
+- **Rekkjefølgja vidare:** resten av punkt 6 og punkt 8, når kunstverket kjem.
 - Punkt 6 og punkt 8 heng saman: manifestet treng 192- og 512-px-ikon frå punkt 8, så `manifest.webmanifest` og oppføringa i `STATIC_FILES` blir dei siste bitane som kjem på plass.
 
 ## Rekkjefølgje
 
-Punkta blir gjorde i denne rekkjefølgja, ikkje i nummerrekkjefølgja, fordi datamodellen må liggje fast før resten byggjer på han:
+Punkta blir gjorde i denne rekkjefølgja, ikkje i nummerrekkjfølgja, fordi datamodellen må liggje fast før resten byggjer på han:
 
 1. **Punkt 7** — fleksibel terskel. Størst, rører datamodellen mest, og gav migrasjonen 11 → 12. **Ferdig.**
 2. **Punkt 5** — modell/teneste. Éi kolonne i den same migrasjonen. **Ferdig.**
 3. **Punkt 4** — adressesti på nøkkelkortet. **Ferdig.**
 4. **Punkt 3** — datert CSV-namn. **Ferdig.**
 5. **Punkt 2** — slett historikk, med `maintenance.py`. **Ferdig.**
-6. **Punkt 1** — adminpassord. Kjem etter datamodellen, sidan han rører alle rutene og alle sidene. **I gang.**
-7. **Punkt 6** — installerbar PWA.
+6. **Punkt 1** — adminpassord. Kjem etter datamodellen, sidan han rører alle rutene og alle sidene. **Ferdig.**
+7. **Punkt 6** — installerbar PWA. **I gang.**
 8. **Punkt 8** — nytt ikon, sist, og avhengig av at brukaren leverer kunstverket.
 
 ## Punkt 7 — fleksibel terskel (2-av-3 blir valfritt) — ferdig
@@ -581,7 +581,7 @@ Appen skal kunne konfigurerast for andre multisig-oppsett enn 2-av-3. Det siste 
 - **Grenser.** `2 ≤ multisig_key_count ≤ 15` og `1 ≤ multisig_threshold ≤ multisig_key_count`. Ein terskel på 1 er tillaten, sidan brukaren vel sjølv; appen legg ikkje meining i talet.
 - **`KEY_COUNT` blir dynamisk.** `KEY_COUNT = 3` i `database.py`, som `validation.py` importerer, blir lesen frå `app_settings` i staden. `keys.key_number` sin `CHECK (key_number BETWEEN 1 AND 3)` vart lausna opp, og det kravde ein tabell-ombygging — den same typen migrasjon som §21 alt brukar, med `PRAGMA foreign_keys = OFF` og `PRAGMA foreign_key_check` før commit.
 - **Oppsettet.** `POST /api/setup` tek `threshold` og `key_count` i tillegg til `keys`, og krev nøyaktig `key_count` nøklar med `key_number` 1–`key_count`. `GET /api/setup` gjev dei attende.
-- **Oppsettssida.** `static/setup.html` hadde tre hardkodde `fieldset` med `name="key_1_name"` osb. Dei vart erstatta av to felt for tala og eit felt-sett som `static/setup.js` byggjer ut frå `key_count`. **Felle:** `tests/test_health_check_form.py` sjekka at `name="key_1_name"`, `key_2_name` og `key_3_name` finst i HTML-en, så den testen vart flytt til å gjelde den genererte markupen.
+- **Oppsettssida.** `static/setup.html` hadde tre hardkodde `fieldset` med `name=\"key_1_name\"` osb. Dei vart erstatta av to felt for tala og eit felt-sett som `static/setup.js` byggjer ut frå `key_count`. **Felle:** `tests/test_health_check_form.py` sjekka at `name=\"key_1_name\"`, `key_2_name` og `key_3_name` finst i HTML-en, så den testen vart flytt til å gjelde den genererte markupen.
 - **Dashboardet.** `2-of-3`-kortet i `static/index.html` er no dynamisk, og `static/app.js` les tala frå API-et.
 - **Det som ikkje endra seg.** Varsellogikken, sperringa per nøkkel, eksporten, roteringa og unikheitsregelen for adressestiar er uendra. Nøkkelnummeret held fram som ein del av etiketten `Key N: <namn>`.
 - **Testar.** `tests/test_multisig_setup.py` og ein migrasjonstest med eit bokstaveleg versjon-11-skjema (`SCHEMA_VERSION_11` i `tests/test_database.py`), pluss valideringstestar for grensene.
@@ -609,7 +609,7 @@ Kvar nøkkel skal kunne merkast med kva hardware-modell han er (t.d. `ColdCard Q
 ## Punkt 3 — datert CSV-namn — ferdig
 
 - Filnamnet er no `YYYY-MM-DD-vardkey-export.csv`, bygd av serveren ved kvar nedlasting, med datoen serveren har når han svarar.
-- **Felle:** `static/index.html` hadde `download="vardkey-export.csv"`. Eit `download`-attributt med verdi overkøyrer `Content-Disposition`-filnamnet frå serveren, så attributtet vart fjerna.
+- **Felle:** `static/index.html` hadde `download=\"vardkey-export.csv\"`. Eit `download`-attributt med verdi overkøyrer `Content-Disposition`-filnamnet frå serveren, så attributtet vart fjerna.
 - `tests/test_export_filename.py` held på mønsteret med datoen.
 - `docs/application.md` og `README.md` er oppdaterte der namnet står.
 
@@ -620,7 +620,7 @@ Kvar nøkkel skal kunne merkast med kva hardware-modell han er (t.d. `ColdCard Q
 - **StartOS-action** «Delete history» i `startos/actions/deleteHistory.ts`, med ein obligatorisk stadfestingsboks som seier at lagra historikk blir slett og ikkje kan hentast attende. Handlinga køyrer `maintenance.py` i ein `withTemp`-subcontainer og melder attende kor mange kontrollar som vart sletta.
 - **Testar.** `tests/test_maintenance.py` stadfestar at historikken, eksporten og varsla er tomme etterpå, og at nøklane og software-lista står att.
 
-## Punkt 1 — adminpassord — i gang
+## Punkt 1 — adminpassord — ferdig
 
 Appen skal vere passordbeskytta med ein adminbrukar og eit passord, sett ved første oppstart, og resettbart frå StartOS.
 
@@ -633,32 +633,26 @@ Appen skal vere passordbeskytta med ein adminbrukar og eit passord, sett ved fø
 - **§2 og §15 må avgrensast.** Dei forbyr i dag å spørje etter og lagre «passord». Det gjeld wallet-hemmelegheiter, og må formulerast om så det står klart at adminpassordet er den einaste akkrediteringa appen lagrar, og at han blir lagra som ein hash.
 - **Det som ikkje blir bygd.** Ikkje eit eige passordbyte inne i appen (StartOS-handlinga er staden), ikkje fleire brukarar, ikkje rollar, og ikkje låsing etter feila forsøk. Det er ei lokal einingsteneste for éin brukar.
 
-**Ferdig i denne runden:** `auth.py` (hash, sesjon og CSRF-token, alt i `app_settings`, inga ny tabell) og `tests/test_auth.py`.
-
-**Att i denne rekkjefølgja:**
-
-1. **`app.py`** — logg inn/ut-endepunkt, opprett-admin når ingen finst, gating av alle ruter utanom `GET /health` (`401` på API, omdirigering på sider), og CSRF-krav på kvar tilstandsendrande POST.
-2. **`static/login.html`** og **`static/login.js`** (nye), og **`static/session.js`** (nytt): eit lite skript som legg CSRF-headeren på kvar `fetch`, så dei eksisterande JS-filene slepp å bli rørde. `<script src="/session.js">` blir lagt i dei fem sidene.
-3. **`maintenance.py set-admin-password`** (nytt underkommando ved sida av `delete-history`) og **`startos/actions/setAdminPassword.ts`** med `Actions.of()` og i18n.
-4. **`tests/test_app.py`** — alle testane treng no ein sesjon, pluss nye testar for innlogging, `401`, omdirigering, open `/health` og CSRF.
+**Ferdig i denne runden:** `auth.py` (hash, sesjon og CSRF-token, alt i `app_settings`, inga ny tabell), `tests/test_auth.py`, `static/login.html`, `static/login.js` og `static/session.js`, endepunkta `GET /api/session`, `POST /api/admin`, `POST /api/login` og `POST /api/logout` med gatinga og CSRF-kravet i `app.py`, `maintenance.py set-admin-password` og `startos/actions/setAdminPassword.ts`. **Valet av stdin:** SDK-en dokumenterer ikkje nokon veg til å gje stdin til ein `withTemp`-kommando, og eit argument ville vore synleg i prosesslista, så passordet blir generert **inne i containeren** av `maintenance.py` og synt éin gong, som er pakkeguiden sitt eige passord-reset-mønster.
 
 ## Punkt 6 — installerbar PWA
 
 Brukarvedtak: ein **installerbar** PWA utan offline-data. Alle API-kall krev framleis serveren. Dette opphevar §1 sitt forbod mot PWA, men **ikkje** forbodet mot ein offline-database.
 
-- **`static/manifest.webmanifest`** med `name` og `short_name` = `VardKey`, `description` = `Bitcoin Multisig Health Monitor`, `start_url` = `/`, `display` = `standalone`, `theme_color` og `background_color` frå `styles.css`, og ikon i 192 og 512 px.
-- **`static/sw.js`** cachar **berre** det statiske skalet (HTML, `styles.css`, `*.js`). **Felle:** han må aldri cache `/api/*`, `/health` eller innloggingssida, elles viser appen gamle eller uautentiserte data.
-- **Registrering** i `static/app.js`, og `<link rel="manifest">` i alle fem HTML-filene.
-- **`STATIC_FILES` i `app.py`** må utvidast med manifestet, `sw.js` og ikonfila, elles svarar dei `404`. `sw.js` må liggje på rotstien, sidan omfanget til ein service worker er avgrensa av stien hans.
+- **`static/manifest.webmanifest`** med `name` og `short_name` = `VardKey`, `description` = `Bitcoin Multisig Health Monitor`, `start_url` = `/`, `display` = `standalone`, `theme_color` og `background_color` frå `styles.css`, og ikon i 192 og 512 px. **Ventar på kunstverket.**
+- **`static/sw.js`** cachar **berre** det statiske skalet (HTML, `styles.css`, `*.js`). **Felle:** han må aldri cache `/api/*`, `/health` eller innloggingssida, elles viser appen gamle eller uautentiserte data. **Ferdig**, og han gjer det med ei kviteliste over skal-stiane, så han nemner ingen av dei forbodne stiane i det heile.
+- **Registrering** i `static/app.js`, og `<link rel=\"manifest\">` i alle fem HTML-filene. Registreringa er ferdig; `<link>`-en ventar på manifestet.
+- **`STATIC_FILES` i `app.py`** må utvidast med manifestet, `sw.js` og ikonfila, elles svarar dei `404`. `sw.js` må liggje på rotstien, sidan omfanget til ein service worker er avgrensa av stien hans. **`/sw.js` er inne**; manifestet og ikonfila ventar.
 - **Felle:** ein service worker registrerer seg berre i ein trygg kontekst. På StartOS kjem nettlesaren på `https`, og lokalt på `http://localhost` går det bra, men på ein LAN-IP over rein HTTP gjer han det ikkje. Det skal stå i dokumentasjonen.
-- **Felle:** skalet kjem frå cachen medan API-kalla feilar når serveren er borte, så UI-et må vise ein tydeleg «offline»-tilstand i staden for tomme kort.
-- **Testar.** At manifestet og `sw.js` blir leverte, at filene står i `STATIC_FILES`, og at `sw.js` ikkje nemner `/api/`.
+- **Felle:** skalet kjem frå cachen medan API-kalla feilar når serveren er borte, så UI-et må vise ein tydeleg «offline»-tilstand i staden for tomme kort. **Ferdig** i `static/app.js`.
+- **Testar.** At manifestet og `sw.js` blir leverte, at filene står i `STATIC_FILES`, og at `sw.js` ikkje nemner `/api/`. `tests/test_pwa.py` dekkjer `sw.js` og registreringa; manifest-testane kjem med manifestet.
 
 ## Punkt 8 — nytt app-ikon
 
 - Brukaren leverer kunstverket. Kodaren legg inn `icon.svg` i repo-rota (maks 40 KiB, kravet i manifestet) og PWA-ikon i 192 og 512 px i `static/`.
 - Ikonet er **ikkje** ein del av versjonshevinga, og placeholder-ikonet som ligg der no blir ståande til kunstverket kjem.
 - Blir ikonet levert seint, kan dei andre punkta gå ferdige først; berre `manifest.webmanifest` og `STATIC_FILES` ventar på han.
+- **Status:** kunstverket ligg ikkje i repoet enno (`assets/` har berre `.gitkeep`), så punktet ventar. Inga erstatning er teikna.
 
 ## Kompatibilitetsreglar som gjeld alle punkta
 
