@@ -22,7 +22,7 @@
         <div>
           <p class="eyebrow">First-run setup</p>
           <h1>Key setup</h1>
-          <p class="intro">Choose how many keys your multisig setup has and how many of them are required to sign, then name each key, choose its type, and record its address path. The name is a label you can change later in the settings; the type and the address path are locked once the setup is saved.</p>
+          <p class="intro">Choose how many keys your multisig setup has and how many of them are required to sign, then name each key, choose its type, record its address path, and optionally record its model or service. The name and the model are labels you can change later in the settings; the type and the address path are locked once the setup is saved.</p>
         </div>
       </div>
 
@@ -50,6 +50,7 @@
           </div>
           <p class="field-help">The name you enter is the product name of that key everywhere: the check form, the alerts, the history, and the CSV export. Names must be unique.</p>
           <p class="field-help">A hardware key is a device you hold yourself. A cloud key is held by a provider; its own name is also offered as wallet software for the other keys.</p>
+          <p class="field-help">The model or service is optional documentation: the hardware model, such as ColdCard Q, or the service a cloud key comes from, such as Casa. It is only a label, so it is never locked.</p>
           <p class="field-help">The address path is the public derivation path the key is used at, for example <code>m/48'/0'/0'/2'</code>. It is the identity of the key, together with its type, and it holds no secret.</p>
           <div class="form-stack" id="key-fields">
             <fieldset class="check-card">
@@ -58,6 +59,7 @@
                 <label class="field"><span>Name</span><input name="key_1_name" type="text" maxlength="60" autocomplete="off" required></label>
                 <label class="field"><span>Type</span><select name="key_1_type" required><option value="">Select type</option><option value="hardware">Hardware</option><option value="cloud">Cloud</option></select></label>
               </div>
+              <label class="field"><span>Model or service</span><input name="key_1_model" type="text" maxlength="60" autocomplete="off"></label>
               <label class="field"><span>Address path</span><input name="key_1_address_path" type="text" maxlength="200" autocomplete="off" required></label>
             </fieldset>
             <fieldset class="check-card">
@@ -66,6 +68,7 @@
                 <label class="field"><span>Name</span><input name="key_2_name" type="text" maxlength="60" autocomplete="off" required></label>
                 <label class="field"><span>Type</span><select name="key_2_type" required><option value="">Select type</option><option value="hardware">Hardware</option><option value="cloud">Cloud</option></select></label>
               </div>
+              <label class="field"><span>Model or service</span><input name="key_2_model" type="text" maxlength="60" autocomplete="off"></label>
               <label class="field"><span>Address path</span><input name="key_2_address_path" type="text" maxlength="200" autocomplete="off" required></label>
             </fieldset>
             <fieldset class="check-card">
@@ -74,6 +77,7 @@
                 <label class="field"><span>Name</span><input name="key_3_name" type="text" maxlength="60" autocomplete="off" required></label>
                 <label class="field"><span>Type</span><select name="key_3_type" required><option value="">Select type</option><option value="hardware">Hardware</option><option value="cloud">Cloud</option></select></label>
               </div>
+              <label class="field"><span>Model or service</span><input name="key_3_model" type="text" maxlength="60" autocomplete="off"></label>
               <label class="field"><span>Address path</span><input name="key_3_address_path" type="text" maxlength="200" autocomplete="off" required></label>
             </fieldset>
           </div>
