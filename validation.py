@@ -54,7 +54,9 @@ already holds (section 28).
 Every free-text field is also checked against ``secret_guard`` before it is
 accepted, so a seed phrase or a private key that was pasted by accident is
 refused instead of stored. The check is local, and the message names the field
-and the shape that was recognised, never the value (sections 2 and 15).
+and the shape that was recognised, never the value (sections 2 and 15). It runs
+before the length limit of the field, so a secret is always answered with what it
+looks like rather than with "too long".
 
 The BIP327/SLIP39 results are gone, together with the rest of that function
 (section 24.2).
@@ -450,9 +452,9 @@ def _model(value):
     model = value.strip()
     if not model:
         return None
+    _reject_secret(model, "model")
     if len(model) > MAX_MODEL_LENGTH:
         raise ValidationError("model is too long")
-    _reject_secret(model, "model")
     return model
 
 
@@ -490,6 +492,12 @@ def _reject_secret(value, field):
     written to the database. ``rejection_message`` names the field and the shape
     that was recognised, never the value, so the secret does not travel into a
     response body or a log line.
+
+    It also runs **before** the length limit of the field it belongs to. The
+    other way round a seed phrase pasted into a short label field would be
+    answered with "too long", which invites the user to shorten the phrase
+    instead of removing it. The length limit stays as the outer bound and is
+    still applied to everything the guard lets through.
     """
     label = find_secret(value)
     if label is not None:
@@ -508,9 +516,9 @@ def _key_name(value, field="key name"):
     name = value.strip()
     if not name:
         raise ValidationError("key name must not be empty")
+    _reject_secret(name, field)
     if len(name) > MAX_KEY_NAME_LENGTH:
         raise ValidationError("key name is too long")
-    _reject_secret(name, field)
     return name
 
 
@@ -524,9 +532,9 @@ def _required_path(value, field):
     path = value.strip()
     if not path:
         raise ValidationError(f"{field} must not be empty")
+    _reject_secret(path, field)
     if len(path) > MAX_PATH_LENGTH:
         raise ValidationError(f"{field} is too long")
-    _reject_secret(path, field)
     return path
 
 
@@ -773,9 +781,9 @@ def _text(value, field, max_length):
         text = value.strip()
     else:
         raise ValidationError(f"{field} must be text")
+    _reject_secret(text, field)
     if len(text) > max_length:
         raise ValidationError(f"{field} is too long")
-    _reject_secret(text, field)
     return text or None
 
 
