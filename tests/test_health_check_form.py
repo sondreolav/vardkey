@@ -267,6 +267,10 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn('id="software-version"', html)
         self.assertIn("updateSoftwareVersionValue", script)
         self.assertNotIn('key.type === "hardware"\n    && previous', script)
+        # The help next to the field is written by the script, because its wording
+        # depends on the selected key (section 32.3).
+        self.assertIn('id="software-help"', html)
+        self.assertIn("softwareHelp.textContent", script)
 
     def test_form_marks_the_keys_that_an_open_alert_blocks(self):
         html = read_static("health-check.html")
@@ -276,7 +280,9 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn('id="blocked-keys-note"', html)
         self.assertIn('id="blocked-keys-list"', html)
         self.assertIn("Open the dashboard to close the alerts", html)
-        self.assertIn("A blocked key is marked in the list and cannot be selected", html)
+        # The note is the one place that explains the blocking, so the form does
+        # not repeat it in a help line of its own (section 32.3).
+        self.assertNotIn("A blocked key is marked in the list", html)
         self.assertIn("/api/alerts", script)
         self.assertIn("blockingAlerts", script)
         self.assertIn("blockedKeyIds", script)
@@ -370,6 +376,13 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("Open the settings", script)
         self.assertIn("walletSoftware.length > 1", script)
 
+    def test_the_settings_link_has_one_wording(self):
+        # The dashboard, the locked setup page and the top bar all point at the
+        # same page, so the two call-to-action links use the same words
+        # (section 32.3).
+        self.assertIn('link.textContent = "Open the settings"', read_static("app.js"))
+        self.assertIn('link.textContent = "Open the settings"', read_static("setup.js"))
+
     def test_dashboard_sends_to_the_key_setup_when_it_is_missing(self):
         script = read_static("app.js")
         self.assertIn("redirectWhenSetupIsMissing", script)
@@ -409,8 +422,10 @@ class HealthCheckFormTests(unittest.TestCase):
         eyebrows = re.findall(r'<p class="eyebrow">([^<]+)</p>', html)
         # The key names, the address paths and the type are changed in the
         # rotation section, so the page has no separate keys section
-        # (section 28).
-        self.assertEqual(eyebrows, ["Settings", "01 / Wallet software", "02 / Key rotation"])
+        # (section 28). The page heading is the h1 on its own, without an eyebrow
+        # that repeats it (section 32.3).
+        self.assertEqual(eyebrows, ["01 / Wallet software", "02 / Key rotation"])
+        self.assertIn("<h1>Settings</h1>", html)
         self.assertNotIn("01 / Keys", html)
         self.assertNotIn('id="keys-list"', html)
         self.assertIn('id="wallet-software-list"', html)
@@ -435,8 +450,16 @@ class HealthCheckFormTests(unittest.TestCase):
         # The unchanged-path confirmation is gone (section 26.3).
         self.assertNotIn('id="rotation-path-unchanged"', html)
         self.assertNotIn("address path of each selected key is unchanged", html)
-        # Removing an entry closes the alerts that software raised (section 26.7).
+        # Removing an entry closes the alerts that software raised (section 26.7),
+        # and the two removal helps are one paragraph (section 32.3).
         self.assertIn("Removing an entry also closes the alerts that software raised", html)
+        self.assertNotIn("Removing an entry never changes a saved check</p>", html)
+        self.assertIn(
+            "Removing an entry never changes a saved check: the software selected "
+            "in an earlier check stays as it was recorded. Removing an entry also "
+            "closes the alerts that software raised",
+            html,
+        )
 
     def test_the_settings_script_stores_the_list_whole_and_saves_the_keys(self):
         script = read_static("settings.js")
