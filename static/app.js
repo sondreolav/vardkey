@@ -209,7 +209,7 @@ function renderSetupShape(setup) {
     return;
   }
   setupTitle.textContent = `${setup.threshold}-of-${setup.key_count}`;
-  setupDescription.textContent = `${setup.threshold} of ${setup.key_count} keys are required to sign. This app records check results only — never keys or seed phrases.`;
+  setupDescription.textContent = `${setup.threshold} of ${setup.key_count} keys are required to sign.`;
 }
 
 function renderSummary(status) {
