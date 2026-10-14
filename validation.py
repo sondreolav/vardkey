@@ -51,6 +51,11 @@ replaces the key with a new one, so the replacement may carry the other type, an
 a key that becomes a cloud key may not take a name the wallet software list
 already holds (section 28).
 
+Every free-text field is also checked against ``secret_guard`` before it is
+accepted, so a seed phrase or a private key that was pasted by accident is
+refused instead of stored. The check is local, and the message names the field
+and the shape that was recognised, never the value (sections 2 and 15).
+
 The BIP327/SLIP39 results are gone, together with the rest of that function
 (section 24.2).
 """
@@ -59,6 +64,7 @@ from datetime import date
 
 from alerts import ALERT_CODES, CLOSING_ACTIONS
 from database import KEY_COUNT, MAX_KEY_COUNT, MIN_KEY_COUNT, MIN_THRESHOLD
+from secret_guard import find_secret, rejection_message
 
 # Software compatibility requires an active choice, so "not assessed" is not
 # submittable for a new registration (section 23.1).
@@ -102,6 +108,16 @@ class WalletSoftwareNameInUse(ValidationError):
     list holds the other choices, so the same name cannot be both. The rotation
     answers this with ``409``, like a locked or duplicate address path, and the
     user has to remove the list entry first (sections 25.4 and 28).
+    """
+
+
+class SecretDetected(ValidationError):
+    """Raised when a free-text field looks like a wallet secret.
+
+    The app never asks for a seed phrase or a private key and never stores one
+    (sections 2 and 15). The value is refused before anything is written, and the
+    message names the field and the shape that was recognised, never the value
+    itself, so the secret does not travel into a response or a log.
     """
 
 
@@ -298,7 +314,7 @@ def validate_wallet_software(payload, keys):
     names = []
     seen = set()
     for entry in entries:
-        name = _key_name(entry)
+        name = _key_name(entry, "wallet software name")
         folded = name.casefold()
         if folded in seen:
             raise ValidationError("wallet software names must be unique")
@@ -436,6 +452,7 @@ def _model(value):
         return None
     if len(model) > MAX_MODEL_LENGTH:
         raise ValidationError("model is too long")
+    _reject_secret(model, "model")
     return model
 
 
@@ -466,8 +483,26 @@ def _rotation_type(value, key, name, software_names):
     return value
 
 
-def _key_name(value):
-    """Return a configured key name, which must be non-empty text."""
+def _reject_secret(value, field):
+    """Refuse text that looks like a wallet secret (sections 2 and 15).
+
+    The caller runs this before it stores anything, so a refused value is never
+    written to the database. ``rejection_message`` names the field and the shape
+    that was recognised, never the value, so the secret does not travel into a
+    response body or a log line.
+    """
+    label = find_secret(value)
+    if label is not None:
+        raise SecretDetected(rejection_message(field, label))
+
+
+def _key_name(value, field="key name"):
+    """Return a configured key name, which must be non-empty text.
+
+    ``field`` only names the field in the refusal of a value that looks like a
+    wallet secret, because this helper is shared by the key name and the wallet
+    software name; the other messages keep their existing wording.
+    """
     if not isinstance(value, str):
         raise ValidationError("key name must be text")
     name = value.strip()
@@ -475,6 +510,7 @@ def _key_name(value):
         raise ValidationError("key name must not be empty")
     if len(name) > MAX_KEY_NAME_LENGTH:
         raise ValidationError("key name is too long")
+    _reject_secret(name, field)
     return name
 
 
@@ -490,6 +526,7 @@ def _required_path(value, field):
         raise ValidationError(f"{field} must not be empty")
     if len(path) > MAX_PATH_LENGTH:
         raise ValidationError(f"{field} is too long")
+    _reject_secret(path, field)
     return path
 
 
@@ -738,6 +775,7 @@ def _text(value, field, max_length):
         raise ValidationError(f"{field} must be text")
     if len(text) > max_length:
         raise ValidationError(f"{field} is too long")
+    _reject_secret(text, field)
     return text or None
 
 
