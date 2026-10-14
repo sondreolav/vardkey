@@ -17,10 +17,10 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 
 - **§1–§18 er kravspecen og gjeld som han står.** Han skildrar appen slik han er no, ikkje slik han vart bygd.
 - **§19–§31 er historikk.** Alle rundane der er ferdige og verifiserte, og står no som éi linje kvar. Reglane deira ligg i §1–§18 og i `ai-note.md`, som er handoveren.
-- **§32 er runden som går no.** §32.4 (bug-rapporten) er utført i rundane 32-A og 32-B, med unntak av BR-003, som berre brukaren kan lukke. Resten av §32 står att.
+- **§32 er runden som går no.** §32.3 (varsel- og sidetekstane) og §32.4 (bug-rapporten) er utførte, med unntak av BR-003, som berre brukaren kan lukke. Resten av §32 står att.
 - **Reglane under «Reglar som gjeld alle rundar» er bindande** for kvar framtidig endring.
 - Eit punkt utan avkryssingsboks er implementert og verifisert. `[ ]` markerer det som står att.
-- **Status:** alt til og med §31 er implementert og verifisert, og §32.4 er utført i rundane 32-A og 32-B (sjå §32), med unntak av BR-003, som berre brukaren kan lukke. Skjema **versjon 12**, testsuiten grøn (**475 testar**), og StartOS-pakka er bygd, sideloda og køyrd på ein eigen StartOS 0.4.0-boks. Pakkeversjonen står på `0.1.0:0` og blir ikkje heva før §32 er ferdig og brukaren seier ifrå.
+- **Status:** alt til og med §31 er implementert og verifisert, og §32.3 og §32.4 er utførte (sjå §32), med unntak av BR-003, som berre brukaren kan lukke. Skjema **versjon 12**, testsuiten grøn (**477 testar**), og StartOS-pakka er bygd, sideloda og køyrd på ein eigen StartOS 0.4.0-boks. Pakkeversjonen står på `0.1.0:0` og blir ikkje heva før §32 er ferdig og brukaren seier ifrå.
 
 ---
 
@@ -210,6 +210,13 @@ Alle lagra kontrollar blir lesne, ikkje berre den nyaste. Like varsel (same `cod
 | `security_compromised` | critical | programvare | KI-status `COMPROMISED` | Fjerning av programvara |
 | `contact_info_unconfirmed` | info | nøkkel | Kontaktstadfesting `Needs external update` | Lukking, etter at kontaktinformasjonen er oppdatert eksternt |
 
+**Forma på meldingane.** Kvar rad over har ein `message` i `alerts.py`, og alle elleve er skrivne om til same form (§32.3): kva som er gale, kva nøkkel eller programvare det gjeld, og kva som lukkar varselet. Meldingane er engelske, korte og konkrete, og dei seier ikkje at appen sjølv har gjort noko.
+
+- **Meldinga gjentek ikkje namnet i kjelda.** `source` er anten `Key N: <namn>` eller namnet på programvara, og han blir vist rett over meldinga i varsellista, i parentes på nøkkelkortet og framføre meldinga i sperre-noten i skjemaet. Difor seier meldinga «this key» og ikkje nøkkelnamnet. Det einaste unntaket er nøkkelforma av `software_incompatible`: der er kjelda nøkkelen, medan meldinga namngjev programvara, sidan ho ikkje står nokon annan stad i den forma.
+- **Dei to formene av ein KI-kode har kvar si melding.** `security_vulnerable` og `security_compromised` blir lukka av kvar si handling alt etter om kjelda er nøkkelen eller programvara, så kvar form seier kva som lukkar henne.
+- **Handlinga står òg i knappen og i sperre-noten.** Det er medvite: knappen og noten seier kva brukaren kan trykkje på, medan meldinga skal stå åleine når ho blir lesen utan knappane.
+- **Meldinga viser ikkje den interne koden.** `code` er for API-et og for `alert_acknowledgements`, ikkje for brukaren.
+
 - Kvar varselkode har eit fast sett av handlingar: `rotate`, `replace_hardware`, `remove_software`, `ignore`, `contact_updated`. Ei handling som ikkje høyrer til varselet, blir avvist.
 - `rotate` blir utført i innstillingane, sidan han krev ein ny adressesti. Dei andre handlingane blir utførte der varselet står, kvar med sin eigen knappetekst og sitt eige stadfestingssteg.
 - Kjelda til eit KI-varsel er leverandøren. Er han nøkkelen sitt eige konfigurerte namn, er nøkkelen kjelda og ei rotering lukkar varselet. Elles er leverandøren programvara nøkkelen køyrer med, og varselet blir lukka ved å fjerne ho frå innstillingane.
@@ -388,7 +395,7 @@ Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og 
 - Test at ein CSV-celle som byrjar med `=`, `+`, `-`, `@` eller eit kontrollteikn, blir eksportert som tekst, og at vanleg innhald er uendra.
 - Test oppsett av eit annet multisig-oppsett enn 2-av-3, modell/teneste per nøkkel, det daterte eksportnamnet, sletting av all data, og installasjon av PWA-en.
 
-**Merk:** dei manuelle nettlesartestane er køyrde og verifiserte fram til §31. §32 legg til nye manuelle punkt.
+**Merk:** dei manuelle nettlesartestane er køyrde og verifiserte fram til §31. §32 legg til nye manuelle punkt: ikonet (32.1), UI-pussen (32.2), og ein kikk på varsellista, nøkkelkortet og sperre-noten i skjemaet etter tekstendringane i 32.3.
 
 ## StartOS-test
 
@@ -481,9 +488,9 @@ Alle rundane under er implementerte og verifiserte. Reglane deira ligg i §1–�
 
 # 32. Det som står att
 
-Seks punkt, alle **før** pakkeversjonen blir heva frå `0.1.0:0` til `1.0.0:0`. §32.4 er utført i rundane 32-A og 32-B; resten står att, og eit punkt skal ikkje startast utan at brukaren ber om det.
+Seks punkt, alle **før** pakkeversjonen blir heva frå `0.1.0:0` til `1.0.0:0`. §32.3 og §32.4 er utførte; resten står att, og eit punkt skal ikkje startast utan at brukaren ber om det.
 
-**Status i §32:** 32.4 er utført i rundane 32-A og 32-B. Der står berre **BR-003** att, og han er ei manuell ende-til-ende-verifisering som berre brukaren kan gjere. 32.1, 32.2, 32.3, 32.6 og 32.5 står framleis att, og ingen av dei er starta.
+**Status i §32:** 32.3 er utført, og 32.4 er utført i rundane 32-A og 32-B. I 32.4 står berre **BR-003** att, og han er ei manuell ende-til-ende-verifisering som berre brukaren kan gjere. 32.1, 32.2, 32.6 og 32.5 står framleis att. 32.3 tok òg dei tekststadene i dei fem sidene som var duplikat eller overflødige, sidan dei høyrer til tekstgjennomgangen; resten av 32.2 — konsistens i knappar og hjelpetekstar, tom-tilstandar, ingenting klypt på ein smal telefon, og at åtvaringa ved felta ser lik ut overalt — står att.
 
 ## 32.1 Ikonet
 
@@ -500,12 +507,32 @@ Ein gjennomgang av dei fem sidene for konsistens og ryddigheit, utan nye funksjo
 - Alle felt, val og feilmeldingar ser like ut der dei gjer same nytte, og feilmeldingane seier kva brukaren skal gjere.
 - Den tydelege offline-tilstanden frå PWA-en held fram å vere tydeleg, også etter inn- og utlogging.
 - Den korte åtvaringa ved kvart fritekstfelt, som runde 32-B la inn, skal sjå lik ut på alle sidene. Brukaren har stadfesta at ho er lesleg på ein telefon, så det som står att der, er berre at ho ser lik ut overalt.
+- **Merk:** duplikat-overskriftene, dei overflødige hjelpetekstane og den ulike ordlyden på same lenkje vart tekne i 32.3, sidan dei høyrer til tekstgjennomgangen. Resten av punktet står att.
 
 ## 32.3 Gjennomgang av meldingstekstane i varsla
 
-- Kvar av dei elleve varselradene i §7 har ein `message` i `alerts.py`. Gå gjennom alle og gjer dei like i form: kva som er gale, kva nøkkel eller programvare det gjeld, og kva som lukkar varselet.
-- Meldingane er engelske, korte og konkrete, og seier ikkje at appen sjølv har gjort noko.
-- Oppdater testane som held på meldingstekstane, og hald varselkodane og handlingane uendra.
+**Utført.** Kvar av dei elleve varselradene i §7 har ein `message` i `alerts.py`, og alle er skrivne om til same form: kva som er gale, kva nøkkel eller programvare det gjeld, og kva som lukkar varselet. `code`, alvor, kjelde, handlingar og `software`-feltet er uendra. Forma er no presisert i §7.
+
+- **Nye private konstantar.** `_HARDWARE_FAILURE_MESSAGE` og `_SEED_BACKUP_MESSAGE` er trekte ut av `_key_alerts`, der dei låg inline. `_SOFTWARE_INCOMPATIBLE_KEY_MESSAGE` er no ein mal med `{software}`, sidan kjelda til den forma er nøkkelen og ikkje programvara. `_VULNERABLE_MESSAGE` og `_COMPROMISED_MESSAGE` er delte i `_VULNERABLE_KEY_MESSAGE` / `_VULNERABLE_SOFTWARE_MESSAGE` og `_COMPROMISED_KEY_MESSAGE` / `_COMPROMISED_SOFTWARE_MESSAGE`, sidan dei to formene blir lukka av kvar si handling.
+- **«Replace the key» er borte** der den einaste handlinga varselet tilbyr er `rotate`. Meldingane seier no kva handling som lukkar dei, og dei gjentek ikkje at nøkkelen ikkje kan kontrollerast — det står alt i sperre-noten og på nøkkelkortet.
+- **«PROTOCOL 3: key loss» og «follow the key loss procedure» er tekne bort.** Ingen av dei er definerte i appen eller i dokumenta, så dei peika på eit omgrep brukaren ikkje har.
+- **Kontaktvarselet namngjev ikkje lenger nøkkelen i meldinga.** Kjelda er `Key N: <namn>`, og ho blir vist rett over meldinga i varsellista og framføre henne i sperre-noten i skjemaet, så meldinga seier «this key».
+- **Den nøkkelforma av `software_incompatible` namngjev programvara**, fordi kjelda der er nøkkelen.
+- **Dobbeltføringa som står att:** handlinga blir nemnd både i meldinga, i knappen i varsellista og i «Close it with: …» i sperre-noten. Det er medvite — knappen og noten seier kva brukaren kan trykkje på, medan meldinga skal stå åleine når ho blir lesen utan knappane.
+- **Testar:** `tests/test_alerts.py` held tekstane. Seks testar er oppdaterte eller omdøypte (`test_a_hardware_failure_points_at_the_replacement`, `test_a_damaged_seed_backup_asks_for_a_rotation`, `test_a_mismatched_address_path_asks_for_a_replacement`, `test_a_compromised_security_status_asks_for_a_rotation`, `test_contact_details_that_need_an_external_update_are_reported`, `test_a_contact_alert_for_another_key_carries_that_key`), og éin ny test pinnar at nøkkelforma og programvareforma av same kode har kvar si melding. `tests/test_app.py` held ikkje på nokon meldingstekst.
+
+**Dei andre tekststadene i appen (del 2 av same runde).** Gjennomgangen fann desse overflødige eller dupliserte tekstane; dei er tekne bort eller skrivne om:
+
+- `static/index.html`: eyebrow-en «Multisig setup» dupliserte h2-en i same kort.
+- `static/settings.html`: eyebrow-en «Settings» dupliserte h1-en, og dei to hjelpetekstane som begge byrja med «Removing an entry…» er slått saman til eitt avsnitt.
+- `static/login.html`: h2-en «Sign in» dupliserte både h1-en og eyebrow-en «01 / Sign in»; `aria-labelledby` peikar no på eyebrow-en.
+- `static/health-check.html`: hjelpelinja «A blocked key is marked in the list and cannot be selected.» dupliserte sperre-noten rett over, og den statiske `#software-help`-teksten vart overstyrt av skriptet før brukaren såg han. Begge er borte; elementet står att og blir fylla av `lockSoftwareFields()`.
+- `static/setup.js` og `static/app.js`: lenkja til innstillingane heiter no «Open the settings» i begge. Topbaren held «Settings» som navigasjonslenkje.
+- `static/app.js`: `setupDescription` gjentek ikkje lenger «This app records check results only — never keys or seed phrases.»; same bodskap står i introen og i side-notisen.
+- `app.py`: sperre-svaret (`409`) seier ikkje lenger den interne koden. Det er no «This key has an open alert. Close the alert before recording a new check.»
+- `validation.py`: «a configured cloud key already provides this wallet software name» er blitt «this name already comes from a configured cloud key».
+- **Uendra etter kontroll:** `ACTION_LABELS` / `ACTION_CONFIRMATIONS` i dei tre kopiane (`static/app.js`, `static/health-check.js`, `static/history.js`) er identiske, og blir ikkje slått saman til ei ny delt fil — ho måtte inn i `STATIC_FILES` i `app.py` og i allow-lista i `static/sw.js`. `UNAVAILABLE_MESSAGE` i `health-check.js` står òg, sjølv om seksjonen han blir rendra i, er skjult for ein nøkkel som ikkje kan kontrollerast.
+- **Testar:** `tests/test_health_check_form.py` held dei endra sidetekstane. `test_the_settings_page_has_the_two_sections` ventar no eyebrow-lista `["01 / Wallet software", "02 / Key rotation"]` og `<h1>Settings</h1>`; `test_form_marks_the_keys_that_an_open_alert_blocks` ventar at hjelpelinja er borte; og `test_the_settings_link_has_one_wording` held dei to lenkjetekstane like. Testane i `tests/test_app.py` held berre statuskoden, ikkje 409-teksten, og held difor uendra.
 
 ## 32.4 Bug-rapporten
 
@@ -548,9 +575,9 @@ Ein gjennomgang av dei fem sidene for konsistens og ryddigheit, utan nye funksjo
 - **Fritekst blir sjekka lokalt før lagring, og før lengdegrensa til feltet.** Eit felt som ser ut som ei wallet-løyndom, blir avvist med `400` og med kva det ser ut som, ingenting blir lagra, og meldinga gjentek aldri verdien. Sjekken er lokal og gjer ingen nettverkskall.
 - **Kvar fritekstfelt har ei åtvaring ved feltet**, i tillegg til sidenotisen, og stilen er `.secret-warning`.
 
-**Testar lagde til:** ti i runde 32-A (fem i `tests/test_export.py`, ein i `tests/test_pwa.py` og fire i `tests/test_validation.py`) og 43 i runde 32-B, alle i den nye `tests/test_secret_guard.py` (5 ordlistetestar, 10 gjenkjenningstestar, 17 feltnivåtestar, 6 åtvaringstestar og 5 API-testar). Suiten gjekk frå 422 til **475 testar**, stadfesta grøn av brukaren.
+**Testar lagde til:** ti i runde 32-A (fem i `tests/test_export.py`, ein i `tests/test_pwa.py` og fire i `tests/test_validation.py`) og 43 i runde 32-B, alle i den nye `tests/test_secret_guard.py` (5 ordlistetestar, 10 gjenkjenningstestar, 17 feltnivåtestar, 6 åtvaringstestar og 5 API-testar). Runde 32.3 la til éin test i `tests/test_alerts.py` og éin i `tests/test_health_check_form.py`. Suiten gjekk frå 422 til **477 testar**.
 
-**Det som står att i 32.4:** berre **BR-003**, og han må lesast rett. Rapporten vart skriven mot eit anna filsett og siterer ein §31-tekst om at den manuelle gjennomgangen står att, men den teksten finst ikkje lenger, og §16 og §17 seier at dei manuelle nettlesartestane og bokstestane vart køyrde og verifiserte fram til §31. Det som faktisk står att, er difor dei **nye** manuelle punkta §32 legg til — ikonet (32.1), UI-pussen (32.2), varseltekstane (32.3), at åtvaringa ved felta ser lik ut på alle sider (32.2), og heile bokstesten på nytt etter endringane (32.5) — og ei stadfesting frå brukaren på at dei er køyrde. Alt anna i rapporten er avgjort: BR-001 er ein falsk positiv, BR-004 fell bort, BR-005 er verifisert utan åtferdsendring, og BR-002, BR-006, BR-007 og BR-008 er retta med regresjonstestar. To manuelle punkt under 32-B er alt stadfesta av brukaren: at eit seed phrase blir stoppa i namnefeltet og i adressestifeltet, og at åtvaringa ved felta er lesleg på ein telefon.
+**Det som står att i 32.4:** berre **BR-003**, og han må lesast rett. Rapporten vart skriven mot eit anna filsett og siterer ein §31-tekst om at den manuelle gjennomgangen står att, men den teksten finst ikkje lenger, og §16 og §17 seier at dei manuelle nettlesartestane og bokstestane vart køyrde og verifiserte fram til §31. Det som faktisk står att, er difor dei **nye** manuelle punkta §32 legg til — ikonet (32.1), UI-pussen (32.2), ein kikk på varsellista, nøkkelkortet og sperre-noten etter tekstendringane (32.3), at åtvaringa ved felta ser lik ut på alle sider (32.2), og heile bokstesten på nytt etter endringane (32.5) — og ei stadfesting frå brukaren på at dei er køyrde. Alt anna i rapporten er avgjort: BR-001 er ein falsk positiv, BR-004 fell bort, BR-005 er verifisert utan åtferdsendring, og BR-002, BR-006, BR-007 og BR-008 er retta med regresjonstestar. To manuelle punkt under 32-B er alt stadfesta av brukaren: at eit seed phrase blir stoppa i namnefeltet og i adressestifeltet, og at åtvaringa ved felta er lesleg på ein telefon.
 
 ## 32.5 Hevinga av pakkeversjonen
 
