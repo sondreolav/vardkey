@@ -15,7 +15,9 @@ The key setup is configured once and stored in the database (section 23.2). The
 configured name is the product label of a key, and the key's type decides which
 checks apply, never the key number (section 23.3). The address path is part of
 the key's identity (section 25.1), and no two keys may share one: the comparison
-ignores surrounding whitespace and letter case (section 26.2).
+ignores surrounding whitespace, letter case, and the spelling of the hardened
+marker, so ``m/48h/0h/0h/2h`` and ``m/48'/0'/0'/2'`` are the same path
+(section 26.2).
 
 The number of key slots and the multisig threshold are configurable, so the setup
 carries ``threshold`` and ``key_count`` and the key numbers are bounded by that
@@ -72,6 +74,12 @@ MAX_PATH_LENGTH = 200
 MAX_NOTES_LENGTH = 2000
 MAX_COMMENTS_LENGTH = 4000
 MAX_SOURCE_LENGTH = 200
+# The hardened marker of a BIP32 path is written with an apostrophe or with
+# ``h``, and the two name the same derivation path, so the uniqueness comparison
+# folds them together. ``casefold`` has already lowered an ``H`` by then, so only
+# ``h`` needs mapping. The stored value is never rewritten: the path is free text
+# and an existing row keeps the spelling the user recorded (section 26.2).
+HARDENED_MARKER_FOLD = str.maketrans({"h": "'"})
 
 
 class ValidationError(ValueError):
@@ -130,7 +138,8 @@ def validate_key_setup(payload):
     name and the model (sections 23.2, 25.1 and 31.5). The names must be
     non-empty and unique, compared without regard to case. The address paths must
     be unique as well, so no two keys share one, because the path is part of the
-    identity of a key (section 26.2). The number of keys has to match the setup's
+    identity of a key, and two spellings of the same derivation path count as the
+    same one (section 26.2). The number of keys has to match the setup's
     ``key_count``, which defaults to the 2-of-3 shape when it is left out
     (section 31 point 7).
     """
@@ -168,7 +177,7 @@ def validate_key_setup(payload):
             raise ValidationError("key type must be hardware or cloud")
 
         address_path = _required_path(entry.get("address_path"), "address_path")
-        folded = address_path.casefold()
+        folded = _path_key(address_path)
         if folded in paths:
             raise ValidationError(
                 f"the address path is already used by key {paths[folded][0]}: "
@@ -342,7 +351,7 @@ def validate_rotation(payload, keys, key_id, software_names=()):
     key_type = _rotation_type(payload.get("type"), key, name or key["name"], software_names)
 
     address_path = _required_path(payload.get("address_path"), "address_path")
-    if address_path.casefold() == (key.get("address_path") or "").strip().casefold():
+    if _path_key(address_path) == _path_key(key.get("address_path")):
         raise ValidationError(
             "the address path must change when the key is rotated"
         )
@@ -484,18 +493,30 @@ def _required_path(value, field):
     return path
 
 
+def _path_key(path):
+    """Return the canonical form of an address path, used for comparisons only.
+
+    The comparison ignores surrounding whitespace, letter case, and the spelling
+    of the hardened marker, because ``m/48h/0h/0h/2h`` and ``m/48'/0'/0'/2'`` are
+    the same derivation path. Folding only the comparison key keeps the stored
+    value exactly as the user recorded it (section 26.2).
+    """
+    return (path or "").strip().casefold().translate(HARDENED_MARKER_FOLD)
+
+
 def _ensure_unique_path(path, keys, key_id):
     """Reject an address path that another key already has (section 26.2).
 
-    The comparison ignores surrounding whitespace and letter case, so two paths
-    that differ only in case count as the same one. The message names the key
-    that already has the path.
+    The comparison uses the canonical form ``_path_key`` gives, so two paths that
+    differ only in case, in surrounding whitespace, or in the spelling of the
+    hardened marker count as the same one. The message names the key that already
+    has the path.
     """
-    folded = path.casefold()
+    folded = _path_key(path)
     for other in keys:
         if other["id"] == key_id:
             continue
-        if (other.get("address_path") or "").strip().casefold() == folded:
+        if _path_key(other.get("address_path")) == folded:
             raise DuplicateAddressPath(
                 f"the address path is already used by key {other['key_number']}: "
                 f"{other['name']}"
@@ -523,16 +544,15 @@ def _availability(value):
 def _address_path(value, key, available):
     """Return the recorded address path and whether it matches the key.
 
-    The recorded path is compared with the path stored for the key, after
-    stripping both: equal gives ``OK``, different gives ``PROBLEM``
-    (section 25.1). A key that was not available records no path at all, so no
-    mismatch is reported for it.
+    The recorded path is compared with the path stored for the key in the
+    canonical form ``_path_key`` gives: equal gives ``OK``, different gives
+    ``PROBLEM`` (sections 25.1 and 26.2). A key that was not available records no
+    path at all, so no mismatch is reported for it.
     """
     if available == 0:
         return None, False
     submitted = _text(value, "address_path", MAX_PATH_LENGTH)
-    stored = (key.get("address_path") or "").strip()
-    return submitted, (submitted or "") != stored
+    return submitted, _path_key(submitted) != _path_key(key.get("address_path"))
 
 
 def _wallet_software_choices(keys, software_names):
