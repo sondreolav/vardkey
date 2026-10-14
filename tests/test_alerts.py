@@ -152,7 +152,7 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(self.codes(record), ["key_unavailable"])
         self.assertEqual(alerts[0]["severity"], "critical")
         self.assertEqual(alerts[0]["source"], "Key 2: Blockstream Jade")
-        self.assertIn("Replace the key", alerts[0]["message"])
+        self.assertIn("Rotate the key to close this alert", alerts[0]["message"])
 
     def test_an_unavailable_key_hides_the_other_results(self):
         record = clean_record()
