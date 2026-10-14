@@ -19,6 +19,19 @@ let settings = { keys: [], wallet_software: [] };
 // The two types a key can have (section 23.3).
 const typeOptions = [["hardware", "Hardware"], ["cloud", "Cloud"]];
 
+// The reminder that belongs with every free-text field (sections 2 and 15).
+const SECRET_WARNING = "Never paste a seed phrase or a private key here.";
+
+function secretWarning() {
+  // A short reminder that sits with a free-text field. The server refuses a value
+  // that looks like a wallet secret and stores nothing, so the field says so
+  // before the user types (sections 2 and 15).
+  const warning = document.createElement("span");
+  warning.className = "field-help secret-warning";
+  warning.textContent = SECRET_WARNING;
+  return warning;
+}
+
 function emptyState(text) {
   const message = document.createElement("p");
   message.className = "empty-state";
@@ -93,7 +106,9 @@ function softwareRow(name) {
 
   const input = makeTextInput(name);
   input.className = "software-name";
-  row.append(makeField("Wallet software name", "wallet_software_name", input));
+  const field = makeField("Wallet software name", "wallet_software_name", input);
+  field.append(secretWarning());
+  row.append(field);
 
   const remove = document.createElement("button");
   remove.type = "button";
@@ -243,6 +258,7 @@ function rotationCard(key) {
   const pathInput = makeTextInput(key.has_checks ? "" : key.address_path || "", 200);
   pathInput.className = "rotation-path";
   card.append(makeField("Address path", `rotation_path_${key.id}`, pathInput));
+  card.append(secretWarning());
 
   const help = document.createElement("p");
   help.className = "field-help";
