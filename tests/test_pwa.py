@@ -77,6 +77,18 @@ class ServiceWorkerTests(unittest.TestCase):
         ):
             self.assertIn(f'"{path}"', body)
 
+    def test_the_service_worker_only_stores_a_successful_same_origin_answer(self):
+        # A page fetched without a session answers 302 -> /login, and fetch
+        # follows it, so the login page would replace the cached shell unless the
+        # stored answer is checked first. The worker stores a response only when
+        # it is successful, same-origin and not redirected (section 31 point 6).
+        body = self.read_static("sw.js")
+
+        self.assertIn("isCacheable", body)
+        self.assertIn("response.ok", body)
+        self.assertIn("response.type", body)
+        self.assertIn("!response.redirected", body)
+
     def test_the_dashboard_registers_the_service_worker(self):
         body = self.read_static("app.js")
 
