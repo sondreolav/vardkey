@@ -8,7 +8,7 @@ Short working handover for the next model. Keep it short.
 
 ## Status
 
-- **Done and verified:** sections 1–31 and section 18 steps 1–11. **Section 32.4, the bug report, is also done** — in round 32-A (BR-001, BR-004, BR-005, BR-006, BR-007, BR-008) and round 32-B (BR-002). Schema version 12. **474 green tests.** The StartOS package is built, sideloaded and running on a StartOS 0.4.0 box; the package version is still `0.1.0:0`.
+- **Done and verified:** sections 1–31 and section 18 steps 1–11. **Section 32.4, the bug report, is also done** — in round 32-A (BR-001, BR-004, BR-005, BR-006, BR-007, BR-008) and round 32-B (BR-002). Schema version 12. **475 green tests.** The StartOS package is built, sideloaded and running on a StartOS 0.4.0 box; the package version is still `0.1.0:0`.
 - **What is left of section 32:** 32.1 the real icon, 32.2 the UI polish pass, 32.3 the alert message texts, 32-E the documentation drift, and 32.5 the raise to `1.0.0:0` together with section 18 step 12. Plus one item inside 32.4 that only the user can close: **BR-003**, the manual end-to-end pass over §16 and §31.
 - **A round stops when it is done.** Do not start the next item unless the user asks.
 - **Verified how:** the automated suite, the user's manual browser testing, and the install and test round on a StartOS 0.4.0 box. The user runs the suite; the agent has no shell.
@@ -18,7 +18,7 @@ Short working handover for the next model. Keep it short.
 ## Section 32 — what is left
 
 - **32.1 The icon.** The user supplies the artwork. `icon.svg` at the root is capped at 40 KiB; the PWA needs 192 and 512 px PNGs in `static/`; both go into the manifest's `icons` entry and into `STATIC_FILES` in `app.py`. The placeholder the manifest points at today carries `sizes: "any"`, which is what the manifest test asserts.
-- **32.2 UI polish.** The five pages for consistency: the same wording for the same action, a clear empty state on every list, nothing clipped or overflowing on a narrow phone, and the offline state still clear after signing in and out. The short reminder that round 32-B put next to every free-text field belongs to this pass too — it should look the same on every page and must not be clipped on a narrow phone.
+- **32.2 UI polish.** The five pages for consistency: the same wording for the same action, a clear empty state on every list, nothing clipped or overflowing on a narrow phone, and the offline state still clear after signing in and out. The short reminder that round 32-B put next to every free-text field belongs to this pass too — the user has confirmed it reads well on a phone, so what is left there is only that it looks the same on every page.
 - **32.3 Alert message texts.** All eleven alert rows in `TODO.md` §7 have a `message` in `alerts.py`. Make them alike in shape: what is wrong, which key or software it is about, and what closes it. Update the tests that hold the texts; keep the codes and the actions unchanged.
 - **32.4 The bug report — done.** See the section below for what each finding turned out to be.
 - **32.5 The version raise.** `0.1.0:0` → `1.0.0:0`, once the items above are done and the user says so. No schema change, no new endpoint, no new feature. `startos/versions/` stays empty, because the app migrates its own schema.
@@ -28,8 +28,8 @@ Short working handover for the next model. Keep it short.
 `BUG-RAPPORT-AI-AGENT.md` carries the full verdicts at the end. In short:
 
 - **BR-001 — false positive.** The source files are in `main` and tracked by Git. The report was written from the repository's web view, not from a checkout.
-- **BR-002 — confirmed and fixed** (round 32-B). See the guard section below.
-- **BR-003 — confirmed, user-only.** The manual end-to-end pass in §16 and §31 is still outstanding and needs a browser and a StartOS box.
+- **BR-002 — confirmed and fixed** (round 32-B). See the guard section below. The user has since confirmed by hand that a seed phrase is stopped in the name field and in the address path field.
+- **BR-003 — confirmed, user-only.** The manual end-to-end pass in §16 and §31 is still outstanding and needs a browser and a StartOS box. It is the only item inside 32.4 that is still open.
 - **BR-004 — falls away.** `AI-STATUS.md` and `DATA-MODEL.md` do not exist in this repository, so there is no conflicting pair to reconcile. The real documentation drift is 32-E.
 - **BR-005 — verified in code, no behaviour change.** Only `GET /health`, `GET /api/session` and `/login` are open; every other `/api/*` answers `401` and the pages answer `302` to `/login`; every state-changing POST needs a session and the CSRF token (`403`). The `Secure` cookie attribute is deliberately left off, because StartOS terminates TLS and proxies plain HTTP into the container. The report itself says not to change `app.py` behaviour for this one.
 - **BR-006 — confirmed and fixed.** The CSV export neutralizes a text cell a spreadsheet would read as a formula.
@@ -49,7 +49,7 @@ Short working handover for the next model. Keep it short.
 - **`app.py` needed no change at all.** Do not add a handler for this.
 - **The password is deliberately not checked.** A long passphrase is a legitimate password, and refusing one would lock the user out of their own account.
 - **The guard runs before the field's length limit.** A seed phrase pasted into a 60-character label field is answered with "looks like a seed phrase", not with "too long" — the other order would invite the user to shorten a seed phrase instead of removing it. The limit is still the outer bound and still applies to everything the guard lets through. **This order is deliberate and pinned by tests; do not swap it back.**
-- **The warning in the UI** is one short line, `Never paste a seed phrase or a private key here.`, in the same amber as the page notice, with the class `.secret-warning` in `static/styles.css`. It sits in `static/health-check.html` (three static fields), `static/health-check.js` (the firmware version, the key note and each security comment), `static/setup.html` and `static/setup.js` (one per key card, which covers the name, the model and the path), and `static/settings.js` (the software row and the rotation card). `settings.html` has no static free-text field, so it carries none — the fields are all built in `settings.js`.
+- **The warning in the UI** is one short line, `Never paste a seed phrase or a private key here.`, in the same amber as the page notice, with the class `.secret-warning` in `static/styles.css`. It sits in `static/health-check.html` (three static fields), `static/health-check.js` (the firmware version, the key note and each security comment), `static/setup.html` and `static/setup.js` (one per key card, which covers the name, the model and the path), and `static/settings.js` (the software row and the rotation card). `settings.html` has no static free-text field, so it carries none — the fields are all built in `settings.js`. The user has confirmed it reads well on a phone.
 - **The limitations are documented in the module docstring and are not to be played down:** a bare 64-character hex string is not refused (it is indistinguishable from a transaction id, which is legitimate note content); only the English wordlist is used; a secret split across several fields, or in a shape outside the patterns, is not caught; and a false positive is possible for a note that happens to be twelve or more BIP39 words in a row.
 
 ## Section 31 — the points before version 1 (done)
