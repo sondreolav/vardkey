@@ -244,7 +244,7 @@ Konsekvensar for dommane:
 |---|---|---|
 | BR-001 | **Falsk positiv** | Kjeldefilene ligg i `main`: `app.py`, `auth.py`, `database.py`, `export.py`, `maintenance.py`, `validation.py`, `alerts.py`, `tests/`, `static/`, `startos/`, `Dockerfile`, `Makefile`, `package.json`, `tsconfig.json`. Rapporten bygde på rotvisinga i nettgrensesnittet, ikkje på innhaldet i branch-en. |
 | BR-002 | **Stadfesta, men utsett** | Fritekstfelta (`name`, `model`, `comments` og nøkkelnotatet) blir lagra utan lokal sperre. Arbeidet høyrer til 32-B og vart ikkje starta. **Lukka i runde 32-B — sjå svaret nedanfor.** |
-| BR-003 | **Stadfesta, men kan berre lukkast av brukaren** | Den manuelle ende-til-ende-verifiseringa i `TODO.md` § 16 og § 31 står framleis att. Ho krev ein nettlesar og ein StartOS 0.4.0-boks. |
+| BR-003 | **Falsk positiv som formulert; det som står att høyrer til § 32** | Rapporten siterer ein § 31-tekst som ikkje finst lenger. `TODO.md` § 16 og § 17 seier at dei manuelle nettlesartestane og bokstestane vart køyrde og verifiserte fram til § 31. Det som faktisk står att, er dei **nye** manuelle punkta § 32 legg til (ikonet, UI-pussen, varseltekstane, åtvaringa ved felta, og heile bokstesten på nytt), og dei krev ein nettlesar og ein StartOS 0.4.0-boks. |
 | BR-004 | **Fell bort (filene finst ikkje)** | `AI-STATUS.md` og `DATA-MODEL.md` manglar. Koden følgjer alt kontrakten i `TODO.md` § 4–§ 7, så det finst ingen motstrid i implementasjonen å rette her. |
 | BR-005 | **Verifisert i koden, inga åtferdsendring** | Sjå punkt 6 nedanfor. Rapporten bad om at åtferda i `app.py` blir rapportert og ikkje endra. |
 | BR-006 | **Stadfesta og retta** | CSV-eksporten skreiv brukarstyrte tekstar uendra. |
@@ -287,11 +287,11 @@ Ingen endring i `app.py`, `auth.py`, `database.py`, `alerts.py`, `static/app.js`
 - `KeySettingsTests.test_the_duplicate_check_folds_the_hardened_marker` — `DuplicateAddressPath` i innstillingane.
 - `RotationTests.test_the_stored_path_is_refused_in_either_marker` — roteringa avviser den lagra stien òg i `h`-notasjon.
 
-Åtte nye testar til saman.
+**Ti nye testar til saman** (fem i `test_export.py`, ein i `test_pwa.py` og fire i `test_validation.py`), som er dei ti som ligg i listene over.
 
 ## 4. Kommandoar som vart køyrde og resultatet
 
-- **`python3 -m unittest discover -s tests`** — kunne **ikkje** køyrast i denne køyringa: agenten har ikkje skal eller terminaltilgang, berre Gitea-verktøya. Suiten vart difor **ikkje** stadfesta grøn av meg etter endringane. Brukaren har seinare køyrd han og stadfesta han grøn på **432 testar** (etter både 32-A og 32-B), og deretter på **474 testar** (etter at BR-002-sperra vart snudd til å køyre før lengdegrensa).
+- **`python3 -m unittest discover -s tests`** — kunne **ikkje** køyrast i denne køyringa: agenten har ikkje skal eller terminaltilgang, berre Gitea-verktøya. Suiten vart difor **ikkje** stadfesta grøn av meg etter endringane. Brukaren har seinare køyrd han og stadfesta han grøn: **432 testar** etter runde 32-A, og **475 testar** etter runde 32-B (etter at BR-002-sperra vart snudd til å køyre før lengdegrensa).
 - **`make x86`** — ikkje køyrd. Det finst inga StartOS-pakkearbeidsflate i denne køyringa, og inga pakkefil vart endra.
 - **`git status --short`, `git branch --show-current`, `git ls-tree -r --name-only HEAD`** (BR-001) — ikkje køyrde som skal-kommandoar. I staden vart branch `main` lesen gjennom Gitea-API-et, som listar 88 filer, mellom dei alle kjelde-, test- og pakkefilene. Den einskilde kommandoen over kan berre brukaren køyre; resultatet hans er det som formelt lukkar BR-001.
 - **Statisk lesing av `app.py` og `auth.py`** for BR-005, og av `export.py`, `static/sw.js`, `validation.py` og testane for BR-006–BR-008.
@@ -302,7 +302,7 @@ Ingen endring i `app.py`, `auth.py`, `database.py`, `alerts.py`, `static/app.js`
 Desse er **ikkje** køyrde, og blir ikkje markerte som beståtte:
 
 - Den manuelle nettlesargjennomgangen i `TODO.md` § 16 og § 31 (BR-003).
-- Cookie-åtferda bak den reelle StartOS-proxyen (BR-005), mellom anna `Secure`-flagget, sidan TLS blir terminert av StartOS og proxyar rein HTTP inn i containeren.
+- Cookie-åtferda bak den reelle StartOS-proxyen (BR-005), mellom anna `Secure`-flagget, sidan TLS blir terminerert av StartOS og proxyar rein HTTP inn i containeren.
 - PWA-en i ein faktisk nettlesar: installasjon, innlogging → app → logout → offline, og oppdatering frå ein gamal cache (BR-007). Berre `sw.js`-kjelda er verifisert.
 - CSV-en opna i eit faktisk rekneark (BR-006). Nøytraliseringa er verifisert i testar, ikkje i Excel.
 - StartOS 0.4.0-boksen: installasjon, restart, backup og restore.
@@ -319,7 +319,7 @@ Inga åtferd vart endra, slik oppdraget bad om. Funna i koden:
 
 ## 7. BR-006, BR-007 og BR-008 — kva rettinga er, og kva ho ikkje er
 
-- **BR-006.** Ei celle som eit rekneark les som ein formel, får no ein leiande apostrof. Rettinga gjeld berre tekstceller som treng det; tal, datoar, statusverdiar og `Yes`/`No` er uendra, og kolonnenamna er dei same, sidan eksporten er ein avtale. Kjend avgrensing: berre dei prefiksa eit rekneark faktisk kjenner att, blir nøytraliserte — Unicode-homoglyfar av `=` blir ikkje det, sidan eit rekneark ikkje les dei som formlar.
+- **BR-006.** Ei celle som eit rekneark les som ein formel, får no ein leiande apostrof. Rettinga gjeld berre tekstceller som treng det; tal, datoar, statusverdiar og `Yes`/`No` er uendra, og kolonnenamna er dei same, sidan eksporten er ein avtale. Kjend avgrensing: berre dei prefiksa eit rekneark faktisk kjenner att, blir nøytraliserte — Unicode-homoglyfar av `=` blir ikkje det, sidan eit rekneark ikkje les dei som formlar. Merk òg at ein vanleg notatlinje som byrjar med `-` no får ein apostrof framfor seg i eksporten; det er korrekt åtferd, sidan eit rekneark elles les ho som ein formel.
 - **BR-007.** Rettinga stoggar cachen av eit svar som ikkje er vellukka, ikkje er same-opphav, eller er omdirigert. Ho endrar ikkje allow-lista, som alt held `/api/*`, `/health` og `/login` utanfor, og ikkje nettverks-først-strategien. Skalet er rein HTML utan persondata, så ingen persondata ligg i cachen. `install`-steget brukar framleis `cache.addAll(SHELL)`; det køyrer frå ei beskytta side der det finst ei økt, og vart ikkje endra.
 - **BR-008.** Rettinga gjer samanlikninga kanonisk: ho fellar `h`/`H` til `'`, i tillegg til store/små bokstavar og luft. Ho blir brukt for unikheit i oppsettet, i innstillingane og ved rotering, og for samanlikninga mellom innsend og lagra sti i kontrollen, slik at same derivasjonssti i to skrivemåtar ikkje lenger gjev ein falsk `PROBLEM`. Den lagra verdien blir aldri skriven om, så eksisterande data er ikkje endra. Kjend avgrensing: ein sti blir ikkje validert som eit gyldig BIP32-format, berre som ikkje-tom tekst opp til 200 teikn — det er slik `TODO.md` § 4 og § 25.1 skildrar feltet, og ei strengare formatvalidering ville vore ei åtferdsendring utanfor denne runden.
 
@@ -344,7 +344,7 @@ Inga åtferd vart endra, slik oppdraget bad om. Funna i koden:
   - eit ordløp på 12 eller fleire BIP39-ord, også midt i ein setning.
 - **Funksjonen gjev berre ei kort engelsk nemning attende**, til dømes `"a seed phrase"`, og aldri teksten. `rejection_message()` byggjer setninga brukaren ser; ho namngjev feltet og forma som vart kjend att, og seier at ingenting vart lagra. Ingen av dei to kan difor lekke ein løyndom inn i ein respons eller ein logg.
 - **`validation.py`** har fått `SecretDetected`, som er ein `ValidationError`, og ein `_reject_secret()`. Sjekken sit i dei fire teksthjelparane `_text()`, `_key_name()`, `_model()` og `_required_path()`, så **kvart fritekstfelt er dekt av konstruksjon**: nøkkelnamn, modell, wallet-programvarenamn, programvareversjon, firmware-versjon, nøkkelnotatet, kompatibilitetsnotatet, det overordna kommentarfeltet, KI-kommentarane og adressestien.
-- **Sjekken køyrer òg før lengdegrensa til feltet.** Det vart ei medvite avgjerd, ikkje ein detalj: med den omvendte rekkjefølgja ville eit seed phrase som er lengre enn feltet tillet, bli svara med «key name is too long» — ei melding som ber brukaren om å **korte ned** ein seed phrase i staden for å fjerne han. Med sjekken først blir svaret «key name looks like a seed phrase», som er den korte og forståelege avvisinga rapporten ber om. Lengdegrensa står framleis som ytre grense og gjeld for alt anna, så eit vanleg over-langt namn blir framleis avvist som «too long». Rekkjefølgja er festa i to testar, éin for eit løyndom som passar i feltet og éin for eit som ikkje gjer det, pluss ein test som stadfestar at lengdegrensa framleis verkar.
+- **Sjekken køyrer òg før lengdegrensa til feltet.** Det vart ei medvite avgjerd, ikkje ein detalj: med den omvendte rekkjefølgja ville eit seed phrase som er lengre enn feltet tillet, bli svara med «key name is too long» — ei melding som ber brukaren om å **korte ned** ein seed phrase i staden for å fjerne han. Med sjekken først blir svaret «key name looks like a seed phrase», som er den korte og forståelege avvisinga rapporten ber om. Lengdegrensa står framleis som ytre grense og gjeld for alt annet, så eit vanleg over-langt namn blir framleis avvist som «too long». Rekkjefølgja er festa i to testar, éin for eit løyndom som passar i feltet og éin for eit som ikkje gjer det, pluss ein test som stadfestar at lengdegrensa framleis verkar.
 - **`auth.py`** avviser òg eit adminbrukarnamn som ser ut som ei løyndom, med same rekkjefølgje, fordi namnet òg er lagra fritekst. Passordet blir medvite **ikkje** sjekka: ein lang passfrase er eit legitimt passord, og ei avvising der ville stengje brukaren ute frå sin eigen konto.
 - **Åtvaring ved kvart fritekstfelt i UI-et:** ei kort linje — «Never paste a seed phrase or a private key here.» — i same ambra-palett som den eksisterande sidenotisen, lagd inn i `static/health-check.html` (tre statiske felt), `static/health-check.js` (firmware-versjon, nøkkelnotatet og kvar KI-kommentar), `static/setup.html` og `static/setup.js` (eitt per nøkkelkort, som dekkjer namn, modell og sti) og `static/settings.js` (programvare-raden og roteringskortet). Stilen `.secret-warning` ligg i `static/styles.css`. Sidenotisen «Never enter seed phrases…» står framleis, og sideoverskriftene og dei nummererte seksjonane er uendra, så formtestane held.
 
@@ -361,18 +361,18 @@ Inga åtferd vart endra, slik oppdraget bad om. Funna i koden:
 | `static/setup.html`, `static/setup.js` | Ei åtvaring per nøkkelkort, både i markupen og i kortet skriptet byggjer. |
 | `static/settings.js` | Åtvaring i programvare-raden og i roteringskortet. |
 | `tests/test_secret_guard.py` | Ny testmodul. |
-| `TODO.md` | § 32.4: utfallet av 32-B, dei nye reglane, og testtalet oppdatert til 474. |
+| `TODO.md` | § 32.4: utfallet av 32-B, dei nye reglane, og testtalet oppdatert til 475. |
 | `ai-note.md` | Handoveren oppdatert med 32.4, sperra, dei nye reglane og det som står att av §32. |
 
 Ingen endring i `app.py`, `database.py`, `alerts.py`, `export.py`, `maintenance.py`, ikonet, `package.json` eller pakkeversjonen. Merk at **`app.py` ikkje trong nokon endring**: `SecretDetected` er ein `ValidationError`, som alle dei relevante handterarane alt fangar og svarar `400` på. Hadde han vore ein vanleg `ValueError`, ville `STORAGE_ERRORS` ha fanga han og svart `500` i staden.
 
 ## 4. Regresjonstestar som vart lagde til
 
-Alle i den nye `tests/test_secret_guard.py`, 44 til saman:
+Alle i den nye `tests/test_secret_guard.py`, **43 til saman**:
 
 - **Ordlisteintegritet** (fem testar): nøyaktig 2048 ord, `abandon` fyrst og `zoo` sist, alfabetisk rekkjefølgje, alle orda 3–8 små bokstavar, og unike firebokstavsprefiks. Den siste er den sterke: spesifikasjonen garanterer at ingen to BIP39-ord deler dei fire første bokstavane, så eit mistypt eller manglande ord bryt han. Ei liste som er kopiert inn lokalt kan elles bli stille feil.
 - **Gjenkjenning** (ti testar): seed phrase (òg i store bokstavar, med luft rundt, og midt i ein setning), 24 ord, at eit løp på 11 ord ikkje blir avvist, kvar av dei fire nøkkelformene, alle seks utvida-prefiksa, båe WIF-lengdene, at ein `xpub` ikkje blir avvist, at eit transaksjons-id ikkje blir avvist, og at vanlege notat ikkje blir det.
-- **Feltnivå** (seksten testar): kvar fritekstfelt i ein innsending, oppsettet, innstillingane, roteringa, programvare-lista og adminbrukarnamnet avviser ei løyndom; meldinga inneheld feltet og forma, men aldri teksten; passordet blir ikkje sjekka; eit vanleg innsending går framleis gjennom; `SecretDetected` er ein `ValidationError`; **ei løyndom som passar i eit kort felt blir namngjeven som ei løyndom**; **ei løyndom som er lengre enn feltet blir framleis namngjeven som ei løyndom, ikkje som «too long»**; og **lengdegrensa verkar framleis for alt anna**.
+- **Feltnivå** (sytten testar): kvar fritekstfelt i ein innsending, oppsettet, innstillingane, roteringa, programvare-lista og adminbrukarnamnet avviser ei løyndom; meldinga inneheld feltet og forma, men aldri teksten; passordet blir ikkje sjekka; eit vanleg innsending går framleis gjennom; `SecretDetected` er ein `ValidationError`; **ei løyndom som passar i eit kort felt blir namngjeven som ei løyndom**; **ei løyndom som er lengre enn feltet blir framleis namngjeven som ei løyndom, ikkje som «too long»**; og **lengdegrensa verkar framleis for alt anna**.
 - **Åtvaringar i UI-et** (seks testar): at kvar av dei tre statiske åtvaringane er der, at kvart skript kallar hjelparen ved felta det byggjer, at stilen finst, og at sidenotisen står att.
 - **Ikkje lagra, ikkje eksportert** (fem API-testar): eit innsending med ei seed phrase i kommentaren svarar `400`, meldinga gjengjev ikkje teksten, og både `list_health_checks()` og CSV-eksporten er tomme etterpå. Det same for ein utvida privatnøkkel i nøkkelnotatet. Eit vanleg innsending blir framleis lagra (`201`) og eksportert, og når eit lagra innsending blir følgt av eit avvist eitt, inneheld eksporten det første og ingen ting av det andre.
 
@@ -380,7 +380,7 @@ Testane inneheld **ingen ekte løyndomar**: seed-phrasen er tolv BIP39-ord i ei 
 
 ## 5. Kommandoar som vart køyrde og resultatet
 
-- **`python3 -m unittest discover -s tests`** — kunne **ikkje** køyrast av agenten, som berre har Gitea-verktøya og inga skal. Brukaren har køyrd suiten og stadfesta han grøn: 432 testar etter 32-A, 474 etter at rekkjefølgja vart snudd.
+- **`python3 -m unittest discover -s tests`** — kunne **ikkje** køyrast av agenten, som berre har Gitea-verktøya og inga skal. Brukaren har køyrd suiten og stadfesta han grøn: **432 testar** etter runde 32-A, og **475 testar** etter runde 32-B.
 - **Ingen nettverkstrafikk** er lagd til: ordlista ligg i kjeldekoden, og `secret_guard.py` importerer berre `re`.
 - Endringane vart gjorde éi fil om gongen gjennom Gitea-verktøya, kvar med det gjennomgåtte innhaldet i éin operasjon. Verktøyet som var tilgjengeleg, har ingen `preview`/`preview_id`-steg.
 
@@ -401,3 +401,13 @@ Dei står i modulens docstring, og dei er grunnen til at dette blir kalla ei spe
 - **Ei løyndom som er delt over fleire felt, eller skriven i ein form utanom mønstra, blir ikkje fanga.**
 - **Falske positive er ikkje utelukka.** Terskelen på 12 ord er vald for å halde vanlege notat utanfor, men eit notat som tilfeldigvis består av tolv eller fleire BIP39-ord etter kvarandre, ville bli avvist. Det er den prisen som er vald, sidan eit avvist notat kan skrivast om, medan ei løyndom som er lagra, ikkje kan gjerast uskriven.
 - **Rekkjefølgja mellom sperra og lengdegrensa er ei medvite vald avveging**, ikkje ei gløymd detalj: sperra vinn, slik at eit innlimt løyndom alltid blir namngjeve som det det er. Det går ikkje ut over lengdegrensa, som framleis avviser alt anna som er for langt.
+
+---
+
+# Rettar i dokumentasjonen (gjort etter at runde 32-A og 32-B var ferdige)
+
+Desse rettingane gjeld berre dokumenta, ikkje koden:
+
+- **BR-003-dommen er retta** i tabellen i svaret for 32-A. Han var skriven som «stadfesta», men rapporten bygde på ein § 31-tekst som ikkje finst lenger. Det som faktisk står att, er dei nye manuelle punkta § 32 legg til, og dei er førte opp under `TODO.md` § 32.1, 32.2, 32.3 og 32.5.
+- **Testtala er retta.** Runde 32-A la til **ti** testar, ikkje åtte: fem i `tests/test_export.py`, ein i `tests/test_pwa.py` og fire i `tests/test_validation.py`. `tests/test_secret_guard.py` held **43**, ikkje 44 (5 + 10 + 17 + 6 + 5), og gruppa «feltnivå» er sytten testar, ikkje seksten. Suiten gjekk difor frå 422 til 432 etter 32-A og til **475** etter 32-B — det talet brukaren stadfesta. Dei tidlegare tala «474» og «44» i dette svaret var skrivne før den siste testen vart lagd til.
+- **`TODO.md` og `ai-note.md` er førte i samsvar med dette**: § 32-statusen seier at 32.4 er utført med unntak av BR-003, dokumentasjonsdrifta er ført inn som eige punkt **32.6**, og dei nye reglane frå 32-A og 32-B står no òg i den bindande specen (§ 2, § 4, § 10, § 12, § 15, § 16) og ikkje berre i § 32.4.
