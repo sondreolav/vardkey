@@ -119,17 +119,20 @@ def normalize_admin_username(value):
     can show; the HTTP handler maps it to a ``400`` and the maintenance command
     to a failed exit. A value that looks like a wallet secret is refused for the
     same reason, and the message never repeats the value (sections 2 and 15).
+    That check runs before the length limit, so a seed phrase pasted here is
+    answered with what it looks like rather than with "too long", which would
+    invite the user to shorten the phrase instead of removing it.
     """
     if not isinstance(value, str):
         raise ValueError("admin username must be text")
     username = value.strip()
     if not username:
         raise ValueError("admin username must not be empty")
-    if len(username) > ADMIN_USERNAME_MAX_LENGTH:
-        raise ValueError("admin username is too long")
     label = find_secret(username)
     if label is not None:
         raise ValueError(rejection_message("admin username", label))
+    if len(username) > ADMIN_USERNAME_MAX_LENGTH:
+        raise ValueError("admin username is too long")
     return username
 
 
