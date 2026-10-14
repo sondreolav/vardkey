@@ -180,16 +180,17 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(alerts[0]["source"], "Key 3: Nunchuk")
         self.assertEqual(alerts[0]["message"], build_alerts(hardware)[0]["message"])
 
-    def test_a_hardware_failure_points_at_testing_the_backup_elsewhere(self):
+    def test_a_hardware_failure_points_at_the_replacement(self):
         record = clean_record()
         record["key_checks"][0]["hardware_works"] = 0
 
         alerts = build_alerts(record)
 
         self.assertEqual(self.codes(record), ["hardware_failure"])
-        self.assertIn("another compatible device", alerts[0]["message"])
+        self.assertIn("Replace the hardware and restore the same seed", alerts[0]["message"])
+        self.assertIn("rotate the key", alerts[0]["message"])
 
-    def test_a_damaged_seed_backup_points_at_protocol_3(self):
+    def test_a_damaged_seed_backup_asks_for_a_rotation(self):
         record = clean_record()
         record["key_checks"][0]["seed_backup_verified"] = "PROBLEM"
 
@@ -197,7 +198,7 @@ class AlertTests(unittest.TestCase):
 
         self.assertEqual(self.codes(record), ["seed_backup_problem"])
         self.assertEqual(alerts[0]["severity"], "critical")
-        self.assertIn("PROTOCOL 3", alerts[0]["message"])
+        self.assertIn("Rotate the key to close this alert", alerts[0]["message"])
 
     def test_a_mismatched_address_path_asks_for_a_replacement(self):
         # The recorded path does not match the key, so the key could not be
@@ -210,8 +211,8 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(self.codes(record), ["address_path_mismatch"])
         self.assertEqual(alerts[0]["severity"], "critical")
         self.assertEqual(alerts[0]["source"], "Key 1: SeedSigner")
-        self.assertIn("does not match this key", alerts[0]["message"])
-        self.assertIn("Replace the key", alerts[0]["message"])
+        self.assertIn("does not match the stored path for this key", alerts[0]["message"])
+        self.assertIn("Rotate the key to close this alert", alerts[0]["message"])
         self.assertEqual(alerts[0]["actions"], [ROTATE])
 
     def test_a_mismatch_is_not_merged_with_a_real_unavailable_alert(self):
@@ -256,14 +257,14 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(alerts[0]["source"], "Nunchuk")
         self.assertIn("VULNERABLE", alerts[0]["message"])
 
-    def test_a_compromised_security_status_points_at_the_key_loss_procedure(self):
+    def test_a_compromised_security_status_asks_for_a_rotation(self):
         record = clean_record()
         record["ai_security_checks"][0]["status"] = "COMPROMISED"
 
         alerts = build_alerts(record)
 
         self.assertEqual(self.codes(record), ["security_compromised"])
-        self.assertIn("key loss procedure", alerts[0]["message"])
+        self.assertIn("Rotate the key to close this alert", alerts[0]["message"])
 
     def test_a_norwegian_legacy_status_is_not_treated_as_a_failure(self):
         record = clean_record()
@@ -280,14 +281,16 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(self.codes(record), ["contact_info_unconfirmed"])
         self.assertEqual(alerts[0]["severity"], "info")
         # The alert belongs to the checked key and names it, so it blocks that
-        # key like every other key alert (section 27).
+        # key like every other key alert (section 27). The source carries the
+        # name, so the message points at the key without repeating it.
         self.assertEqual(alerts[0]["source"], "Key 1: SeedSigner")
         self.assertEqual(alerts[0]["key_id"], 1)
         self.assertEqual(alerts[0]["actions"], [CONTACT_UPDATED])
-        self.assertIn("Key 1: SeedSigner", alerts[0]["message"])
+        self.assertIn("this key", alerts[0]["message"])
         self.assertIn("external update", alerts[0]["message"])
+        self.assertNotIn("SeedSigner", alerts[0]["message"])
 
-    def test_a_contact_alert_for_another_key_names_that_key(self):
+    def test_a_contact_alert_for_another_key_carries_that_key(self):
         record = clean_record(key_number=3, name="Nunchuk", key_type="cloud")
         record["contact_info_verified"] = "Needs external update"
 
@@ -295,7 +298,7 @@ class AlertTests(unittest.TestCase):
 
         self.assertEqual(alerts[0]["source"], "Key 3: Nunchuk")
         self.assertEqual(alerts[0]["key_id"], 3)
-        self.assertIn("Key 3: Nunchuk", alerts[0]["message"])
+        self.assertNotIn("Nunchuk", alerts[0]["message"])
 
     def test_the_old_contact_flag_raises_no_alert(self):
         # The 0/1 flag is migrated to a status, so a raw flag is never a result
@@ -430,6 +433,21 @@ class AlertActionTests(unittest.TestCase):
 
         self.assertEqual(alerts[0]["actions"], [ROTATE, IGNORE])
 
+    def test_the_two_forms_of_a_security_code_carry_their_own_message(self):
+        # The key form and the software form are closed by different actions, so
+        # each says what closes it (section 32.3).
+        key_record = clean_record()
+        _vulnerable_key(key_record)
+        software_record = clean_record()
+        _vulnerable_software(software_record)
+
+        key_message = build_alerts(key_record)[0]["message"]
+        software_message = build_alerts(software_record)[0]["message"]
+
+        self.assertNotEqual(key_message, software_message)
+        self.assertIn("Rotate the key", key_message)
+        self.assertIn("Remove this software", software_message)
+
     def test_a_compromised_key_or_software_can_never_be_ignored(self):
         for change, source in (
             (_compromised_key, "SeedSigner"),
@@ -468,6 +486,9 @@ class AlertActionTests(unittest.TestCase):
         self.assertEqual(alerts[0]["key_id"], 1)
         self.assertEqual(alerts[0]["source"], "Key 1: SeedSigner")
         self.assertEqual(alerts[0]["actions"], [REPLACE_HARDWARE])
+        # The source of this form is the key, so the message names the software
+        # the alert is about (section 32.3).
+        self.assertIn("Nunchuk", alerts[0]["message"])
         # There is no settings entry to remove, so no software removal target is
         # named (section 27).
         self.assertIsNone(alerts[0]["software"])
