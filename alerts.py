@@ -82,8 +82,8 @@ _SECURITY_CODES = frozenset({"security_vulnerable", "security_compromised"})
 _SEVERITY_ORDER = {CRITICAL: 0, INFO: 1}
 
 _KEY_UNAVAILABLE_MESSAGE = (
-    "This key was not available. Replace the key before continuing; "
-    "the remaining checks for this key cannot be recorded."
+    "This key was not available, so its checks could not be recorded. "
+    "Rotate the key to close this alert."
 )
 _ADDRESS_PATH_MISMATCH_MESSAGE = (
     "The recorded address path does not match this key. Replace the key before "
