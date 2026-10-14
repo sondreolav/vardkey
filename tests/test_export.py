@@ -108,5 +108,61 @@ class ExportTests(unittest.TestCase):
         self.assertEqual(values["Software compatibility"], "NOT_ASSESSED")
 
 
+class FormulaInjectionTests(unittest.TestCase):
+    """A user-controlled text cell is never written as a spreadsheet formula.
+
+    A cell that starts with ``=``, ``+``, ``-``, ``@`` or a control character is
+    read as a formula when the file is opened, and the CSV quoting alone does not
+    stop it. Every text cell is neutralized with a leading apostrophe, while an
+    ordinary value is written exactly as it is stored (section 10).
+    """
+
+    def cell(self, value):
+        """Return the exported ``Key comments`` cell for one value."""
+        rows = parse(build_csv([{"key_comments": value}]))
+        return dict(zip(HEADERS, rows[1]))["Key comments"]
+
+    def test_a_formula_prefix_is_neutralized(self):
+        for prefix in ("=", "+", "-", "@"):
+            value = f"{prefix}SUM(A1:A2)"
+            self.assertEqual(self.cell(value), "'" + value)
+
+    def test_a_leading_control_character_is_neutralized(self):
+        # A tab, a carriage return or a line feed in front of a value is treated
+        # the same way as a formula prefix.
+        for prefix in ("\t", "\r", "\n"):
+            value = f"{prefix}=SUM(A1:A2)"
+            self.assertEqual(self.cell(value), "'" + value)
+
+    def test_a_formula_prefix_after_a_space_is_neutralized(self):
+        # A leading space does not stop a spreadsheet from reading the cell.
+        for prefix in ("=", "+", "-", "@"):
+            value = f"  {prefix}SUM(A1:A2)"
+            self.assertEqual(self.cell(value), "'" + value)
+
+    def test_ordinary_text_is_written_exactly_as_stored(self):
+        # The guard is only added where it is needed, so ordinary content, an
+        # empty cell and the stored status values are untouched.
+        for value in (
+            "Annual review",
+            'note, with "quotes"; and more',
+            "SeedSigner: SECURE; Sparrow Wallet: VULNERABLE",
+            "1.8.0",
+            "PROBLEM",
+            "",
+        ):
+            self.assertEqual(self.cell(value), value)
+
+    def test_the_header_row_and_the_flags_are_not_guarded(self):
+        # The column names are the export agreement, and the yes/no columns keep
+        # their wording (section 10).
+        rows = parse(build_csv([{"available": 1, "hardware_works": 0}]))
+        values = dict(zip(HEADERS, rows[1]))
+
+        self.assertEqual(rows[0], list(HEADERS))
+        self.assertEqual(values["Available"], "Yes")
+        self.assertEqual(values["Hardware works"], "No")
+
+
 if __name__ == "__main__":
     unittest.main()
