@@ -215,7 +215,7 @@ function showLockedState() {
   const link = document.createElement("a");
   link.className = "back-link";
   link.href = "/settings";
-  link.textContent = "Open settings";
+  link.textContent = "Open the settings";
   status.replaceChildren(note, link);
 }
 
