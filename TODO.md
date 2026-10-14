@@ -20,7 +20,7 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 - **§32 er runden som står att.** Ingenting av han er starta.
 - **Reglane under «Reglar som gjeld alle rundar» er bindande** for kvar framtidig endring.
 - Eit punkt utan avkryssingsboks er implementert og verifisert. `[ ]` markerer det som står att.
-- **Status:** alt til og med §31 er implementert og verifisert. Skjema **versjon 12**, testsuiten grøn (**422 testar**), og StartOS-pakka er bygd, sideloda og køyrd på ein eigen StartOS 0.4.0-boks. Pakkeversjonen står på `0.1.0:0` og blir ikkje heva før §32 er ferdig og brukaren seier ifrå.
+- **Status:** alt til og med §31 er implementert og verifisert. Skjema **versjon 12**, testsuiten grøn (**432 testar**), og StartOS-pakka er bygd, sideloda og køyrd på ein eigen StartOS 0.4.0-boks. Pakkeversjonen står på `0.1.0:0` og blir ikkje heva før §32 er ferdig og brukaren seier ifrå.
 
 ---
 
@@ -380,6 +380,7 @@ Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og 
 - Test at ein kan byte namn på ein nøkkel i roteringsseksjonen utan å rotere han, og at ei rotering krev stadfestingsboksen.
 - Test at ei rotering kan gi nøkkelen den andre typen, og at eit namn som wallet-programvare-lista alt har, blir avvist.
 - Test innlogging og sesjon: første oppstart utan admin, rett og feil passord, `401` på API utan sesjon, omdirigering på sider, open `/health`, og eit manglande CSRF-token.
+- Test at eit fritekstfelt som ser ut som ei wallet-løyndom, blir avvist, og at ingenting blir lagra.
 - Test oppsett av eit annet multisig-oppsett enn 2-av-3, modell/teneste per nøkkel, det daterte eksportnamnet, sletting av all data, og installasjon av PWA-en.
 
 **Merk:** dei manuelle nettlesartestane er køyrde og verifiserte fram til §31. §32 legg til nye manuelle punkt.
@@ -477,6 +478,8 @@ Alle rundane under er implementerte og verifiserte. Reglane deira ligg i §1–�
 
 Fem punkt, alle **før** pakkeversjonen blir heva frå `0.1.0:0` til `1.0.0:0`. **Ingenting av dette er starta**, og det skal ikkje startast utan at brukaren ber om det.
 
+**Status i §32:** 32.4 er delvis utført, i runde 32-A og 32-B (sjå 32.4). 32.1, 32.2, 32.3, resten av 32.4 og 32.5 står framleis att.
+
 ## 32.1 Ikonet
 
 - Brukaren leverer kunstverket. Kodaren legg inn `icon.svg` i repo-rota (maks 40 KiB, kravet i manifestet) og PWA-ikon i 192 og 512 px i `static/`, og legg dei inn i ikonoppføringa i `static/manifest.webmanifest` og i `STATIC_FILES` i `app.py`.
@@ -510,7 +513,7 @@ Ein gjennomgang av dei fem sidene for konsistens og ryddigheit, utan nye funksjo
 **Utfall av runde 32-A (bug-triarge).** Kvar BR vart verifisert i koden som ligg i dette repoet før noko vart endra:
 
 - **BR-001 — falsk positiv.** Kjeldefilene ligg i `main` og er spora av Git; rapporten bygde på repo-visinga, ikkje på ein checkout.
-- **BR-002 — stadfesta, utsett.** Eit fritekstfelt kan framleis lagre ei løyndom brukaren limer inn ved eit uhell. Arbeidet høyrer til 32-B og vart ikkje starta her.
+- **BR-002 — stadfesta, utsett.** Eit fritekstfelt kan framleis lagre ei løyndom brukaren limer inn ved eit uhell. Arbeidet høyrde til 32-B og vart ikkje starta i 32-A.
 - **BR-003 — stadfesta, men berre brukaren kan lukke han.** Den manuelle ende-til-ende-verifiseringa i §16 og §31 står framleis att og kan ikkje gjerast av agenten.
 - **BR-004 — fell bort.** `AI-STATUS.md` og `DATA-MODEL.md` finst ikkje i dette repoet. Koden følgjer alt kontrakten i §4–§7: statusane `SECURE`/`PATCHED`/`VULNERABLE`/`COMPROMISED`, tabellane `keys`, `health_checks`, `key_checks`, `ai_security_checks`, `wallet_software`, `alert_acknowledgements` og `app_settings`, og inga `tool_checks`. Den reelle dokdrifta er 32-E.
 - **BR-005 — verifisert i koden, inga åtferdsendring.** Berre `GET /health`, `GET /api/session` og `/login` er opne; alle andre `/api/*` svarar `401` og sidene svarar `302` til `/login`; kvar tilstandsendrande POST krev ei gyldig økt og CSRF-tokenet (`403`). Passordet er ein `hashlib.scrypt`-hash med salt per passord, økta er ein HMAC-SHA256-signert cookie med utløp, og begge samanlikningane brukar `hmac.compare_digest`. Ingen `X-Forwarded-*`-header blir lesen. Det einaste som ikkje kan stadfestast her, er `Secure`-flagget mot den reelle StartOS-proxyen: flagget er medvite utelate fordi StartOS terminerer TLS og proxyar rein HTTP inn i containeren.
@@ -518,13 +521,27 @@ Ein gjennomgang av dei fem sidene for konsistens og ryddigheit, utan nye funksjo
 - **BR-007 — stadfesta og retta i `static/sw.js`.** Tenestearbeidaren lagrar no eit svar berre når det er vellukka, same-opphav og ikkje omdirigert, så loginsida kan ikkje lenger erstatta det cacha app-skalet.
 - **BR-008 — stadfesta og retta i `validation.py`.** Samanlikninga av adressestiar fellar no den harda markøren (`h`/`H` ≡ `'`) i tillegg til store/små bokstavar og luft, så same derivasjonssti i to skrivemåtar blir avvist som duplikat i oppsettet, i innstillingane og ved rotering — og blir rekna som nøkkelen sin eigen sti i kontrollen. Den lagra verdien blir aldri skriven om.
 
-**Nye bindande reglar frå denne runden:**
+**Nye bindande reglar frå 32-A:**
 
 - **Eksporten nøytraliserer formelceller.** Ei tekstcelle som eit rekneark ville lese som ein formel, får ein leiande apostrof. Kolonnenamna, kolonnerekkjefølgja og formatavtalen elles står fast.
 - **Adressestien blir samanlikna kanonisk.** Same derivasjonssti i kvar av dei støtta skrivemåtane er den same stien, både for unikheit og for samanlikninga i kontrollen.
 - **PWA-cachen lagrar berre eit gyldig skal-svar.** Eit svar som ikkje er vellukka, ikkje er same-opphav eller er omdirigert, blir ikkje cacha.
 
-**Testar lagde til:** tre i `tests/test_export.py`, ein i `tests/test_pwa.py` og fire i `tests/test_validation.py` — åtte nye. Talet i «Status» ovanfor blir oppdatert etter at brukaren har køyrd suiten.
+**Utfall av runde 32-B (BR-002).** Sperra mot wallet-løyndomar i fritekst er no på plass:
+
+- **Ny modul `secret_guard.py`.** Han held den engelske BIP39-ordlista (2048 ord, bakt inn lokalt — appen gjer framleis ingen nettverkskall) og ein `find_secret()` som kjenner att eit PEM-privatnøkkelblock, ein utvida privatnøkkel (`xprv`/`yprv`/`zprv`/`tprv`/`uprv`/`vprv`), ein WIF-nøkkel (51 eller 52 teikn), ein BIP38-nøkkel og eit ordløp på 12 eller fleire BIP39-ord. Funksjonen gjev berre ei kort engelsk nemning attende, aldri teksten, så ingenting hamnar i ein logg eller ein feilmelding.
+- **`validation.py` avviser slikt innhald i kvart fritekstfelt.** Sjekken sit i dei fire teksthjelparane (`_text`, `_key_name`, `_model`, `_required_path`), så kvart fritekstfelt er dekt av konstruksjon: nøkkelnamn, modell, wallet-programvarenamn, programvareversjon, firmware-versjon, notatfelta og KI-kommentarane. Han kastar `SecretDetected`, som er ein `ValidationError`, så svaret blir `400` og ikkje `500`. Valideringa køyrer før noko blir skrive, så eit avvist innhald blir aldri lagra delvis.
+- **`auth.py` avviser òg eit adminbrukarnamn som ser ut som ei løyndom.** Passordet blir medvite ikkje sjekka, sidan ein lang passfrase er eit legitimt passord og ei avvising der ville stengje brukaren ute frå sin eigen konto.
+- **Meldinga gjentek aldri verdien.** Ho namngjev feltet og forma som vart kjend att, og seier at ingenting vart lagra.
+- **Åtvaring ved kvart fritekstfelt i UI-et.** Ei kort linje i same ambra-palett som sidenotisen, lagd inn i `static/health-check.html`, `static/health-check.js`, `static/setup.html`, `static/setup.js` og `static/settings.js`, med stilen `.secret-warning` i `static/styles.css`. Sidenotisen om løyndomar står framleis, og sideoverskriftene er uendra.
+- **Kjende avgrensingar** står i modulens docstring og blir ikkje tona ned: eit nakent 64-teikns heksadesimalt streng blir ikkje avvist (det kan like gjerne vere ein transaksjons-id, som er legitimt notatinnhald), berre den engelske ordlista blir brukt, og eit format utanom mønstra eller ei løyndom som er delt over fleire felt, blir ikkje fanga.
+
+**Nye bindande reglar frå 32-B:**
+
+- **Fritekst blir sjekka lokalt før lagring.** Eit felt som ser ut som ei wallet-løyndom, blir avvist med `400`, ingenting blir lagra, og meldinga gjentek aldri verdien. Sjekken er lokal og gjer ingen nettverkskall.
+- **Kvar fritekstfelt har ei åtvaring ved feltet**, i tillegg til sidenotisen, og stilen er `.secret-warning`.
+
+**Testar lagde til:** åtte i runde 32-A (tre i `tests/test_export.py`, ein i `tests/test_pwa.py` og fire i `tests/test_validation.py`) og seksten i runde 32-B, alle i den nye `tests/test_secret_guard.py`. Brukaren har stadfesta suiten grøn på **432 testar**.
 
 ## 32.5 Hevinga av pakkeversjonen
 
