@@ -18,6 +18,12 @@ the button, and the removal point at the right settings entry (section 26.7).
 leaves out the acknowledged ones, which is what the dashboard shows
 (sections 21 and 25.3).
 
+Every message says what is wrong, which key or software it is about, and what
+closes the alert (section 32.3). The source the alert carries names the key or
+the software, so the message itself does not repeat that name; the one exception
+is the cloud-key form of ``software_incompatible``, whose source is the key while
+the message has to name the software.
+
 Two alerts belong to the checked key although they are not about the key itself
 (section 27). The contact alert is one of them, so it blocks the key until the
 user has updated the contact details externally. The other one is a wallet
@@ -86,8 +92,16 @@ _KEY_UNAVAILABLE_MESSAGE = (
     "Rotate the key to close this alert."
 )
 _ADDRESS_PATH_MISMATCH_MESSAGE = (
-    "The recorded address path does not match this key. Replace the key before "
-    "continuing; the remaining checks for this key cannot be recorded."
+    "The recorded address path does not match the stored path for this key, so "
+    "it could not be checked. Rotate the key to close this alert."
+)
+_HARDWARE_FAILURE_MESSAGE = (
+    "The hardware wallet does not work. Replace the hardware and restore the "
+    "same seed, or rotate the key, to close this alert."
+)
+_SEED_BACKUP_MESSAGE = (
+    "The seed backup is missing or damaged, so the key cannot be trusted. "
+    "Rotate the key to close this alert."
 )
 # The software that produced the result is named by the alert itself, so this
 # message covers the software in general (section 26.7).
@@ -97,21 +111,36 @@ _SOFTWARE_INCOMPATIBLE_MESSAGE = (
 )
 # When the wallet software is the name of a configured cloud key, it can never be
 # removed from the settings, so the alert asks for a new hardware wallet instead
-# (section 27).
+# (section 27). The source of that form is the key and not the software, so the
+# message names the software it is about.
 _SOFTWARE_INCOMPATIBLE_KEY_MESSAGE = (
-    "The wallet software for this key no longer supports the hardware. Replace "
-    "the hardware wallet and restore the same seed on the new device, then close "
-    "the alert."
+    "{software} no longer supports the hardware for this key. Replace the "
+    "hardware wallet and restore the same seed, then close this alert."
 )
-_VULNERABLE_MESSAGE = (
-    "Security status VULNERABLE: the firmware or security problem must be followed up."
+# A security alert has two forms, and they are closed by different actions, so
+# each form says what closes it (section 32.3).
+_VULNERABLE_KEY_MESSAGE = (
+    "The security status for this key is VULNERABLE. Rotate the key, or close "
+    "this alert without action."
 )
-_COMPROMISED_MESSAGE = "Security status COMPROMISED: follow the key loss procedure."
-# The contact alert belongs to the checked key and names it, so the message
-# points at that key (section 27).
+_VULNERABLE_SOFTWARE_MESSAGE = (
+    "The security status for this wallet software is VULNERABLE. Remove this "
+    "software from the settings, or close this alert without action."
+)
+_COMPROMISED_KEY_MESSAGE = (
+    "The security status for this key is COMPROMISED. Rotate the key to close "
+    "this alert."
+)
+_COMPROMISED_SOFTWARE_MESSAGE = (
+    "The security status for this wallet software is COMPROMISED. Remove this "
+    "software from the settings to close this alert."
+)
+# The contact alert belongs to the checked key, and the source it carries names
+# that key, so the message points at the key without repeating the name
+# (section 27).
 _CONTACT_MESSAGE = (
-    "The contact details for {source} need an external update. "
-    "Update them in your external documentation, then close this alert."
+    "The contact details for this key need an external update. Update them in "
+    "your external documentation, then close this alert."
 )
 # A saved check that predates the software column has no name to point at, so the
 # alert falls back to this label and offers the settings link only.
@@ -342,7 +371,7 @@ def _key_alerts(key_check):
             "hardware_failure",
             CRITICAL,
             source,
-            "The hardware does not work. Test the seed backup on another compatible device.",
+            _HARDWARE_FAILURE_MESSAGE,
             (ROTATE, REPLACE_HARDWARE),
             key_id,
         ))
@@ -351,7 +380,7 @@ def _key_alerts(key_check):
             "seed_backup_problem",
             CRITICAL,
             source,
-            "The seed backup is missing or damaged. Activate PROTOCOL 3: key loss.",
+            _SEED_BACKUP_MESSAGE,
             (ROTATE,),
             key_id,
         ))
@@ -394,7 +423,7 @@ def _software_alerts(record, cloud_names):
             "software_incompatible",
             CRITICAL,
             _key_source(key_check),
-            _SOFTWARE_INCOMPATIBLE_KEY_MESSAGE,
+            _SOFTWARE_INCOMPATIBLE_KEY_MESSAGE.format(software=software),
             (REPLACE_HARDWARE,),
             key_check.get("key_id"),
         )]
@@ -424,23 +453,33 @@ def _security_alerts(security_check, key_ids):
     software = None if key_id is not None else provider
 
     if status == "VULNERABLE":
-        actions = (ROTATE, IGNORE) if key_id is not None else (REMOVE_SOFTWARE, IGNORE)
+        if key_id is not None:
+            message = _VULNERABLE_KEY_MESSAGE
+            actions = (ROTATE, IGNORE)
+        else:
+            message = _VULNERABLE_SOFTWARE_MESSAGE
+            actions = (REMOVE_SOFTWARE, IGNORE)
         return [_alert(
             "security_vulnerable",
             CRITICAL,
             provider,
-            _VULNERABLE_MESSAGE,
+            message,
             actions,
             key_id,
             software,
         )]
     if status == "COMPROMISED":
-        actions = (ROTATE,) if key_id is not None else (REMOVE_SOFTWARE,)
+        if key_id is not None:
+            message = _COMPROMISED_KEY_MESSAGE
+            actions = (ROTATE,)
+        else:
+            message = _COMPROMISED_SOFTWARE_MESSAGE
+            actions = (REMOVE_SOFTWARE,)
         return [_alert(
             "security_compromised",
             CRITICAL,
             provider,
-            _COMPROMISED_MESSAGE,
+            message,
             actions,
             key_id,
             software,
@@ -452,8 +491,8 @@ def _contact_alerts(record):
     """Return the alert for contact details that need an external update.
 
     The alert belongs to the checked key, so it blocks that key like every other
-    key alert, and the message names the key (section 27). Only the stored status
-    is read; the app never stores contact details (section 23.1).
+    key alert, and the source it carries names that key (section 27). Only the
+    stored status is read; the app never stores contact details (section 23.1).
     """
     if record.get("contact_info_verified") != _CONTACT_NEEDS_UPDATE:
         return []
@@ -462,12 +501,11 @@ def _contact_alerts(record):
         # Without a key there is nothing the alert could belong to, so no alert
         # is raised.
         return []
-    source = _key_source(key_check)
     return [_alert(
         "contact_info_unconfirmed",
         INFO,
-        source,
-        _CONTACT_MESSAGE.format(source=source),
+        _key_source(key_check),
+        _CONTACT_MESSAGE,
         (CONTACT_UPDATED,),
         key_check.get("key_id"),
     )]
