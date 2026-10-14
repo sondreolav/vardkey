@@ -537,7 +537,7 @@ class AppHandler(BaseHTTPRequestHandler):
             if blocked is not None:
                 self._send_json(409, {
                     "error": (
-                        f"This key has an open alert ({blocked['code']}). "
+                        "This key has an open alert. "
                         "Close the alert before recording a new check."
                     )
                 })
