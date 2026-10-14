@@ -61,6 +61,15 @@ function isShellRequest(request) {
   return url.origin === self.location.origin && SHELL_PATHS.has(url.pathname);
 }
 
+// Only the shell itself is stored: a successful, same-origin answer that was not
+// redirected. A page fetched without a session answers 302 -> /login, and fetch
+// follows it, so without this check the login page would replace the cached
+// shell and the app would show the wrong screen offline. A failed answer is left
+// out for the same reason (section 31 point 6).
+function isCacheable(response) {
+  return response.ok && response.type === "basic" && !response.redirected;
+}
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (!isShellRequest(request)) {
@@ -72,8 +81,10 @@ self.addEventListener("fetch", (event) => {
       .then((response) => {
         // A fresh copy replaces the cached shell, so an update is picked up as
         // soon as the server answers.
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        if (isCacheable(response)) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        }
         return response;
       })
       .catch(() =>
