@@ -20,7 +20,7 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 - **§32 er runden som står att.** Ingenting av han er starta.
 - **Reglane under «Reglar som gjeld alle rundar» er bindande** for kvar framtidig endring.
 - Eit punkt utan avkryssingsboks er implementert og verifisert. `[ ]` markerer det som står att.
-- **Status:** alt til og med §31 er implementert og verifisert. Skjema **versjon 12**, testsuiten grøn (**432 testar**), og StartOS-pakka er bygd, sideloda og køyrd på ein eigen StartOS 0.4.0-boks. Pakkeversjonen står på `0.1.0:0` og blir ikkje heva før §32 er ferdig og brukaren seier ifrå.
+- **Status:** alt til og med §31 er implementert og verifisert, og §32.4 er utført (sjå §32). Skjema **versjon 12**, testsuiten grøn (**474 testar**), og StartOS-pakka er bygd, sideloda og køyrd på ein eigen StartOS 0.4.0-boks. Pakkeversjonen står på `0.1.0:0` og blir ikkje heva før §32 er ferdig og brukaren seier ifrå.
 
 ---
 
@@ -380,7 +380,7 @@ Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og 
 - Test at ein kan byte namn på ein nøkkel i roteringsseksjonen utan å rotere han, og at ei rotering krev stadfestingsboksen.
 - Test at ei rotering kan gi nøkkelen den andre typen, og at eit namn som wallet-programvare-lista alt har, blir avvist.
 - Test innlogging og sesjon: første oppstart utan admin, rett og feil passord, `401` på API utan sesjon, omdirigering på sider, open `/health`, og eit manglande CSRF-token.
-- Test at eit fritekstfelt som ser ut som ei wallet-løyndom, blir avvist, og at ingenting blir lagra.
+- Test at eit fritekstfelt som ser ut som ei wallet-løyndom, blir avvist, at meldinga seier kva ho ser ut som, og at ingenting blir lagra.
 - Test oppsett av eit annet multisig-oppsett enn 2-av-3, modell/teneste per nøkkel, det daterte eksportnamnet, sletting av all data, og installasjon av PWA-en.
 
 **Merk:** dei manuelle nettlesartestane er køyrde og verifiserte fram til §31. §32 legg til nye manuelle punkt.
@@ -478,7 +478,7 @@ Alle rundane under er implementerte og verifiserte. Reglane deira ligg i §1–�
 
 Fem punkt, alle **før** pakkeversjonen blir heva frå `0.1.0:0` til `1.0.0:0`. **Ingenting av dette er starta**, og det skal ikkje startast utan at brukaren ber om det.
 
-**Status i §32:** 32.4 er delvis utført, i runde 32-A og 32-B (sjå 32.4). 32.1, 32.2, 32.3, resten av 32.4 og 32.5 står framleis att.
+**Status i §32:** 32.4 er utført i runde 32-A og 32-B. Der står berre **BR-003** att, og han er ei manuell ende-til-ende-verifisering som berre brukaren kan gjere. 32.1, 32.2, 32.3, 32-E og 32.5 står framleis att, og ingen av dei er starta.
 
 ## 32.1 Ikonet
 
@@ -494,6 +494,7 @@ Ein gjennomgang av dei fem sidene for konsistens og ryddigheit, utan nye funksjo
 - Kvar liste har ein tydeleg tom-tilstand, og ingen tekst er klypt, overfylt eller broten på ein smal telefon.
 - Alle felt, val og feilmeldingar ser like ut der dei gjer same nytte, og feilmeldingane seier kva brukaren skal gjere.
 - Den tydelege offline-tilstanden frå PWA-en held fram å vere tydeleg, også etter inn- og utlogging.
+- Den korte åtvaringa ved kvart fritekstfelt, som runde 32-B la inn, skal sjå lik ut på alle sidene og ikkje klypast på ein smal telefon.
 
 ## 32.3 Gjennomgang av meldingstekstane i varsla
 
@@ -531,17 +532,20 @@ Ein gjennomgang av dei fem sidene for konsistens og ryddigheit, utan nye funksjo
 
 - **Ny modul `secret_guard.py`.** Han held den engelske BIP39-ordlista (2048 ord, bakt inn lokalt — appen gjer framleis ingen nettverkskall) og ein `find_secret()` som kjenner att eit PEM-privatnøkkelblock, ein utvida privatnøkkel (`xprv`/`yprv`/`zprv`/`tprv`/`uprv`/`vprv`), ein WIF-nøkkel (51 eller 52 teikn), ein BIP38-nøkkel og eit ordløp på 12 eller fleire BIP39-ord. Funksjonen gjev berre ei kort engelsk nemning attende, aldri teksten, så ingenting hamnar i ein logg eller ein feilmelding.
 - **`validation.py` avviser slikt innhald i kvart fritekstfelt.** Sjekken sit i dei fire teksthjelparane (`_text`, `_key_name`, `_model`, `_required_path`), så kvart fritekstfelt er dekt av konstruksjon: nøkkelnamn, modell, wallet-programvarenamn, programvareversjon, firmware-versjon, notatfelta og KI-kommentarane. Han kastar `SecretDetected`, som er ein `ValidationError`, så svaret blir `400` og ikkje `500`. Valideringa køyrer før noko blir skrive, så eit avvist innhald blir aldri lagra delvis.
-- **`auth.py` avviser òg eit adminbrukarnamn som ser ut som ei løyndom.** Passordet blir medvite ikkje sjekka, sidan ein lang passfrase er eit legitimt passord og ei avvising der ville stengje brukaren ute frå sin eigen konto.
+- **Sjekken køyrer òg før lengdegrensa til feltet.** Eit innlimt løyndom blir difor svara med kva det ser ut som, ikkje med «too long» — som elles ville bedt brukaren om å korte ned eit seed phrase i staden for å fjerne det. Lengdegrensa står framleis som ytre grense og gjeld for alt anna. Rekkjefølgja er medvite vald og festa i testar, både for eit løyndom som passar i feltet og eit som ikkje gjer det.
+- **`auth.py` avviser òg eit adminbrukarnamn som ser ut som ei løyndom**, med same rekkjefølgje. Passordet blir medvite ikkje sjekka, sidan ein lang passfrase er eit legitimt passord og ei avvising der ville stengje brukaren ute frå sin eigen konto.
 - **Meldinga gjentek aldri verdien.** Ho namngjev feltet og forma som vart kjend att, og seier at ingenting vart lagra.
 - **Åtvaring ved kvart fritekstfelt i UI-et.** Ei kort linje i same ambra-palett som sidenotisen, lagd inn i `static/health-check.html`, `static/health-check.js`, `static/setup.html`, `static/setup.js` og `static/settings.js`, med stilen `.secret-warning` i `static/styles.css`. Sidenotisen om løyndomar står framleis, og sideoverskriftene er uendra.
 - **Kjende avgrensingar** står i modulens docstring og blir ikkje tona ned: eit nakent 64-teikns heksadesimalt streng blir ikkje avvist (det kan like gjerne vere ein transaksjons-id, som er legitimt notatinnhald), berre den engelske ordlista blir brukt, og eit format utanom mønstra eller ei løyndom som er delt over fleire felt, blir ikkje fanga.
 
 **Nye bindande reglar frå 32-B:**
 
-- **Fritekst blir sjekka lokalt før lagring.** Eit felt som ser ut som ei wallet-løyndom, blir avvist med `400`, ingenting blir lagra, og meldinga gjentek aldri verdien. Sjekken er lokal og gjer ingen nettverkskall.
+- **Fritekst blir sjekka lokalt før lagring, og før lengdegrensa til feltet.** Eit felt som ser ut som ei wallet-løyndom, blir avvist med `400` og med kva det ser ut som, ingenting blir lagra, og meldinga gjentek aldri verdien. Sjekken er lokal og gjer ingen nettverkskall.
 - **Kvar fritekstfelt har ei åtvaring ved feltet**, i tillegg til sidenotisen, og stilen er `.secret-warning`.
 
-**Testar lagde til:** åtte i runde 32-A (tre i `tests/test_export.py`, ein i `tests/test_pwa.py` og fire i `tests/test_validation.py`) og seksten i runde 32-B, alle i den nye `tests/test_secret_guard.py`. Brukaren har stadfesta suiten grøn på **432 testar**.
+**Testar lagde til:** åtte i runde 32-A (tre i `tests/test_export.py`, ein i `tests/test_pwa.py` og fire i `tests/test_validation.py`) og 44 i runde 32-B, alle i den nye `tests/test_secret_guard.py`. Brukaren har stadfesta suiten grøn på **474 testar**.
+
+**Det som står att i 32.4:** berre **BR-003**, den manuelle ende-til-ende-verifiseringa i §16 og §31. Ho krev ein nettlesar og ein StartOS 0.4.0-boks, og kan berre gjerast av brukaren. Alt anna i rapporten er avgjort: BR-001 er ein falsk positiv, BR-004 fell bort, BR-005 er verifisert utan åtferdsendring, og BR-002, BR-006, BR-007 og BR-008 er retta med regresjonstestar.
 
 ## 32.5 Hevinga av pakkeversjonen
 
