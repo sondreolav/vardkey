@@ -380,7 +380,7 @@ Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og 
 - Test at ein kan byte namn på ein nøkkel i roteringsseksjonen utan å rotere han, og at ei rotering krev stadfestingsboksen.
 - Test at ei rotering kan gi nøkkelen den andre typen, og at eit namn som wallet-programvare-lista alt har, blir avvist.
 - Test innlogging og sesjon: første oppstart utan admin, rett og feil passord, `401` på API utan sesjon, omdirigering på sider, open `/health`, og eit manglande CSRF-token.
-- Test oppsett av eit anna multisig-oppsett enn 2-av-3, modell/teneste per nøkkel, det daterte eksportnamnet, sletting av all data, og installasjon av PWA-en.
+- Test oppsett av eit annet multisig-oppsett enn 2-av-3, modell/teneste per nøkkel, det daterte eksportnamnet, sletting av all data, og installasjon av PWA-en.
 
 **Merk:** dei manuelle nettlesartestane er køyrde og verifiserte fram til §31. §32 legg til nye manuelle punkt.
 
@@ -507,7 +507,26 @@ Ein gjennomgang av dei fem sidene for konsistens og ryddigheit, utan nye funksjo
 - **BR-005, BR-006, BR-007 og BR-008** krev ein verifikasjon først: autentisering og CSRF, CSV-formelinjeksjon, PWA-cachen og normaliseringa av adressestiar.
 - Ikkje hev pakkeversjonen, ikkje byt ikonet, og ikkje legg til nye tenester eller infrastruktur som del av denne jobben.
 
+**Utfall av runde 32-A (bug-triarge).** Kvar BR vart verifisert i koden som ligg i dette repoet før noko vart endra:
+
+- **BR-001 — falsk positiv.** Kjeldefilene ligg i `main` og er spora av Git; rapporten bygde på repo-visinga, ikkje på ein checkout.
+- **BR-002 — stadfesta, utsett.** Eit fritekstfelt kan framleis lagre ei løyndom brukaren limer inn ved eit uhell. Arbeidet høyrer til 32-B og vart ikkje starta her.
+- **BR-003 — stadfesta, men berre brukaren kan lukke han.** Den manuelle ende-til-ende-verifiseringa i §16 og §31 står framleis att og kan ikkje gjerast av agenten.
+- **BR-004 — fell bort.** `AI-STATUS.md` og `DATA-MODEL.md` finst ikkje i dette repoet. Koden følgjer alt kontrakten i §4–§7: statusane `SECURE`/`PATCHED`/`VULNERABLE`/`COMPROMISED`, tabellane `keys`, `health_checks`, `key_checks`, `ai_security_checks`, `wallet_software`, `alert_acknowledgements` og `app_settings`, og inga `tool_checks`. Den reelle dokdrifta er 32-E.
+- **BR-005 — verifisert i koden, inga åtferdsendring.** Berre `GET /health`, `GET /api/session` og `/login` er opne; alle andre `/api/*` svarar `401` og sidene svarar `302` til `/login`; kvar tilstandsendrande POST krev ei gyldig økt og CSRF-tokenet (`403`). Passordet er ein `hashlib.scrypt`-hash med salt per passord, økta er ein HMAC-SHA256-signert cookie med utløp, og begge samanlikningane brukar `hmac.compare_digest`. Ingen `X-Forwarded-*`-header blir lesen. Det einaste som ikkje kan stadfestast her, er `Secure`-flagget mot den reelle StartOS-proxyen: flagget er medvite utelate fordi StartOS terminerer TLS og proxyar rein HTTP inn i containeren.
+- **BR-006 — stadfesta og retta i `export.py`.** Kvar tekstcelle som byrjar med `=`, `+`, `-`, `@` eller eit kontrollteikn — òg etter leiande mellomrom — blir no prefiksa med ein apostrof. Kolonnenamna, kolonnerekkjefølgja og vanlege verdiar er uendra.
+- **BR-007 — stadfesta og retta i `static/sw.js`.** Tenestearbeidaren lagrar no eit svar berre når det er vellukka, same-opphav og ikkje omdirigert, så loginsida kan ikkje lenger erstatta det cacha app-skalet.
+- **BR-008 — stadfesta og retta i `validation.py`.** Samanlikninga av adressestiar fellar no den harda markøren (`h`/`H` ≡ `'`) i tillegg til store/små bokstavar og luft, så same derivasjonssti i to skrivemåtar blir avvist som duplikat i oppsettet, i innstillingane og ved rotering — og blir rekna som nøkkelen sin eigen sti i kontrollen. Den lagra verdien blir aldri skriven om.
+
+**Nye bindande reglar frå denne runden:**
+
+- **Eksporten nøytraliserer formelceller.** Ei tekstcelle som eit rekneark ville lese som ein formel, får ein leiande apostrof. Kolonnenamna, kolonnerekkjefølgja og formatavtalen elles står fast.
+- **Adressestien blir samanlikna kanonisk.** Same derivasjonssti i kvar av dei støtta skrivemåtane er den same stien, både for unikheit og for samanlikninga i kontrollen.
+- **PWA-cachen lagrar berre eit gyldig skal-svar.** Eit svar som ikkje er vellukka, ikkje er same-opphav eller er omdirigert, blir ikkje cacha.
+
+**Testar lagde til:** tre i `tests/test_export.py`, ein i `tests/test_pwa.py` og fire i `tests/test_validation.py` — åtte nye. Talet i «Status» ovanfor blir oppdatert etter at brukaren har køyrd suiten.
+
 ## 32.5 Hevinga av pakkeversjonen
 
 - Pakkeversjonen blir heva frå `0.1.0:0` til `1.0.0:0` når punkta over er ferdige og brukaren seier ifrå. §18 steg 12 («bygg endeleg `.s9pk` og gjer første release») høyrer til same runden.
-- Inga skjemaendring, ingen nye endepunkt og ingen nye funksjonar i denne runden. `startos/versions/` held fram tomt for datamigreringar, sidan appen migrerer skjemaet sitt sjølv.
+- Inga skjemaendring, ingen nye endepunkt og ingen nye funksjonar i denne runden. `startos/versions/` held fram tomt for datamigrasjonar, sidan appen migrerer skjemaet sitt sjølv.
