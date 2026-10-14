@@ -4,6 +4,13 @@ Every secret in this module is synthetic. The seed phrase is a run of BIP39 word
 in an order that is not a valid checksum, so it cannot be a usable wallet, and the
 key-shaped strings are the prefix and the length of the real formats filled with
 repeated base58 characters.
+
+A field also has a length limit, and the limit is the outer bound: a value that is
+longer than the field allows is refused as too long, while the guard is the inner
+check and names the shape it recognised. The four short label fields (the key
+name, the model, the wallet software name and the admin username) hold 60
+characters, so the tests use a WIF key (52 characters) or a BIP38 key (58) for
+them, and the 80-character seed phrase for the fields that have room for it.
 """
 
 from http.server import ThreadingHTTPServer
@@ -55,7 +62,9 @@ DEFAULT_SETUP = [
     {"key_number": 3, "name": "Nunchuk", "type": "cloud", "address_path": THIRD_ADDRESS_PATH},
 ]
 
-# Twelve BIP39 words in an order that is not a valid checksum. Synthetic.
+# Twelve BIP39 words in an order that is not a valid checksum. Synthetic. At 80
+# characters it only fits the fields with a longer limit, which is what the
+# short-label tests below rely on.
 SEED_PHRASE = (
     "accident abandon ability able about above absent absorb abstract absurd "
     "abuse access"
@@ -64,6 +73,8 @@ SEED_PHRASE = (
 SHORT_RUN = "abandon ability able about above absent absorb abstract absurd abuse access"
 # The prefix and the length of each real format, filled with base58 characters.
 EXTENDED_PRIVATE_KEY = "xprv" + "A" * 107
+# A WIF key is 52 characters and a BIP38 key is 58, so both fit a 60-character
+# label field; the extended key and the PEM block do not.
 WIF_PRIVATE_KEY = "L" + "A" * 51
 BIP38_KEY = "6P" + "A" * 56
 PEM_PRIVATE_KEY = "-----BEGIN EC PRIVATE KEY-----\nMHQCAQEEIBkg4LVWM" + "A" * 40
@@ -285,24 +296,30 @@ class FieldRejectionTests(unittest.TestCase):
         self.assert_refused(data)
 
     def test_the_setup_name_and_model_are_checked(self):
-        with self.assertRaises(SecretDetected):
+        # The name and the model hold 60 characters, so the WIF key (52) and the
+        # BIP38 key (58) are used here: they fit, and the guard names them.
+        with self.assertRaises(SecretDetected) as name_context:
             validate_key_setup({"keys": [
-                setup_entry(1, SEED_PHRASE, "hardware"),
+                setup_entry(1, WIF_PRIVATE_KEY, "hardware"),
                 setup_entry(2, "Jade", "hardware"),
                 setup_entry(3, "Nunchuk", "cloud"),
             ]})
 
-        with self.assertRaises(SecretDetected):
+        self.assertIn("looks like a private key", str(name_context.exception))
+
+        with self.assertRaises(SecretDetected) as model_context:
             validate_key_setup({"keys": [
-                setup_entry(1, "ColdCard", "hardware", model=EXTENDED_PRIVATE_KEY),
+                setup_entry(1, "ColdCard", "hardware", model=BIP38_KEY),
                 setup_entry(2, "Jade", "hardware"),
                 setup_entry(3, "Nunchuk", "cloud"),
             ]})
+
+        self.assertIn("looks like an encrypted private key", str(model_context.exception))
 
     def test_the_settings_and_the_rotation_are_checked(self):
         with self.assertRaises(SecretDetected):
             validate_key_settings(
-                {"key_id": 1, "name": SEED_PHRASE, "address_path": ADDRESS_PATH}, KEYS
+                {"key_id": 1, "name": WIF_PRIVATE_KEY, "address_path": ADDRESS_PATH}, KEYS
             )
 
         with self.assertRaises(SecretDetected):
@@ -316,7 +333,7 @@ class FieldRejectionTests(unittest.TestCase):
                     "replaced": True,
                     "keep_name": True,
                     "address_path": NEW_ADDRESS_PATH,
-                    "model": SEED_PHRASE,
+                    "model": BIP38_KEY,
                 },
                 KEYS,
                 1,
@@ -324,15 +341,20 @@ class FieldRejectionTests(unittest.TestCase):
 
     def test_the_wallet_software_list_is_checked(self):
         with self.assertRaises(SecretDetected) as context:
-            validate_wallet_software({"wallet_software": [SEED_PHRASE]}, KEYS)
+            validate_wallet_software({"wallet_software": [WIF_PRIVATE_KEY]}, KEYS)
 
         self.assertIn("wallet software name", str(context.exception))
+        self.assertIn("looks like a private key", str(context.exception))
 
     def test_the_admin_username_is_checked(self):
         with self.assertRaises(ValueError) as context:
-            validate_admin_credentials({"username": SEED_PHRASE, "password": "long-enough"})
+            validate_admin_credentials({
+                "username": WIF_PRIVATE_KEY,
+                "password": "long-enough",
+            })
 
-        self.assertIn("looks like a seed phrase", str(context.exception))
+        self.assertIn("admin username", str(context.exception))
+        self.assertIn("looks like a private key", str(context.exception))
 
     def test_the_admin_password_is_not_checked(self):
         # A long passphrase is a legitimate password, so the guard must not stand
@@ -344,6 +366,40 @@ class FieldRejectionTests(unittest.TestCase):
 
         self.assertEqual(username, "admin")
         self.assertEqual(password, SEED_PHRASE)
+
+    def test_a_secret_that_fits_the_field_limit_is_named_as_one(self):
+        # The guard is the inner check: when the value fits the field, the
+        # refusal says what was recognised, and never repeats the value.
+        with self.assertRaises(SecretDetected) as context:
+            validate_key_settings(
+                {"key_id": 1, "name": WIF_PRIVATE_KEY, "address_path": ADDRESS_PATH},
+                KEYS,
+            )
+
+        message = str(context.exception)
+        self.assertIn("key name looks like a private key", message)
+        self.assertIn("Nothing was saved", message)
+        self.assertNotIn(WIF_PRIVATE_KEY, message)
+
+    def test_a_secret_over_the_field_limit_is_refused_for_its_length(self):
+        # The length limit is the outer bound and is checked first, so an
+        # 80-character seed phrase in a 60-character field is refused as too
+        # long rather than as a secret. It is still refused, and the caller
+        # stores nothing; the message names the field and the limit, so it is
+        # short and understandable either way.
+        with self.assertRaises(ValidationError) as context:
+            validate_key_settings(
+                {"key_id": 1, "name": SEED_PHRASE, "address_path": ADDRESS_PATH},
+                KEYS,
+            )
+
+        message = str(context.exception)
+        self.assertIn("key name is too long", message)
+        self.assertNotIn(SEED_PHRASE, message)
+        # The same value is named as a secret in a field that has room for it.
+        data = payload()
+        data["comments"] = SEED_PHRASE
+        self.assert_refused(data)
 
     def test_an_ordinary_payload_still_passes(self):
         result = validate_health_check(payload(), KEYS, SOFTWARE_NAMES)
