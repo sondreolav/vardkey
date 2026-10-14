@@ -22,6 +22,9 @@ SECOND_ADDRESS_PATH = "m/48'/1'/0'/2'"
 THIRD_ADDRESS_PATH = "m/48'/2'/0'/2'"
 # A new, unique path a rotation can record (section 26.3).
 NEW_ADDRESS_PATH = "m/48'/7'/0'/2'"
+# The same derivation paths written with the ``h`` hardened marker instead of the
+# apostrophe, which the comparison has to fold together (section 26.2).
+HARDENED_H_PATH = "m/48h/0h/0h/2h"
 SLOT_PATHS = {
     1: ADDRESS_PATH,
     2: SECOND_ADDRESS_PATH,
@@ -284,6 +287,23 @@ class KeySetupTests(unittest.TestCase):
                     entry(2, "Jade", "hardware", value),
                     entry(3, "Nunchuk", "cloud"),
                 ]})
+
+    def test_the_path_comparison_folds_the_hardened_marker(self):
+        # ``h`` and the apostrophe name the same derivation path, so the two
+        # spellings may not be configured as two keys (section 26.2).
+        for value in (
+            HARDENED_H_PATH,
+            HARDENED_H_PATH.upper(),
+            f"  {HARDENED_H_PATH}  ",
+        ):
+            with self.assertRaises(ValidationError) as context:
+                validate_key_setup({"keys": [
+                    entry(1, "ColdCard", "hardware", ADDRESS_PATH),
+                    entry(2, "Jade", "hardware", value),
+                    entry(3, "Nunchuk", "cloud"),
+                ]})
+
+            self.assertIn("key 1: ColdCard", str(context.exception))
 
     def test_each_key_keeps_its_own_path(self):
         result = validate_key_setup({"keys": [
@@ -622,6 +642,15 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(result["key_check"]["address_path"], ADDRESS_PATH)
         self.assertEqual(result["key_check"]["address_path_verified"], "OK")
 
+    def test_a_path_written_with_the_h_marker_is_the_keys_own_path(self):
+        # The same derivation path written with the ``h`` marker is the key's own
+        # path, so the check is verified and not reported as a mismatch
+        # (sections 25.1 and 26.2). The recorded spelling is kept as it is.
+        result = validate(sample_payload(address_path=HARDENED_H_PATH))
+
+        self.assertEqual(result["key_check"]["address_path"], HARDENED_H_PATH)
+        self.assertEqual(result["key_check"]["address_path_verified"], "OK")
+
     def test_a_different_address_path_makes_the_key_uncheckable(self):
         result = validate(mismatch_payload(1, "m/48'/9'/0'/2'"))
         key_check = result["key_check"]
@@ -865,6 +894,16 @@ class KeySettingsTests(unittest.TestCase):
                     {"key_id": 2, "name": "Jade", "address_path": value}, KEYS
                 )
 
+    def test_the_duplicate_check_folds_the_hardened_marker(self):
+        # The path of key 1 written with the ``h`` marker is still the path of
+        # key 1, so the settings refuse it for key 2 (section 26.2).
+        with self.assertRaises(DuplicateAddressPath) as context:
+            validate_key_settings(
+                {"key_id": 2, "name": "Jade", "address_path": HARDENED_H_PATH}, KEYS
+            )
+
+        self.assertIn("key 1: SeedSigner", str(context.exception))
+
     def test_a_key_may_keep_its_own_path(self):
         result = validate_key_settings(
             {"key_id": 2, "name": "Jade", "address_path": SECOND_ADDRESS_PATH}, KEYS
@@ -1019,6 +1058,22 @@ class RotationTests(unittest.TestCase):
         # The key is a new one, so its old path may not be recorded again
         # (section 26.3).
         for value in (ADDRESS_PATH, f"  {ADDRESS_PATH}  ", ADDRESS_PATH.upper()):
+            with self.assertRaises(ValidationError):
+                validate_rotation(
+                    {
+                        "replaced": True,
+                        "keep_name": True,
+                        "address_path": value,
+                    },
+                    KEYS,
+                    1,
+                )
+
+    def test_the_stored_path_is_refused_in_either_marker(self):
+        # The stored path written with the ``h`` marker is the same derivation
+        # path, so the rotation refuses it as the new one too (sections 26.2 and
+        # 26.3).
+        for value in (HARDENED_H_PATH, HARDENED_H_PATH.upper()):
             with self.assertRaises(ValidationError):
                 validate_rotation(
                     {
