@@ -59,7 +59,6 @@
           </div>
           <label class="field"><span>Key being checked</span><select id="key-select" name="key_id" required><option value="">Select a key</option></select></label>
           <p class="field-help">One submission records one key. The other keys keep their own next check date.</p>
-          <p class="field-help">A blocked key is marked in the list and cannot be selected. The other keys can still be checked.</p>
           <p class="field-help">The recorded address path is compared with the path stored for the key, and the result is recorded automatically.</p>
           <div id="key-check" class="form-stack"><p class="empty-state">Loading key profiles…</p></div>
           <!-- The warning appears when the recorded address path does not match the
@@ -89,7 +88,9 @@
             <label class="field"><span>Software version</span><input id="software-version" name="software_version" type="text" maxlength="100" autocomplete="off"></label>
           </div>
           <p class="secret-warning" role="note">Never paste a seed phrase or a private key here.</p>
-          <p class="field-help" id="software-help">Record the version of the software you selected for this key.</p>
+          <!-- The help is filled in by the script, because its wording depends on
+               the selected key (sections 25.5 and 32.3). -->
+          <p class="field-help" id="software-help"></p>
           <label class="field"><span>Compatibility notes</span><textarea name="software_comments" rows="3" maxlength="2000"></textarea></label>
           <p class="secret-warning" role="note">Never paste a seed phrase or a private key here.</p>
         </section>
