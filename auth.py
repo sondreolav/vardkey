@@ -15,6 +15,12 @@ only place that knows how the credential is stored and how a session is proven:
 
 The three settings live in the ``app_settings`` table from section 31 point 7,
 so no new table is needed.
+
+The admin username is stored as free text, so it is checked against
+``secret_guard`` like every other free-text field: a wallet secret pasted there
+by accident is refused instead of stored (sections 2 and 15). The password is
+deliberately not checked, because a long passphrase is a legitimate password and
+refusing one would block the user's own login.
 """
 
 import hashlib
@@ -23,6 +29,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from database import get_app_settings, save_app_settings
+from secret_guard import find_secret, rejection_message
 
 
 ADMIN_USERNAME_SETTING = "admin_username"
@@ -110,7 +117,8 @@ def normalize_admin_username(value):
 
     A value that does not fit raises ``ValueError`` with a message the caller
     can show; the HTTP handler maps it to a ``400`` and the maintenance command
-    to a failed exit.
+    to a failed exit. A value that looks like a wallet secret is refused for the
+    same reason, and the message never repeats the value (sections 2 and 15).
     """
     if not isinstance(value, str):
         raise ValueError("admin username must be text")
@@ -119,6 +127,9 @@ def normalize_admin_username(value):
         raise ValueError("admin username must not be empty")
     if len(username) > ADMIN_USERNAME_MAX_LENGTH:
         raise ValueError("admin username is too long")
+    label = find_secret(username)
+    if label is not None:
+        raise ValueError(rejection_message("admin username", label))
     return username
 
 
