@@ -20,7 +20,7 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 - **§32 er runden som står att.** Ingenting av han er starta.
 - **Reglane under «Reglar som gjeld alle rundar» er bindande** for kvar framtidig endring.
 - Eit punkt utan avkryssingsboks er implementert og verifisert. `[ ]` markerer det som står att.
-- **Status:** alt til og med §31 er implementert og verifisert, og §32.4 er utført (sjå §32). Skjema **versjon 12**, testsuiten grøn (**474 testar**), og StartOS-pakka er bygd, sideloda og køyrd på ein eigen StartOS 0.4.0-boks. Pakkeversjonen står på `0.1.0:0` og blir ikkje heva før §32 er ferdig og brukaren seier ifrå.
+- **Status:** alt til og med §31 er implementert og verifisert, og §32.4 er utført (sjå §32). Skjema **versjon 12**, testsuiten grøn (**475 testar**), og StartOS-pakka er bygd, sideloda og køyrd på ein eigen StartOS 0.4.0-boks. Pakkeversjonen står på `0.1.0:0` og blir ikkje heva før §32 er ferdig og brukaren seier ifrå.
 
 ---
 
@@ -494,7 +494,7 @@ Ein gjennomgang av dei fem sidene for konsistens og ryddigheit, utan nye funksjo
 - Kvar liste har ein tydeleg tom-tilstand, og ingen tekst er klypt, overfylt eller broten på ein smal telefon.
 - Alle felt, val og feilmeldingar ser like ut der dei gjer same nytte, og feilmeldingane seier kva brukaren skal gjere.
 - Den tydelege offline-tilstanden frå PWA-en held fram å vere tydeleg, også etter inn- og utlogging.
-- Den korte åtvaringa ved kvart fritekstfelt, som runde 32-B la inn, skal sjå lik ut på alle sidene og ikkje klypast på ein smal telefon.
+- Den korte åtvaringa ved kvart fritekstfelt, som runde 32-B la inn, skal sjå lik ut på alle sidene. Brukaren har stadfesta at ho er lesleg på ein telefon, så det som står att der, er berre at ho ser lik ut overalt.
 
 ## 32.3 Gjennomgang av meldingstekstane i varsla
 
@@ -543,9 +543,9 @@ Ein gjennomgang av dei fem sidene for konsistens og ryddigheit, utan nye funksjo
 - **Fritekst blir sjekka lokalt før lagring, og før lengdegrensa til feltet.** Eit felt som ser ut som ei wallet-løyndom, blir avvist med `400` og med kva det ser ut som, ingenting blir lagra, og meldinga gjentek aldri verdien. Sjekken er lokal og gjer ingen nettverkskall.
 - **Kvar fritekstfelt har ei åtvaring ved feltet**, i tillegg til sidenotisen, og stilen er `.secret-warning`.
 
-**Testar lagde til:** åtte i runde 32-A (tre i `tests/test_export.py`, ein i `tests/test_pwa.py` og fire i `tests/test_validation.py`) og 44 i runde 32-B, alle i den nye `tests/test_secret_guard.py`. Brukaren har stadfesta suiten grøn på **474 testar**.
+**Testar lagde til:** åtte i runde 32-A (tre i `tests/test_export.py`, ein i `tests/test_pwa.py` og fire i `tests/test_validation.py`) og 43 i runde 32-B, alle i den nye `tests/test_secret_guard.py`. Brukaren har stadfesta suiten grøn på **475 testar**.
 
-**Det som står att i 32.4:** berre **BR-003**, den manuelle ende-til-ende-verifiseringa i §16 og §31. Ho krev ein nettlesar og ein StartOS 0.4.0-boks, og kan berre gjerast av brukaren. Alt anna i rapporten er avgjort: BR-001 er ein falsk positiv, BR-004 fell bort, BR-005 er verifisert utan åtferdsendring, og BR-002, BR-006, BR-007 og BR-008 er retta med regresjonstestar.
+**Det som står att i 32.4:** berre **BR-003**, den manuelle ende-til-ende-verifiseringa i §16 og §31. Ho krev ein nettlesar og ein StartOS 0.4.0-boks, og kan berre gjerast av brukaren. Alt anna i rapporten er avgjort: BR-001 er ein falsk positiv, BR-004 fell bort, BR-005 er verifisert utan åtferdsendring, og BR-002, BR-006, BR-007 og BR-008 er retta med regresjonstestar. To manuelle punkt under 32-B er alt stadfesta av brukaren: at eit seed phrase blir stoppa i namnefeltet og i adressestifeltet, og at åtvaringa ved felta er lesleg på ein telefon.
 
 ## 32.5 Hevinga av pakkeversjonen
 
