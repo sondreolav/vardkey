@@ -291,7 +291,7 @@ Ingen endring i `app.py`, `auth.py`, `database.py`, `alerts.py`, `static/app.js`
 
 ## 4. Kommandoar som vart køyrde og resultatet
 
-- **`python3 -m unittest discover -s tests`** — kunne **ikkje** køyrast i denne køyringa: agenten har ikkje skal eller terminaltilgang, berre Gitea-verktøya. Suiten vart difor **ikkje** stadfesta grøn av meg etter endringane. Brukaren har seinare køyrd han og stadfesta han grøn på **432 testar** (etter både 32-A og 32-B).
+- **`python3 -m unittest discover -s tests`** — kunne **ikkje** køyrast i denne køyringa: agenten har ikkje skal eller terminaltilgang, berre Gitea-verktøya. Suiten vart difor **ikkje** stadfesta grøn av meg etter endringane. Brukaren har seinare køyrd han og stadfesta han grøn på **432 testar** (etter både 32-A og 32-B), og deretter på **474 testar** (etter at BR-002-sperra vart snudd til å køyre før lengdegrensa).
 - **`make x86`** — ikkje køyrd. Det finst inga StartOS-pakkearbeidsflate i denne køyringa, og inga pakkefil vart endra.
 - **`git status --short`, `git branch --show-current`, `git ls-tree -r --name-only HEAD`** (BR-001) — ikkje køyrde som skal-kommandoar. I staden vart branch `main` lesen gjennom Gitea-API-et, som listar 88 filer, mellom dei alle kjelde-, test- og pakkefilene. Den einskilde kommandoen over kan berre brukaren køyre; resultatet hans er det som formelt lukkar BR-001.
 - **Statisk lesing av `app.py` og `auth.py`** for BR-005, og av `export.py`, `static/sw.js`, `validation.py` og testane for BR-006–BR-008.
@@ -344,7 +344,8 @@ Inga åtferd vart endra, slik oppdraget bad om. Funna i koden:
   - eit ordløp på 12 eller fleire BIP39-ord, også midt i ein setning.
 - **Funksjonen gjev berre ei kort engelsk nemning attende**, til dømes `"a seed phrase"`, og aldri teksten. `rejection_message()` byggjer setninga brukaren ser; ho namngjev feltet og forma som vart kjend att, og seier at ingenting vart lagra. Ingen av dei to kan difor lekke ein løyndom inn i ein respons eller ein logg.
 - **`validation.py`** har fått `SecretDetected`, som er ein `ValidationError`, og ein `_reject_secret()`. Sjekken sit i dei fire teksthjelparane `_text()`, `_key_name()`, `_model()` og `_required_path()`, så **kvart fritekstfelt er dekt av konstruksjon**: nøkkelnamn, modell, wallet-programvarenamn, programvareversjon, firmware-versjon, nøkkelnotatet, kompatibilitetsnotatet, det overordna kommentarfeltet, KI-kommentarane og adressestien.
-- **`auth.py`** avviser òg eit adminbrukarnamn som ser ut som ei løyndom, fordi namnet òg er lagra fritekst. Passordet blir medvite **ikkje** sjekka: ein lang passfrase er eit legitimt passord, og ei avvising der ville stengje brukaren ute frå sin eigen konto.
+- **Sjekken køyrer òg før lengdegrensa til feltet.** Det vart ei medvite avgjerd, ikkje ein detalj: med den omvendte rekkjefølgja ville eit seed phrase som er lengre enn feltet tillet, bli svara med «key name is too long» — ei melding som ber brukaren om å **korte ned** ein seed phrase i staden for å fjerne han. Med sjekken først blir svaret «key name looks like a seed phrase», som er den korte og forståelege avvisinga rapporten ber om. Lengdegrensa står framleis som ytre grense og gjeld for alt anna, så eit vanleg over-langt namn blir framleis avvist som «too long». Rekkjefølgja er festa i to testar, éin for eit løyndom som passar i feltet og éin for eit som ikkje gjer det, pluss ein test som stadfestar at lengdegrensa framleis verkar.
+- **`auth.py`** avviser òg eit adminbrukarnamn som ser ut som ei løyndom, med same rekkjefølgje, fordi namnet òg er lagra fritekst. Passordet blir medvite **ikkje** sjekka: ein lang passfrase er eit legitimt passord, og ei avvising der ville stengje brukaren ute frå sin eigen konto.
 - **Åtvaring ved kvart fritekstfelt i UI-et:** ei kort linje — «Never paste a seed phrase or a private key here.» — i same ambra-palett som den eksisterande sidenotisen, lagd inn i `static/health-check.html` (tre statiske felt), `static/health-check.js` (firmware-versjon, nøkkelnotatet og kvar KI-kommentar), `static/setup.html` og `static/setup.js` (eitt per nøkkelkort, som dekkjer namn, modell og sti) og `static/settings.js` (programvare-raden og roteringskortet). Stilen `.secret-warning` ligg i `static/styles.css`. Sidenotisen «Never enter seed phrases…» står framleis, og sideoverskriftene og dei nummererte seksjonane er uendra, så formtestane held.
 
 ## 3. Filer som vart endra
@@ -352,25 +353,26 @@ Inga åtferd vart endra, slik oppdraget bad om. Funna i koden:
 | Fil | Endring |
 |---|---|
 | `secret_guard.py` | Ny. Ordlista, mønstra, `find_secret()` og `rejection_message()`. |
-| `validation.py` | Ny `SecretDetected` og `_reject_secret()`, kalla frå dei fire teksthjelparane; `_key_name()` tek no eit feltnamn så meldinga seier «wallet software name» der det gjeld. |
-| `auth.py` | `normalize_admin_username()` avviser eit namn som ser ut som ei løyndom. Passordet er urørt. |
+| `validation.py` | Ny `SecretDetected` og `_reject_secret()`, kalla frå dei fire teksthjelparane, og kalla **før** lengdegrensa i kvar av dei; `_key_name()` tek no eit feltnamn så meldinga seier «wallet software name» der det gjeld. |
+| `auth.py` | `normalize_admin_username()` avviser eit namn som ser ut som ei løyndom, før lengdegrensa. Passordet er urørt. |
 | `static/styles.css` | Ny `.secret-warning` i den eksisterande ambra-paletten. |
 | `static/health-check.html` | Tre åtvaringar, ved dei tre statiske fritekstfelta. |
 | `static/health-check.js` | Ny `secretWarning()`, brukt ved dei tre felta skriptet byggjer. |
 | `static/setup.html`, `static/setup.js` | Ei åtvaring per nøkkelkort, både i markupen og i kortet skriptet byggjer. |
 | `static/settings.js` | Åtvaring i programvare-raden og i roteringskortet. |
 | `tests/test_secret_guard.py` | Ny testmodul. |
-| `TODO.md` | § 32.4: utfallet av 32-B, dei nye reglane, og testtalet oppdatert til 432. |
+| `TODO.md` | § 32.4: utfallet av 32-B, dei nye reglane, og testtalet oppdatert til 474. |
+| `ai-note.md` | Handoveren oppdatert med 32.4, sperra, dei nye reglane og det som står att av §32. |
 
 Ingen endring i `app.py`, `database.py`, `alerts.py`, `export.py`, `maintenance.py`, ikonet, `package.json` eller pakkeversjonen. Merk at **`app.py` ikkje trong nokon endring**: `SecretDetected` er ein `ValidationError`, som alle dei relevante handterarane alt fangar og svarar `400` på. Hadde han vore ein vanleg `ValueError`, ville `STORAGE_ERRORS` ha fanga han og svart `500` i staden.
 
 ## 4. Regresjonstestar som vart lagde til
 
-Alle i den nye `tests/test_secret_guard.py`, seksten til saman:
+Alle i den nye `tests/test_secret_guard.py`, 44 til saman:
 
-- **Ordlisteintegritet** (fire testar): nøyaktig 2048 ord, `abandon` fyrst og `zoo` sist, alfabetisk rekkjefølgje, alle orda 3–8 små bokstavar, og unike firebokstavsprefiks. Den siste er den sterke: spesifikasjonen garanterer at ingen to BIP39-ord deler dei fire første bokstavane, så eit mistypt eller manglande ord bryt han. Ei liste som er kopiert inn lokalt kan elles bli stille feil.
-- **Gjenkjenning** (åtte testar): seed phrase (òg i store bokstavar, med luft rundt, og midt i ein setning), 24 ord, at eit løp på 11 ord ikkje blir avvist, kvar av dei fire nøkkelformene, alle seks utvida-prefiksa, båe WIF-lengdene, at ein `xpub` ikkje blir avvist, og at vanlege notat ikkje blir det.
-- **Feltnivå** (tolv testar): kvar fritekstfelt i ein innsending, oppsettet, innstillingane, roteringa, programvare-lista og adminbrukarnamnet avviser ei løyndom; meldinga inneheld feltet og forma, men aldri teksten; passordet blir ikkje sjekka; eit vanleg innsending går framleis gjennom; og `SecretDetected` er ein `ValidationError`.
+- **Ordlisteintegritet** (fem testar): nøyaktig 2048 ord, `abandon` fyrst og `zoo` sist, alfabetisk rekkjefølgje, alle orda 3–8 små bokstavar, og unike firebokstavsprefiks. Den siste er den sterke: spesifikasjonen garanterer at ingen to BIP39-ord deler dei fire første bokstavane, så eit mistypt eller manglande ord bryt han. Ei liste som er kopiert inn lokalt kan elles bli stille feil.
+- **Gjenkjenning** (ti testar): seed phrase (òg i store bokstavar, med luft rundt, og midt i ein setning), 24 ord, at eit løp på 11 ord ikkje blir avvist, kvar av dei fire nøkkelformene, alle seks utvida-prefiksa, båe WIF-lengdene, at ein `xpub` ikkje blir avvist, at eit transaksjons-id ikkje blir avvist, og at vanlege notat ikkje blir det.
+- **Feltnivå** (seksten testar): kvar fritekstfelt i ein innsending, oppsettet, innstillingane, roteringa, programvare-lista og adminbrukarnamnet avviser ei løyndom; meldinga inneheld feltet og forma, men aldri teksten; passordet blir ikkje sjekka; eit vanleg innsending går framleis gjennom; `SecretDetected` er ein `ValidationError`; **ei løyndom som passar i eit kort felt blir namngjeven som ei løyndom**; **ei løyndom som er lengre enn feltet blir framleis namngjeven som ei løyndom, ikkje som «too long»**; og **lengdegrensa verkar framleis for alt anna**.
 - **Åtvaringar i UI-et** (seks testar): at kvar av dei tre statiske åtvaringane er der, at kvart skript kallar hjelparen ved felta det byggjer, at stilen finst, og at sidenotisen står att.
 - **Ikkje lagra, ikkje eksportert** (fem API-testar): eit innsending med ei seed phrase i kommentaren svarar `400`, meldinga gjengjev ikkje teksten, og både `list_health_checks()` og CSV-eksporten er tomme etterpå. Det same for ein utvida privatnøkkel i nøkkelnotatet. Eit vanleg innsending blir framleis lagra (`201`) og eksportert, og når eit lagra innsending blir følgt av eit avvist eitt, inneheld eksporten det første og ingen ting av det andre.
 
@@ -378,7 +380,7 @@ Testane inneheld **ingen ekte løyndomar**: seed-phrasen er tolv BIP39-ord i ei 
 
 ## 5. Kommandoar som vart køyrde og resultatet
 
-- **`python3 -m unittest discover -s tests`** — kunne **ikkje** køyrast av agenten, som berre har Gitea-verktøya og inga skal. Brukaren har køyrd suiten og stadfesta han grøn på **432 testar** (frå 422 før 32-A).
+- **`python3 -m unittest discover -s tests`** — kunne **ikkje** køyrast av agenten, som berre har Gitea-verktøya og inga skal. Brukaren har køyrd suiten og stadfesta han grøn: 432 testar etter 32-A, 474 etter at rekkjefølgja vart snudd.
 - **Ingen nettverkstrafikk** er lagd til: ordlista ligg i kjeldekoden, og `secret_guard.py` importerer berre `re`.
 - Endringane vart gjorde éi fil om gongen gjennom Gitea-verktøya, kvar med det gjennomgåtte innhaldet i éin operasjon. Verktøyet som var tilgjengeleg, har ingen `preview`/`preview_id`-steg.
 
@@ -398,3 +400,4 @@ Dei står i modulens docstring, og dei er grunnen til at dette blir kalla ei spe
 - **Berre den engelske BIP39-ordlista blir brukt.** Ei frase på eit anna språk, eller ei der eit ord er skrive feil, blir ikkje fanga av ordløpet.
 - **Ei løyndom som er delt over fleire felt, eller skriven i ein form utanom mønstra, blir ikkje fanga.**
 - **Falske positive er ikkje utelukka.** Terskelen på 12 ord er vald for å halde vanlege notat utanfor, men eit notat som tilfeldigvis består av tolv eller fleire BIP39-ord etter kvarandre, ville bli avvist. Det er den prisen som er vald, sidan eit avvist notat kan skrivast om, medan ei løyndom som er lagra, ikkje kan gjerast uskriven.
+- **Rekkjefølgja mellom sperra og lengdegrensa er ei medvite vald avveging**, ikkje ei gløymd detalj: sperra vinn, slik at eit innlimt løyndom alltid blir namngjeve som det det er. Det går ikkje ut over lengdegrensa, som framleis avviser alt anna som er for langt.
