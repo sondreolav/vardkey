@@ -45,6 +45,8 @@ const availabilityOptions = [["", "Select availability"], ["1", "Yes"], ["0", "N
 // Hardware works requires an active choice, so the placeholder is not an answer
 // (section 24.1).
 const hardwareWorksOptions = [["", "Select status"], ["1", "Yes"], ["0", "No"]];
+// The reminder that belongs with every free-text field (sections 2 and 15).
+const SECRET_WARNING = "Never paste a seed phrase or a private key here.";
 let keyProfiles = [];
 let previousValues = { keys: [] };
 // The wallet software list the user maintains in the settings (section 25.4).
@@ -60,6 +62,16 @@ function emptyState(text) {
   message.className = "empty-state";
   message.textContent = text;
   return message;
+}
+
+function secretWarning() {
+  // A short reminder that sits with a free-text field. The server refuses a value
+  // that looks like a wallet secret and stores nothing, so the field says so
+  // before the user types (sections 2 and 15).
+  const warning = document.createElement("span");
+  warning.className = "field-help secret-warning";
+  warning.textContent = SECRET_WARNING;
+  return warning;
 }
 
 function makeField(labelText, name, control) {
@@ -313,6 +325,7 @@ function renderKeyCheck() {
       "firmware_version",
       makeTextInput("firmware_version", 100, previousText(previous, "firmware_version")),
     ));
+    details.append(secretWarning());
     details.append(makeField(
       "Seed backup intact and matching the device",
       "seed_backup_verified",
@@ -329,6 +342,7 @@ function renderKeyCheck() {
     makeTextInput("address_path", 200, key.address_path || ""),
   ));
   card.append(makeField("Key notes", "key_comments", makeTextarea("key_comments")));
+  card.append(secretWarning());
   keyCheck.append(card);
 
   available.addEventListener("change", () => {
@@ -467,6 +481,7 @@ function renderSecurityChecks() {
     status.required = true;
     card.append(makeField("Security status", statusName, status));
     card.append(makeField("Comment", commentName, makeTextarea(commentName, 1000)));
+    card.append(secretWarning());
     securityChecks.append(card);
   }
 }
