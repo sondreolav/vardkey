@@ -322,7 +322,7 @@ def validate_wallet_software(payload, keys):
             raise ValidationError("wallet software names must be unique")
         if folded in cloud_names:
             raise ValidationError(
-                "a configured cloud key already provides this wallet software name"
+                "this name already comes from a configured cloud key"
             )
         seen.add(folded)
         names.append(name)
