@@ -13,6 +13,13 @@ status, while the yes/no columns keep their ``No``/``Yes`` wording.
 
 The two derived cloud columns are gone, together with the fields they described:
 a cloud key records only its availability (section 25.6).
+
+The user-controlled text cells (the key name, the wallet software, the address
+path, the comments, and the closure list) are neutralized before they are
+written, because a spreadsheet reads a cell that starts with ``=``, ``+``, ``-``,
+``@`` or a control character as a formula. The guard is a leading apostrophe,
+which makes the cell text again, and it is added only where it is needed, so the
+header row, the column order, and every ordinary value are unchanged.
 """
 
 import csv
@@ -50,6 +57,14 @@ FLAG_KEYS = frozenset({
     "hardware_works",
 })
 
+# A cell that starts with one of these is read as a formula by a spreadsheet, and
+# the CSV quoting alone does not stop it: a quoted ``"=1+1"`` is still a formula
+# once the file is opened (section 10).
+FORMULA_PREFIXES = ("=", "+", "-", "@")
+# The guard that turns such a cell back into text. It is only added to a cell
+# that needs it, so ordinary content is written exactly as it is stored.
+FORMULA_GUARD = "'"
+
 
 def build_csv(rows):
     """Return the export as CSV text with a header row."""
@@ -67,4 +82,35 @@ def _cell(value, is_flag):
         return ""
     if is_flag:
         return "Yes" if value == 1 else "No"
-    return str(value)
+    return _guard_formula(str(value))
+
+
+def _guard_formula(text):
+    """Return text that a spreadsheet reads as text, never as a formula.
+
+    The key name, the wallet software, the address path and the comments are
+    written as they are stored, so one of them can begin with a character a
+    spreadsheet treats as the start of a formula. The value is prefixed with an
+    apostrophe then, which is what makes the cell text again; a value that does
+    not need the guard is returned unchanged (section 10).
+    """
+    if text and _needs_guard(text):
+        return FORMULA_GUARD + text
+    return text
+
+
+def _needs_guard(text):
+    """Return True when a spreadsheet would read the cell as a formula.
+
+    The first character decides, and a leading space does not stop a spreadsheet
+    from looking at the next one, so the first character after any leading space
+    is checked as well. A control character counts, because a tab or a carriage
+    return in front of a value is treated the same way as a formula prefix.
+    """
+    first = text[0]
+    if first in FORMULA_PREFIXES or first < " " or first == "\x7f":
+        return True
+    candidate = text.lstrip(" ")
+    if not candidate:
+        return False
+    return candidate[0] in FORMULA_PREFIXES or candidate[0] < " "
