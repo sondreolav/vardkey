@@ -113,6 +113,10 @@ h2 { margin-bottom: 0; font-size: 20px; letter-spacing: -.02em; }
 .checkbox-field span { font-weight: 400; line-height: 1.55; }
 .optional { color: var(--muted); font-weight: 400; }
 .field-help { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+/* The short reminder that sits with a free-text field (section 2). It borrows
+   the amber of the page notice, so it is visible where the text is typed, and
+   it resets the weight it would otherwise inherit inside a field label. */
+.secret-warning { display: block; margin: 8px 0 0; padding-left: 10px; border-left: 3px solid #e9d9b0; color: #674f1c; font-size: 12px; font-weight: 400; line-height: 1.55; }
 .form-actions { display: flex; align-items: center; gap: 12px; margin-top: 24px; flex-wrap: wrap; }
 .software-row { display: flex; align-items: flex-end; gap: 12px; }
 .software-row .field { flex: 1; margin: 0; }
