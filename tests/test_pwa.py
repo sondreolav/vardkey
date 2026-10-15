@@ -2,8 +2,7 @@
 
 The service worker caches only the shell, the manifest describes the app, and
 every page links the manifest and the icon. The icon is the retro SVG of
-section 32.1, served with ``sizes: "any"``; the 192 and 512 px PNGs still need a
-rasterizer, and only the manifest and its icons entry change when they arrive.
+section 32.1, listed first, with the 192 and 512 px PNGs beside it.
 """
 
 from http.server import ThreadingHTTPServer
@@ -63,9 +62,9 @@ class ServiceWorkerTests(unittest.TestCase):
         # The quoted path is what matters: "/health-check" is a shell path, while
         # "/health" and "/login" are not, and must not appear.
         self.assertNotIn('\"/health\"', body)
-        self.assertNotIn('\"/login\"', body)
-        # The shell it does cache is the five pages, their assets, and the two
-        # files the browser reads when the app is installed.
+        self.assertNotIn('"/login"', body)
+        # The shell it does cache is the five pages, their assets, and the
+        # manifest and icons the browser reads when the app is installed.
         for path in (
             "/",
             "/setup",
@@ -75,6 +74,8 @@ class ServiceWorkerTests(unittest.TestCase):
             "/styles.css",
             "/manifest.webmanifest",
             "/icon.svg",
+            "/icon-192.png",
+            "/icon-512.png",
         ):
             self.assertIn(f'"{path}"', body)
 
@@ -105,11 +106,12 @@ class ServiceWorkerTests(unittest.TestCase):
 
 
 class IconTests(unittest.TestCase):
-    """The favicon and the top-bar brand mark (section 32.1).
+    """The favicon, the top-bar brand mark, and the two raster icons (32.1).
 
     Every page links the icon, and the brand mark is the icon image itself. The
     class name ``brand-mark`` is kept, because the stylesheet styles it by that
-    name.
+    name. The PNGs are rasterized from the package icon at the repository root,
+    so the two SVG files have to carry the same drawing.
     """
 
     PAGES = (
@@ -123,9 +125,17 @@ class IconTests(unittest.TestCase):
     ICON_LINK = '<link rel="icon" type="image/svg+xml" href="/icon.svg">'
     BRAND_MARK = '<img class="brand-mark" src="/icon.svg" alt="" aria-hidden="true">'
     LETTER_MARK = '<span class="brand-mark" aria-hidden="true">V</span>'
+    PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
     def read_static(self, filename):
         return (ROOT / "static" / filename).read_text(encoding="utf-8")
+
+    def png_size(self, filename):
+        """Return the width and height a PNG file declares in its IHDR chunk."""
+        data = (ROOT / "static" / filename).read_bytes()
+        self.assertEqual(data[:8], self.PNG_SIGNATURE, filename)
+        self.assertEqual(data[12:16], b"IHDR", filename)
+        return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
 
     def test_every_page_links_the_icon(self):
         # The favicon is the same retro drawing as the manifest icon, and every
@@ -160,9 +170,26 @@ class IconTests(unittest.TestCase):
         self.assertIn("flex-direction: column", styles)
         self.assertIn("main { flex: 1 1 auto; }", styles)
 
+    def test_the_served_icon_carries_the_same_drawing_as_the_package_icon(self):
+        # The package icon at the repository root is the source of truth, and the
+        # file the PWA serves is the same drawing. Only the leading comment may
+        # differ, so the comparison starts at the root <svg> element
+        # (section 32.1).
+        root = (ROOT / "icon.svg").read_text(encoding="utf-8")
+        served = self.read_static("icon.svg")
+
+        self.assertEqual(root[root.index("<svg"):], served[served.index("<svg"):])
+
+    def test_the_png_icons_are_the_size_the_manifest_declares(self):
+        # A rasterizer asked for the wrong size still writes a valid PNG, so the
+        # size is read from the file itself instead of being trusted
+        # (section 32.1).
+        self.assertEqual(self.png_size("icon-192.png"), (192, 192))
+        self.assertEqual(self.png_size("icon-512.png"), (512, 512))
+
 
 class ManifestTests(SessionMixin, unittest.TestCase):
-    """The manifest and the icon that make the app installable."""
+    """The manifest and the icons that make the app installable."""
 
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -196,6 +223,11 @@ class ManifestTests(SessionMixin, unittest.TestCase):
             self.assertEqual(response.status, 200)
             return response.read().decode("utf-8")
 
+    def fetch_bytes(self, path):
+        with self.get(path) as response:
+            self.assertEqual(response.status, 200)
+            return response.read()
+
     def test_the_manifest_is_served_and_describes_the_app(self):
         body = self.fetch_text("/manifest.webmanifest")
         manifest = json.loads(body)
@@ -221,11 +253,32 @@ class ManifestTests(SessionMixin, unittest.TestCase):
         # The icon is served, so the manifest never points at a 404.
         self.assertIn("svg", self.fetch_text(entry["src"]))
 
+    def test_the_manifest_lists_the_two_png_icons(self):
+        # The vector entry stays first, so the test above still reads it. The
+        # two PNGs follow, each with the size it really is (section 32.1).
+        manifest = json.loads(self.fetch_text("/manifest.webmanifest"))
+
+        self.assertEqual(manifest["icons"][0]["src"], "/icon.svg")
+        entries = {entry["src"]: entry for entry in manifest["icons"]}
+        for src, sizes in (("/icon-192.png", "192x192"), ("/icon-512.png", "512x512")):
+            self.assertIn(src, entries)
+            self.assertEqual(entries[src]["sizes"], sizes)
+            self.assertEqual(entries[src]["type"], "image/png")
+
     def test_the_manifest_and_the_icon_are_listed_in_static_files(self):
         # A file that is not listed answers 404, which would make the app
         # uninstallable without failing a single page test.
         self.assertIn("/manifest.webmanifest", STATIC_FILES)
         self.assertIn("/icon.svg", STATIC_FILES)
+        self.assertIn("/icon-192.png", STATIC_FILES)
+        self.assertIn("/icon-512.png", STATIC_FILES)
+
+    def test_the_two_png_icons_are_served(self):
+        # A path that is missing from STATIC_FILES answers 404, so the manifest
+        # would point at a missing image without failing a page test.
+        for src in ("/icon-192.png", "/icon-512.png"):
+            body = self.fetch_bytes(src)
+            self.assertTrue(body.startswith(IconTests.PNG_SIGNATURE), src)
 
     def test_every_page_links_the_manifest(self):
         for path in ("/", "/setup", "/settings", "/health-check", "/history"):
