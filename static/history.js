@@ -35,6 +35,16 @@ function displayFlag(value) {
   return "—";
 }
 
+function mergedLine(...values) {
+  // Two values that belong together are shown on one line, for example
+  // "Sparrow Wallet 2.5.1" or "Blockstream Jade 1.4.1". A missing part is left
+  // out, and a line with nothing to show is the same dash as everywhere else.
+  const parts = values.filter(
+    (value) => value !== null && value !== undefined && value !== "",
+  );
+  return parts.length ? parts.join(" ") : "—";
+}
+
 function emptyNote(text) {
   const note = document.createElement("p");
   note.className = "empty-state";
@@ -107,8 +117,10 @@ function summaryEntries(record) {
     ["Check date", record.checked_at],
     ["Next check due", record.next_check_due],
     ["Key checked", keyLabel(record)],
-    ["Wallet software", record.wallet_software],
-    ["Software version", record.software_version],
+    // The wallet software and its version belong together, so they share one
+    // line: "Sparrow Wallet 2.5.1". A missing version leaves the software on
+    // its own, and a check without either shows a dash.
+    ["Wallet software", mergedLine(record.wallet_software, record.software_version)],
     ["Software compatibility", record.software_compatibility_status],
     ["Software notes", record.software_comments],
     // The contact confirmation is a stored status, so it is shown as text
@@ -129,7 +141,13 @@ function keyEntries(keyCheck) {
   const entries = [["Availability", displayFlag(keyCheck.available)]];
   if (keyCheck.type === "hardware") {
     entries.push(["Hardware works", displayFlag(keyCheck.hardware_works)]);
-    entries.push(["Firmware version", keyCheck.firmware_version]);
+    // The hardware model and the firmware version belong together, so they
+    // share one line: "Blockstream Jade 1.4.1". Either one alone is shown on
+    // its own, and a key without both shows a dash.
+    entries.push([
+      "Hardware and firmware",
+      mergedLine(keyCheck.model, keyCheck.firmware_version),
+    ]);
     entries.push(["Seed backup verified", keyCheck.seed_backup_verified]);
   }
   // The user records the address path only; the verification result is derived
@@ -151,16 +169,17 @@ function securityTable(securityChecks) {
 }
 
 function closedAlertsTable(closedAlerts) {
-  // The closures that belong to a key are shown with the code, the source, the
-  // action written out as a readable label, and the date (section 27).
+  // The closures that belong to a key are shown with the code, the action
+  // written out as a readable label, and the date (section 27). The source is
+  // not a column: the alert is already named by its code, and the closure
+  // belongs to a key (section 32.1).
   if (!closedAlerts.length) {
     return emptyNote("No follow-up was closed on this check.");
   }
   return dataTable(
-    ["Alert", "Source", "Action", "Closed"],
+    ["Alert", "Action", "Closed"],
     closedAlerts.map((entry) => [
       entry.code,
-      entry.source,
       ACTION_LABELS[entry.action] || entry.action,
       entry.acknowledged_at,
     ]),
