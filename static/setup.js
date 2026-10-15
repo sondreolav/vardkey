@@ -14,19 +14,6 @@ const KEY_COUNT = 3;
 const MIN_KEY_COUNT = 2;
 const MAX_KEY_COUNT = 15;
 
-// The reminder that belongs with every free-text field (sections 2 and 15).
-const SECRET_WARNING = "Never paste a seed phrase or a private key here.";
-
-function secretWarning() {
-  // A short reminder that sits with a free-text field. The server refuses a value
-  // that looks like a wallet secret and stores nothing, so the field says so
-  // before the user types (sections 2 and 15).
-  const warning = document.createElement("span");
-  warning.className = "field-help secret-warning";
-  warning.textContent = SECRET_WARNING;
-  return warning;
-}
-
 function slot(number) {
   return {
     name: form.querySelector(`[name="key_${number}_name"]`),
@@ -123,7 +110,10 @@ function buildFieldset(number) {
   pathInput.required = true;
   pathLabel.append(pathSpan, pathInput);
 
-  fieldset.append(grid, modelLabel, pathLabel, secretWarning());
+  // The reminder that belongs with the free-text fields of a key stands once
+  // above the whole list, in the markup, so a rebuilt card never repeats it
+  // (section 32.2 point 2).
+  fieldset.append(grid, modelLabel, pathLabel);
   return fieldset;
 }
 
