@@ -1,9 +1,7 @@
-<!-- The installable PWA icon (section 31 point 6), the same drawing as the
-     package icon.svg in the repository root and part of the retro theme of
-     section 32.2: a raised grey window with the three keys of the default
-     multisig setup, centred in the face. The 192 and 512 px PNGs are not built
-     here: the manifest still points at this SVG with sizes "any", which is what
-     the manifest test asserts. -->
+<!-- The installable PWA icon, served as /icon.svg and listed first in the
+     manifest. It carries the same drawing as the package icon at the repository
+     root, which is the source of truth: the 192 and 512 px PNGs beside it are
+     rasterized from it, and a test asserts that the two SVG files agree. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="VardKey icon">
   <rect x="4" y="4" width="120" height="120" fill="#c0c0c0"/>
   <path d="M4 124 V4 H124" fill="none" stroke="#ffffff" stroke-width="4"/>
