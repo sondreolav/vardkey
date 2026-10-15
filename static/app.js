@@ -2,8 +2,7 @@
 
 const keyList = document.querySelector("#key-list");
 const keyCount = document.querySelector("#key-count");
-const setupTitle = document.querySelector("#setup-title");
-const setupDescription = document.querySelector("#setup-description");
+const setupShape = document.querySelector("#setup-shape");
 const nextCheckTitle = document.querySelector("#next-check-title");
 const nextCheckDetail = document.querySelector("#next-check-detail");
 const overdueTitle = document.querySelector("#overdue-title");
@@ -105,6 +104,17 @@ function actionLabels(actions) {
   return (actions || []).map((action) => ACTION_LABELS[action] || action).join(" or ");
 }
 
+function keyTypeLabel(type) {
+  return type === "cloud" ? "Cloud" : "Hardware";
+}
+
+function sameLabel(first, second) {
+  // Case and spacing do not make two labels different, so a model that only
+  // repeats the key's own name says nothing (section 32.2 point 8).
+  const normalize = (value) => String(value || "").toLowerCase().replace(/\s+/g, "");
+  return normalize(first) === normalize(second);
+}
+
 function createKeyCard(entry) {
   const card = document.createElement("article");
   card.className = "key-card";
@@ -114,7 +124,9 @@ function createKeyCard(entry) {
 
   const number = document.createElement("span");
   number.className = "key-number";
-  number.textContent = String(entry.key_number).padStart(2, "0");
+  // The number and the type share the top line, so the card has no line of its
+  // own for the type (section 32.2 point 6).
+  number.textContent = `${String(entry.key_number).padStart(2, "0")} · ${keyTypeLabel(entry.type)}`;
 
   const open = alertsForKey(entry.key_id);
   const status = document.createElement("span");
@@ -132,39 +144,39 @@ function createKeyCard(entry) {
   const name = document.createElement("h3");
   name.textContent = entry.name;
 
-  // The address path is part of the identity of a key, so the card shows it.
-  // An empty path, which a migrated key can have, is left out (section 31.4).
+  // The model is documentation only, and it is shown under the name with no
+  // label. A model that only repeats the key's own name is left out
+  // (section 32.2 point 8).
+  let model = null;
+  if (entry.model && !sameLabel(entry.model, entry.name)) {
+    model = document.createElement("p");
+    model.className = "key-model";
+    model.textContent = entry.model;
+  }
+
+  // The address path is part of the identity of a key, so the card shows it on
+  // its own, without a label. An empty path, which a migrated key can have, is
+  // left out (sections 31.4 and 32.2 point 7).
   const path = document.createElement("p");
   path.className = "key-path";
   if (entry.address_path) {
-    path.textContent = `Address path: ${entry.address_path}`;
+    path.textContent = entry.address_path;
   }
-
-  const type = document.createElement("p");
-  type.textContent = entry.type === "cloud" ? "Cloud key" : "Hardware key";
 
   top.append(number, status);
   card.append(top, name);
+  if (model) {
+    card.append(model);
+  }
   if (entry.address_path) {
     card.append(path);
   }
-  card.append(type);
 
-  // The model is documentation only: a hardware key has a model and a cloud key
-  // comes from a service, and an empty value is left out (section 31 point 5).
-  if (entry.model) {
-    const model = document.createElement("p");
-    model.className = "key-model";
-    model.textContent = `${entry.type === "cloud" ? "Service" : "Model"}: ${entry.model}`;
-    card.append(model);
-  }
-
-  // The dates stay visible with an open alert, so the card never hides the last
-  // check and the next due date of a key that only needs an informational
-  // follow-up (section 27).
+  // The next due date stays visible with an open alert, so the card never hides
+  // the date of a key that only needs an informational follow-up
+  // (sections 27 and 32.2 point 9).
   const dates = document.createElement("dl");
   dates.className = "key-dates";
-  appendDateRow(dates, "Last checked", entry.last_checked_at);
   appendDateRow(dates, "Next check due", entry.next_check_due);
   card.append(dates);
 
@@ -202,14 +214,15 @@ function createKeyAlertNote(entry, open) {
   return note;
 }
 
-function renderSetupShape(setup) {
-  // The setup card reads the threshold and the key count from the API, because
-  // the single setup may be any shape, not only 2-of-3 (section 31 point 7).
+function renderSetupHeading(setup) {
+  // The heading reads the threshold and the key count from the API, because the
+  // single setup may be any shape, not only 2-of-3 (sections 31 point 7 and
+  // 32.2 point 3). The line that stands in the markup is the fallback until the
+  // setup has been read.
   if (!setup || typeof setup.threshold !== "number" || typeof setup.key_count !== "number") {
     return;
   }
-  setupTitle.textContent = `${setup.threshold}-of-${setup.key_count}`;
-  setupDescription.textContent = `${setup.threshold} of ${setup.key_count} keys are required to sign.`;
+  setupShape.textContent = `Bitcoin Health Monitor for a ${setup.threshold}-of-${setup.key_count} Multisig Setup.`;
 }
 
 function renderSummary(status) {
@@ -497,7 +510,9 @@ async function loadDashboard() {
     keysLoaded = true;
   }
   if (setupResult.status === "fulfilled") {
-    renderSetupShape(setupResult.value);
+    // The setup shape is what the heading under the title reads
+    // (section 32.2 point 3).
+    renderSetupHeading(setupResult.value);
   }
 
   renderKeyCards();
