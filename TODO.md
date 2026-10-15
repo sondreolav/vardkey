@@ -17,10 +17,10 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 
 - **§1–§18 er kravspecen og gjeld som han står.** Han skildrar appen slik han er no, ikkje slik han vart bygd.
 - **§19–§31 er historikk.** Alle rundane der er ferdige og verifiserte, og står no som éi linje kvar. Reglane deira ligg i §1–§18 og i `ai-note.md`, som er handoveren.
-- **§32 er runden som går no.** §32.3 (varsel- og sidetekstane) og §32.4 (bug-rapporten) er utførte, med unntak av BR-003, som berre brukaren kan lukke. Resten av §32 står att.
+- **§32 er runden som går no.** §32.1 (SVG-ikonet), §32.2 (UI-passet med retro-temaet), §32.3 (varsel- og sidetekstane) og §32.4 (bug-rapporten) er utførte, med unnatak av BR-003, som berre brukaren kan lukke, og dei to PNG-ikona på 192 og 512 px, som krev ein rasteriserar. §32.6 og §32.5 står att.
 - **Reglane under «Reglar som gjeld alle rundar» er bindande** for kvar framtidig endring.
 - Eit punkt utan avkryssingsboks er implementert og verifisert. `[ ]` markerer det som står att.
-- **Status:** alt til og med §31 er implementert og verifisert, og §32.3 og §32.4 er utførte (sjå §32), med unntak av BR-003, som berre brukaren kan lukke. Skjema **versjon 12**, testsuiten grøn (**477 testar**), og StartOS-pakka er bygd, sideloda og køyrd på ein eigen StartOS 0.4.0-boks. Pakkeversjonen står på `0.1.0:0` og blir ikkje heva før §32 er ferdig og brukaren seier ifrå.
+- **Status:** alt til og med §31 er implementert og verifisert, og §32.1 (SVG-delen), §32.2, §32.3 og §32.4 er utførte (sjå §32), med unnatak av BR-003, som berre brukaren kan lukke, og PNG-ikona på 192 og 512 px. Skjema **versjon 12**, testsuiten grøn (**485 testar**), og StartOS-pakka er bygd, sideloda og køyrd på ein eigen StartOS 0.4.0-boks. Pakkeversjonen står på `0.1.0:0` og blir ikkje heva før §32 er ferdig og brukaren seier ifrå.
 
 ---
 
@@ -52,7 +52,7 @@ Ingen AI-integrasjon, ingen Bitcoin-node-integrasjon, ingen Bitcoin-signering, i
 # 2. Viktige reglar for appen
 
 - Appen skal aldri spørje etter seed phrase, private keys, PIN, passord eller wallet-hemmelegheiter, og aldri lagre slike. Det gjeld *wallet*-hemmelegheiter: adminpassordet er den einaste akkrediteringa appen lagrar, og han blir lagra som ein `hashlib.scrypt`-hash, aldri i klartekst.
-- Eit fritekstfelt avviser eit innlimt wallet-hemmelegheit lokalt, før noko blir lagra (sjå §15), og kvart fritekstfelt har ei kort åtvaring ved feltet.
+- Eit fritekstfelt avviser eit innlimt wallet-hemmelegheit lokalt, før noko blir lagra (sjå §15). Den korte åtvaringa mot å lime inn ei løyndom står **éin gong**, i nøkkeloppsettet, og blir ikkje gjenteken per fritekstfelt (sjå §12 og §15).
 - Kontaktinformasjon til nøkkelhaldarar skal ikkje lagrast; berre om kontaktinfo er stadfesta.
 - Appen skal ikkje late som han sjølv har utført ein hardware-test. Brukaren registrerer resultatet av testen.
 - Appen skal vere lokal og enkel. Dersom noko ikkje er nødvendig for den årlege health check-en, skal det ikkje byggjast.
@@ -234,7 +234,7 @@ Alle lagra kontrollar blir lesne, ikkje berre den nyaste. Like varsel (same `cod
 - Vis alle aktive varsel, med kva registrering kvart varsel kjem frå, og handlinga som lukkar det.
 - Knapp `Start årleg health check`, lenke `Historikk`, lenke `Download CSV` og lenke til innstillingane.
 - Vis oppsettsteget i staden for dashboardet når nøkkeloppsettet manglar.
-- Eit nøkkelkort viser namn, adressesti, modell/teneste og type, og ei tydeleg melding når nøkkelen har eit ope varsel, i tillegg til datoane sine: kor mange varsel som står ope, at nøkkelen ikkje kan kontrollerast før dei er lukka, kva handling som lukkar det første, og ei lenkje til varsellista.
+- Eit nøkkelkort viser namn, adressesti, modell/teneste og type, og ei tydeleg melding når nøkkelen har eit ope varsel, i tillegg til datoane sine: kor mange varsel som står ope, at nøkkelen ikkje kan kontrollerast før dei er lukka, kva handling som lukkar det første, og ei lenkje til varsellista. Kortet viser nummeret og typen på den øvste linja (§32.2 punkt 6), modellen under namnet (punkt 8) og adressestien under han (punkt 7), og av datoane berre `Next check due` (punkt 9).
 
 ---
 
@@ -246,6 +246,7 @@ Alle lagra kontrollar blir lesne, ikkje berre den nyaste. Like varsel (same `cod
 - Vis `Address path verified` som den utleidde verdien han er, og ikkje som eit brukarval.
 - Vis namnet nøkkelen har no, sidan namnet kan endrast i innstillingane.
 - Vis kva varsel som vart lukka på kontrollen, med kva handling og kva dato.
+- Kortet i lista viser datoen, nøkkelnummeret og namnet nøkkelen har no, og ein kort status: `All OK` eller `Needs follow-up` (§32.2 punkt 14). Det kjem frå `needs_follow_up` i oppsummeringa, som seier om kontrollen reiste noko å følgje opp.
 
 ---
 
@@ -287,6 +288,7 @@ Minimumsendepunkt: `GET /health`, `GET /api/keys`, `GET /api/health-checks`, `GE
 - `POST /api/keys/<id>/rotate` avviser med `409` ein typeendring som ville gjort nøkkelen til ein cloud-nøkkel under eit namn som wallet-programvare-lista alt har.
 - `POST /api/alerts/acknowledge` kvitterer ut eit varsel med `code`, `source` og handlinga som lukkar det.
 - `GET /api/health-checks/<id>` gjev òg `closed_alerts`, lukkingane som høyrer til kontrollen.
+- `GET /api/health-checks` gjev kvar oppsummering med dei same felta som før, og i tillegg `key_names` (namnet kvar nøkkel i kontrollen har no, i same rekkjefølgje som `key_numbers`) og `needs_follow_up` (om kontrollen reiste noko å følgje opp, rekna ut av varselreglane i §7, og ein eigenskap ved den lagra kontrollen — han endrar seg ikkje når brukaren lukkar varselet seinare). Felta kjem i tillegg, sjå §32.2 punkt 14.
 - Feilkodar: ugyldig payload `400`, ukjend nøkkel eller varsel `404`, låst eller duplikat adressesti `409`, øydelagd database `500`, manglande eller ugyldig sesjon `401`, og manglande eller ugyldig CSRF-token `403`. Eit fritekstfelt som ser ut som ei wallet-løyndom er òg ein `400` (sjå §15).
 
 ---
@@ -296,14 +298,14 @@ Minimumsendepunkt: `GET /health`, `GET /api/keys`, `GET /api/health-checks`, `GE
 - Enkel responsiv web-UI. Enkelheit går framfor grafisk kompleksitet.
 - Tydlege statusfelt, og faste val der statusen skal vere ein avgrensa verdi.
 - Vis problem tydeleg, og vis kva som står att før ein health check kan lagrast.
-- Skjul felt som ikkje gjeld for vald nøkkel eller vald programvare, og skjul programvare og KI-status når nøkkelen ikkje kunne kontrollerast. Eit skjult `required`-felt blokkerer innsendinga, så flagget må alltid clearast når feltet blir skjult.
+- Skjul felt som ikkje gjeld for vald nøkkel eller vald programvare, og skjul programvare og KI-status nøkkelen ikkje kunne kontrollerast. Eit skjult `required`-felt blokkerer innsendinga, så flagget må alltid clearast når feltet blir skjult.
 - Eige oppsettsteg ved første oppstart: terskel, talet på nøklar, og namn, type, modell og adressesti per nøkkel.
 - Eit innloggingssteg framfor alt anna, og eit opprett-admin-steg når ingen admin finst enno.
 - Skjemaet viser kva nøklar som er sperra av eit ope varsel, og kva handling som lukkar det.
 - Eit påminningsvarsel før innsending når adressestien ikkje stemmer.
 - Innstillingsside med `01 / Wallet software` og `02 / Key rotation`, bygd for fleire tema seinare. Nøkkelnamnet, modellen, adressestien til ein nøkkel utan lagra kontroll, og roteringa med ny type blir alle endra i roteringsseksjonen, og éin knapp lagrar alt. Det finst ikkje lenger ein eigen `01 / Keys`-seksjon.
 - Varselknappane har den teksten og det stadfestingssteget som høyrer til handlinga si, og varselet om programvare-inkompatibilitet peikar på innstillingane.
-- Kvart fritekstfelt har ei kort åtvaring ved feltet, i tillegg til sidenotisen, med stilen `.secret-warning` (§15).
+- Den korte åtvaringa mot å lime inn ei løyndom står **éin gong**, i nøkkeloppsettet, i tillegg til sidenotisen, med stilen `.secret-warning` (§15). Ho blir ikkje gjenteken per fritekstfelt.
 - Appen skal kunne installerast som ein PWA utan offline-data.
 - Sørg for at appen fungerer godt i vanleg StartOS-browser.
 
@@ -361,7 +363,7 @@ Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og 
 - Ikkje implementer eigen kryptografi. Adminpassordet brukar `hashlib.scrypt` frå standardbiblioteket, og sesjonen ein HMAC-SHA256-signatur.
 - Ikkje send data til eksterne tenester.
 - Adressestien er ein offentleg derivasjonssti og inneheld inga hemmelegheit.
-- Fritekst blir sjekka lokalt i `secret_guard.py` før lagring, og før lengdegrensa til feltet. Eit felt som ser ut som ei wallet-løyndom, blir avvist med `400`, ingenting blir lagra, og meldinga gjentek aldri verdien. Sjekken gjer ingen nettverkskall. Han er ei sperre mot dei vanlegaste formata, ikkje eit vern: eit nakent 64-teikns heks-streng, ei frase på eit anna språk, og ei løyndom delt over fleire felt, blir ikkje fanga.
+- Fritekst blir sjekka lokalt i `secret_guard.py` før lagring, og før lengdegrensa til feltet. Eit felt som ser ut som ei wallet-løyndom, blir avvist med `400`, ingenting blir lagra, og meldinga gjentek aldri verdien. Sjekken gjer ingen nettverkskall. Han er ei sperre mot dei vanlegaste formata, ikkje eit vern: eit nakent 64-teikns heks-streng, ei frase på eit anna språk, og ei løyndom delt over fleire felt, blir ikkje fanga. I UI-et står den korte åtvaringa **éin gong**, i nøkkeloppsettet, med stilen `.secret-warning`; ho blir ikkje gjenteken ved kvart fritekstfelt (§12 og §32.2 punkt 10). Serveren er uendra og avviser framleis eit løyndom i kvart fritekstfelt.
 
 ---
 
@@ -395,7 +397,7 @@ Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og 
 - Test at ein CSV-celle som byrjar med `=`, `+`, `-`, `@` eller eit kontrollteikn, blir eksportert som tekst, og at vanleg innhald er uendra.
 - Test oppsett av eit annet multisig-oppsett enn 2-av-3, modell/teneste per nøkkel, det daterte eksportnamnet, sletting av all data, og installasjon av PWA-en.
 
-**Merk:** dei manuelle nettlesartestane er køyrde og verifiserte fram til §31. §32 legg til nye manuelle punkt: ikonet (32.1), UI-pussen (32.2), og ein kikk på varsellista, nøkkelkortet og sperre-noten i skjemaet etter tekstendringane i 32.3.
+**Merk:** dei manuelle nettlesartestane er køyrde og verifiserte fram til §31. §32 legg til nye manuelle punkt: ikonet (32.1), UI-pussen og retro-temaet på ein smal telefon (32.2), og ein kikk på varsellista, nøkkelkortet og sperre-noten i skjemaet etter tekstendringane i 32.3.
 
 ## StartOS-test
 
@@ -488,26 +490,46 @@ Alle rundane under er implementerte og verifiserte. Reglane deira ligg i §1–�
 
 # 32. Det som står att
 
-Seks punkt, alle **før** pakkeversjonen blir heva frå `0.1.0:0` til `1.0.0:0`. §32.3 og §32.4 er utførte; resten står att, og eit punkt skal ikkje startast utan at brukaren ber om det.
+Seks punkt, alle **før** pakkeversjonen blir heva frå `0.1.0:0` til `1.0.0:0`. §32.1 (SVG-en), §32.2, §32.3 og §32.4 er utførte; §32.6 og §32.5 står att, og eit punkt skal ikkje startast utan at brukaren ber om det.
 
-**Status i §32:** 32.3 er utført, og 32.4 er utført i rundane 32-A og 32-B. I 32.4 står berre **BR-003** att, og han er ei manuell ende-til-ende-verifisering som berre brukaren kan gjere. 32.1, 32.2, 32.6 og 32.5 står framleis att. 32.3 tok òg dei tekststadene i dei fem sidene som var duplikat eller overflødige, sidan dei høyrer til tekstgjennomgangen; resten av 32.2 — konsistens i knappar og hjelpetekstar, tom-tilstandar, ingenting klypt på ein smal telefon, og at åtvaringa ved felta ser lik ut overalt — står att.
+**Status i §32:** 32.1 er utført for SVG-en (dei to PNG-ikona krev ein rasteriserar), 32.2 er utført, 32.3 er utført, og 32.4 er utført i rundane 32-A og 32-B. I 32.4 står berre **BR-003** att, og han er ei manuell ende-til-ende-verifisering som berre brukaren kan gjere. 32.6 og 32.5 står framleis att. Den manuelle nettlesartesten av retro-temaet på ein smal telefon står att for brukaren, saman med den nye bokstesten i 32.5.
 
 ## 32.1 Ikonet
 
-- Brukaren leverer kunstverket. Kodaren legg inn `icon.svg` i repo-rota (maks 40 KiB, kravet i manifestet) og PWA-ikon i 192 og 512 px i `static/`, og legg dei inn i ikonoppføringa i `static/manifest.webmanifest` og i `STATIC_FILES` i `app.py`.
-- Placeholder-ikonet som ligg der no — ein SVG med `sizes: "any"`, som er det manifest-testen sjekkar — blir ståande til kunstverket kjem.
+**Utført for SVG-en; PNG-ane står att.** `icon.svg` i repo-rota og `static/icon.svg` er bytte ut med det same retro-motivet: eit heva grått vindauge med den klassiske marineblå tittelstripa og dei tre nøklane i standardoppsettet. Fila i rota er 1,3 KiB, langt under grensa på 40 KiB, og ho er rein SVG utan fontar, bilete eller nettverkskall, så CSP-en `default-src 'self'` held.
+
+- `static/icon.svg` er den same teikninga, sidan manifestet peikar på `/icon.svg`. Oppføringa står framleis med `sizes: "any"` og `type: "image/svg+xml"`, som er det `tests/test_pwa.py` sjekkar.
+- `/icon.svg` står alt i `STATIC_FILES` i `app.py`, i `icons`-oppføringa i `static/manifest.webmanifest` og i allow-lista i `static/sw.js`. Ingen stiar er nye, så ingen av dei tre filene trong endring.
+- **Det som står att:** PNG-ikona på 192 og 512 px. Dei krev ein rasteriserar, og agenten har inga skal. Slik lagar brukaren dei: rasteriser `static/icon.svg` til `static/icon-192.png` og `static/icon-512.png` (t.d. `rsvg-convert -w 192 -h 192 static/icon.svg -o static/icon-192.png`), legg begge inn i `icons`-oppføringa i `static/manifest.webmanifest` med `sizes` og `type: "image/png"`, legg stiane inn i `STATIC_FILES` i `app.py` og i allow-lista i `static/sw.js`, og oppdaterer `tests/test_pwa.py` slik at han òg pinnar dei to PNG-oppføringane. Placeholderen med `sizes: "any"` er ein heilt grei tilstand å stoppe i.
 - Dette lukkar den opne boksen i §30.
 
 ## 32.2 UI-finpuss
 
-Ein gjennomgang av dei fem sidene for konsistens og ryddigheit, utan nye funksjonar:
+**Utført.** Ein gjennomgang av dei fem sidene og `/login`, utan nye funksjonar. Sidene har fått eit retro-tema, og dei 15 designpunkta er gjennomførte.
 
-- Same ord og same knappetekst for same handling på alle sidene, og same tone i hjelpetekstane.
-- Kvar liste har ein tydeleg tom-tilstand, og ingen tekst er klypt, overfylt eller broten på ein smal telefon.
-- Alle felt, val og feilmeldingar ser like ut der dei gjer same nytte, og feilmeldingane seier kva brukaren skal gjere.
-- Den tydelege offline-tilstanden frå PWA-en held fram å vere tydeleg, også etter inn- og utlogging.
-- Den korte åtvaringa ved kvart fritekstfelt, som runde 32-B la inn, skal sjå lik ut på alle sidene. Brukaren har stadfesta at ho er lesleg på ein telefon, så det som står att der, er berre at ho ser lik ut overalt.
-- **Merk:** duplikat-overskriftene, dei overflødige hjelpetekstane og den ulike ordlyden på same lenkje vart tekne i 32.3, sidan dei høyrer til tekstgjennomgangen. Resten av punktet står att.
+**Retro-temaet (Windows-app, midten av 90-talet).** `static/styles.css` er skriven om: bakgrunn `#c0c0c0`, felt `#ffffff`, mørk kant `#808080`, mørkast `#000000` og tittelstripe `#000080` med kvit tekst. Ingen `border-radius`, ingen `box-shadow` og ingen gradientar — djupna kjem av 3D-kantar (lys oppe/til venstre, mørk nede/til høgre). Skrifta er systemfont-stabelen `"MS Sans Serif", Tahoma, Verdana, Geneva, sans-serif` i 12–13 px med tette linjer. Knappar er heva og ser nedtrykte ut på `:active`, skjemfelta er søkkte, fokus er den klassiske stipla ramma (`outline: 1px dotted #000000`), overskriftene er tittelstriper, og tabellane er rutemønster med 1 px rammer. Dei responsive reglane står uendra, og ingen tekst blir klypt på ein smal telefon. `theme-color`-metaet på dei fem sidene og `/login` og `theme_color`/`background_color` i `static/manifest.webmanifest` er sette til `#c0c0c0` saman med sidebakgrunnen, og `tests/test_pwa.py` er oppdatert.
+
+**Dei 15 designpunkta:**
+
+1. **Luft mellom hjelpetekst og neste blokk.** CSS-regelen `.field-help + .field-grid, .field-help + .form-stack { margin-top: 12px; }` gjev blokka luft etter hjelpelinja på dei tre stadene: før `div.field-grid` i `setup.html`, før `div#key-check` i `health-check.html` og før `div#wallet-software-list` i `settings.html`.
+2. **Åtvaringa i key setup berre éin gong.** Ho står no som eitt `p.secret-warning` over heile nøkkel-lista i `setup.html`, og `setup.js` legg henne ikkje lenger inn i kvart nøkkelkort.
+3. **Dashbord-overskrifta nemner oppsettet.** `p#setup-shape` blir fylla av `renderSetupHeading()` i `app.js` frå `threshold` og `key_count` i `/api/setup`, t.d. «Bitcoin Health Monitor for a 2-of-3 Multisig Setup.». Linja som står i markupen er fallbacken før dataa kjem. Beskrivinga «Bitcoin Multisig Health Monitor» står framleis i manifestet og i §29.
+4. **«An overview of your multisig setup and annual checks.» er fjerna** frå dashbordet.
+5. **`section.setup-card` er fjerna.** `app.js` skriv ikkje lenger til `#setup-title`/`#setup-description`: `setupTitle`, `setupDescription`, `renderSetupShape()` og `setupResult`-greina er bytte ut med `setupShape` og `renderSetupHeading()`.
+6. **Nøkkelkortet viser nummer og type i toppen** (`01 · Hardware` / `01 · Cloud`), og den separate `Hardware key`/`Cloud key`-linja er borte.
+7. **Nøkkelkortet viser berre stien**, i skrå skrift (`.key-path`), utan prefikset `Address path:`.
+8. **Nøkkelkortet viser berre modellnamnet**, under namnet og over stien. Er modellnamnet likt nøkkelnamnet utan omsyn til store/små bokstavar og luft (`sameLabel()`), blir linja ikkje vist i det heile.
+9. **Nøkkelkortet viser berre neste kontroll.** `Next check due` står; `Last checked` er fjerna.
+10. **Åtvaringa står berre i key setup.** Serverlogikken er uendra: `secret_guard.py`, `validation.py` og `auth.py` er ikkje rørde, og eit løyndom i eit fritekstfelt blir framleis avvist med `400`. Den korte åtvaringa er fjerna frå `health-check.html` (3), `health-check.js` (3), `settings.js` (2) og `setup.js` (1 per kort), og står no éin gong i `setup.html`. Formuleringa i §2, §12 og §15 er oppdatert, og `WarningTests` i `tests/test_secret_guard.py` pinnar den nye regelen.
+11. **`Needs assessment`-lista i Review-oppsummeringa er fjerna** frå `health-check.js`. `Results requiring follow-up` står.
+12. **Oppsummeringslinja i Review med `Key N: … · Check date: … · Next check due: …` er fjerna.**
+13. **`Local service` i topbaren og `Your data stays local.` i footeren er fjerna** på alle sidene, òg `/login`.
+14. **Historikk-kortet viser datoen, nøkkelnummer og -namn, og ein kort status** (`All OK` / `Needs follow-up`). `Next check due` og `Software`-teksten er borte. Dette kravde eit **additivt** felt i oppsummeringa: `GET /api/health-checks` gjev no `key_names` og `needs_follow_up` i tillegg til felta som alt var der (§11). `needs_follow_up` blir rekna ut av dei same varselreglane som dashbordet brukar, og er ein eigenskap ved den lagra kontrollen, så han endrar seg ikkje når brukaren lukkar varselet seinare.
+15. **Historikk-tabellane på mobil.** CSS-reglane `table-layout: fixed`, `overflow-wrap: break-word` og mindre skrift på `.detail-table` held `Security status` og `Follow-up closed` innanfor sida på ein smal skjerm. Løyst i CSS, utan ny JavaScript.
+
+**Testar:** `tests/test_health_check_form.py`, `tests/test_pwa.py`, `tests/test_secret_guard.py`, `tests/test_key_status.py` og `tests/test_app.py` er oppdaterte, og nye testar pinnar nøkkelkortet, dashbord-overskrifta, historikk-kortet, dei to nye oppsummeringsfelta, lufta etter hjelpelinja, dei to tabellane og retro-reglane. Suiten gjekk frå 477 til **485 testar**.
+
+**Det som står att i §32.2:** ingenting av dei 15 punkta. Den manuelle nettlesartesten av retro-temaet på ein smal telefon, og stadfestinga av at ingenting blir klypt eller overfylt der, høyrer til brukaren.
 
 ## 32.3 Gjennomgang av meldingstekstane i varsla
 
@@ -532,7 +554,7 @@ Ein gjennomgang av dei fem sidene for konsistens og ryddigheit, utan nye funksjo
 - `app.py`: sperre-svaret (`409`) seier ikkje lenger den interne koden. Det er no «This key has an open alert. Close the alert before recording a new check.»
 - `validation.py`: «a configured cloud key already provides this wallet software name» er blitt «this name already comes from a configured cloud key».
 - **Uendra etter kontroll:** `ACTION_LABELS` / `ACTION_CONFIRMATIONS` i dei tre kopiane (`static/app.js`, `static/health-check.js`, `static/history.js`) er identiske, og blir ikkje slått saman til ei ny delt fil — ho måtte inn i `STATIC_FILES` i `app.py` og i allow-lista i `static/sw.js`. `UNAVAILABLE_MESSAGE` i `health-check.js` står òg, sjølv om seksjonen han blir rendra i, er skjult for ein nøkkel som ikkje kan kontrollerast.
-- **Testar:** `tests/test_health_check_form.py` held dei endra sidetekstane. `test_the_settings_page_has_the_two_sections` ventar no eyebrow-lista `["01 / Wallet software", "02 / Key rotation"]` og `<h1>Settings</h1>`; `test_form_marks_the_keys_that_an_open_alert_blocks` ventar at hjelpelinja er borte; og `test_the_settings_link_has_one_wording` held dei to lenkjetekstane like. Testane i `tests/test_app.py` held berre statuskoden, ikkje 409-teksten, og held difor uendra.
+- **Testar:** `tests/test_health_check_form.py` held dei endra sidetekstane. `test_the_settings_page_has_the_two_sections` ventar no eyebrow-lista `[\"01 / Wallet software\", \"02 / Key rotation\"]` og `<h1>Settings</h1>`; `test_form_marks_the_keys_that_an_open_alert_blocks` ventar at hjelpelinja er borte; og `test_the_settings_link_has_one_wording` held dei to lenkjetekstane like. Testane i `tests/test_app.py` held berre statuskoden, ikkje 409-teksten, og held difor uendra.
 
 ## 32.4 Bug-rapporten
 
@@ -564,20 +586,20 @@ Ein gjennomgang av dei fem sidene for konsistens og ryddigheit, utan nye funksjo
 
 - **Ny modul `secret_guard.py`.** Han held den engelske BIP39-ordlista (2048 ord, bakt inn lokalt — appen gjer framleis ingen nettverkskall) og ein `find_secret()` som kjenner att eit PEM-privatnøkkelblock, ein utvida privatnøkkel (`xprv`/`yprv`/`zprv`/`tprv`/`uprv`/`vprv`), ein WIF-nøkkel (51 eller 52 teikn), ein BIP38-nøkkel og eit ordløp på 12 eller fleire BIP39-ord. Funksjonen gjev berre ei kort engelsk nemning attende, aldri teksten, så ingenting hamnar i ein logg eller ein feilmelding.
 - **`validation.py` avviser slikt innhald i kvart fritekstfelt.** Sjekken sit i dei fire teksthjelparane (`_text`, `_key_name`, `_model`, `_required_path`), så kvart fritekstfelt er dekt av konstruksjon: nøkkelnamn, modell, wallet-programvarenamn, programvareversjon, firmware-versjon, notatfelta og KI-kommentarane. Han kastar `SecretDetected`, som er ein `ValidationError`, så svaret blir `400` og ikkje `500`. Valideringa køyrer før noko blir skrive, så eit avvist innhald blir aldri lagra delvis.
-- **Sjekken køyrer òg før lengdegrensa til feltet.** Eit innlimt løyndom blir difor svara med kva det ser ut som, ikkje med «too long» — som elles ville bedt brukaren om å korte ned eit seed phrase i staden for å fjerne det. Lengdegrensa står framleis som ytre grense og gjeld for alt anna. Rekkjefølgja er medvite vald og festa i testar, både for eit løyndom som passar i feltet og eit som ikkje gjer det.
+- **Sjekken køyrer òg før lengdegrensa til feltet.** Eit innlimt løyndom blir difor svara med kva det ser ut som, ikkje med «too long» — som elles ville bedt brukaren om å korte ned eit seed phrase i staden for å fjerne det. Lengdegrensa står framleis som ytre grense og gjeld for alt annet. Rekkjefølgja er medvite vald og festa i testar, både for eit løyndom som passar i feltet og eit som ikkje gjer det.
 - **`auth.py` avviser òg eit adminbrukarnamn som ser ut som ei løyndom**, med same rekkjefølgje. Passordet blir medvite ikkje sjekka, sidan ein lang passfrase er eit legitimt passord og ei avvising der ville stengje brukaren ute frå sin eigen konto.
 - **Meldinga gjentek aldri verdien.** Ho namngjev feltet og forma som vart kjend att, og seier at ingenting vart lagra.
-- **Åtvaring ved kvart fritekstfelt i UI-et.** Ei kort linje i same ambra-palett som sidenotisen, lagd inn i `static/health-check.html`, `static/health-check.js`, `static/setup.html`, `static/setup.js` og `static/settings.js`, med stilen `.secret-warning` i `static/styles.css`. Sidenotisen om løyndomar står framleis, og sideoverskriftene er uendra.
+- **Åtvaring ved felta i UI-et.** Runde 32-B la inn ei kort linje i same ambra-palett som sidenotisen, i `static/health-check.html`, `static/health-check.js`, `static/setup.html`, `static/setup.js` og `static/settings.js`, med stilen `.secret-warning` i `static/styles.css`. **32.2 endra dette:** åtvaringa står no éin gong, i nøkkeloppsettet, og er elles fjerna (§2, §12 og §15). Sidenotisen om løyndomar står framleis, og sideoverskriftene er uendra.
 - **Kjende avgrensingar** står i modulens docstring og blir ikkje tona ned: eit nakent 64-teikns heksadesimalt streng blir ikkje avvist (det kan like gjerne vere ein transaksjons-id, som er legitimt notatinnhald), berre den engelske ordlista blir brukt, og eit format utanom mønstra eller ei løyndom som er delt over fleire felt, blir ikkje fanga.
 
 **Nye bindande reglar frå 32-B:** (dei står òg i §2, §12 og §15)
 
 - **Fritekst blir sjekka lokalt før lagring, og før lengdegrensa til feltet.** Eit felt som ser ut som ei wallet-løyndom, blir avvist med `400` og med kva det ser ut som, ingenting blir lagra, og meldinga gjentek aldri verdien. Sjekken er lokal og gjer ingen nettverkskall.
-- **Kvar fritekstfelt har ei åtvaring ved feltet**, i tillegg til sidenotisen, og stilen er `.secret-warning`.
+- **Den korte åtvaringa ved feltet er éin, i nøkkeloppsettet**, med stilen `.secret-warning`. Ho blir ikkje gjenteken per fritekstfelt. *(Endra i §32.2 punkt 2 og 10; serveren avviser framleis eit løyndom i kvart fritekstfelt.)*
 
-**Testar lagde til:** ti i runde 32-A (fem i `tests/test_export.py`, ein i `tests/test_pwa.py` og fire i `tests/test_validation.py`) og 43 i runde 32-B, alle i den nye `tests/test_secret_guard.py` (5 ordlistetestar, 10 gjenkjenningstestar, 17 feltnivåtestar, 6 åtvaringstestar og 5 API-testar). Runde 32.3 la til éin test i `tests/test_alerts.py` og éin i `tests/test_health_check_form.py`. Suiten gjekk frå 422 til **477 testar**.
+**Testar lagde til:** ti i runde 32-A (fem i `tests/test_export.py`, ein i `tests/test_pwa.py` og fire i `tests/test_validation.py`) og 43 i runde 32-B, alle i den nye `tests/test_secret_guard.py` (5 ordlistetestar, 10 gjenkjenningstestar, 17 feltnivåtestar, 6 åtvaringstestar og 5 API-testar). Runde 32.3 la til éin test i `tests/test_alerts.py` og éin i `tests/test_health_check_form.py`, og runde 32.2 la til åtte. Suiten gjekk frå 422 til **485 testar**.
 
-**Det som står att i 32.4:** berre **BR-003**, og han må lesast rett. Rapporten vart skriven mot eit anna filsett og siterer ein §31-tekst om at den manuelle gjennomgangen står att, men den teksten finst ikkje lenger, og §16 og §17 seier at dei manuelle nettlesartestane og bokstestane vart køyrde og verifiserte fram til §31. Det som faktisk står att, er difor dei **nye** manuelle punkta §32 legg til — ikonet (32.1), UI-pussen (32.2), ein kikk på varsellista, nøkkelkortet og sperre-noten etter tekstendringane (32.3), at åtvaringa ved felta ser lik ut på alle sider (32.2), og heile bokstesten på nytt etter endringane (32.5) — og ei stadfesting frå brukaren på at dei er køyrde. Alt anna i rapporten er avgjort: BR-001 er ein falsk positiv, BR-004 fell bort, BR-005 er verifisert utan åtferdsendring, og BR-002, BR-006, BR-007 og BR-008 er retta med regresjonstestar. To manuelle punkt under 32-B er alt stadfesta av brukaren: at eit seed phrase blir stoppa i namnefeltet og i adressestifeltet, og at åtvaringa ved felta er lesleg på ein telefon.
+**Det som står att i 32.4:** berre **BR-003**, og han må lesast rett. Rapporten vart skriven mot eit anna filsett og siterer ein §31-tekst om at den manuelle gjennomgangen står att, men den teksten finst ikkje lenger, og §16 og §17 seier at dei manuelle nettlesartestane og bokstestane vart køyrde og verifiserte fram til §31. Det som faktisk står att, er difor dei **nye** manuelle punkta §32 legg til — ikonet (32.1), UI-pussen og retro-temaet på ein smal telefon (32.2), ein kikk på varsellista, nøkkelkortet og sperre-noten etter tekstendringane (32.3), og heile bokstesten på nytt etter endringane (32.5) — og ei stadfesting frå brukaren på at dei er køyrde. Alt anna i rapporten er avgjort: BR-001 er ein falsk positiv, BR-004 fell bort, BR-005 er verifisert utan åtferdsendring, og BR-002, BR-006, BR-007 og BR-008 er retta med regresjonstestar. To manuelle punkt under 32-B er alt stadfesta av brukaren: at eit seed phrase blir stoppa i namnefeltet og i adressestifeltet, og at åtvaringa ved felta er lesleg på ein telefon.
 
 ## 32.5 Hevinga av pakkeversjonen
 
@@ -586,10 +608,10 @@ Ein gjennomgang av dei fem sidene for konsistens og ryddigheit, utan nye funksjo
 
 ## 32.6 Dokumentasjonsdrifta
 
-Dokumenta som skildrar pakka og appen, er skrivne før §31 og før 32-A og 32-B, og dei er framleis ikkje oppdaterte. Dette punktet rettar dei. Det må gjerast **etter** 32.1–32.3 og **før** 32.5, slik at dokumenta skildrar den utgåva som faktisk blir gitt ut, og det svarar samstundes på resten av BR-004 i bug-rapporten.
+Dokumenta som skildrar pakka og appen, er skrivne før §31 og før 32-A, 32-B og 32.2, og dei er framleis ikkje oppdaterte. Dette punktet rettar dei. Det må gjerast **etter** 32.1–32.3 og **før** 32.5, slik at dokumenta skildrar den utgåva som faktisk blir gitt ut, og det svarar samstundes på resten av BR-004 i bug-rapporten.
 
 - `README.md` (pakke-README): «Actions: None» og `actions: []` i Quick Reference stemmer ikkje — pakka har to handlingar, `Delete all data` og `Set Admin Password`. Fyrstegongsflyten manglar admin-steget, og «Limitations» manglar at terskel og nøkkeltal er valfrie (`2 ≤ key_count ≤ 15`), at databasen ligg ukryptert på volumet, og at fritekst blir sjekka lokalt.
-- `docs/application.md` (app-referansen): API-tabellen manglar `GET /api/session`, `POST /api/admin`, `POST /api/login` og `POST /api/logout`, og han skildrar korkje innloggingsvakta (`401` på API, `302` til `/login` på sider, `403` utan CSRF-token) eller kva ruter som er opne. Han manglar òg formelnøytraliseringa i CSV-en, den kanoniske stisamanlikninga og den lokale sperra mot wallet-løyndomar, og setninga om at den manuelle StartOS-testen framleis står ope er utdatert.
+- `docs/application.md` (app-referansen): API-tabellen manglar `GET /api/session`, `POST /api/admin`, `POST /api/login` og `POST /api/logout`, og han skildrar korkje innloggingsvakta (`401` på API, `302` til `/login` på sider, `403` utan CSRF-token) eller kva ruter som er opne. Han manglar òg formelnøytraliseringa i CSV-en, den kanoniske stisamanlikninga og den lokale sperra mot wallet-løyndomar, og setninga om at den manuelle StartOS-testen framleis står ope er utdatert. Etter 32.2 manglar han òg `key_names` og `needs_follow_up` i `GET /api/health-checks`, og skildringa av felta ved kvart fritekstfelt.
 - `instructions.md`: manglar innloggingssteget, opprettinga av admin og dei to handlingane i `Actions & Config`. «exactly three keys … another threshold is not supported» er feil etter §31 punkt 7.
 - `UPDATING.md`: seier skjema **11**; det er **12**. Versjoneksempla og tag-regelen skal framleis stå.
 - `AGENTS.md`: modullista nemner ikkje `secret_guard.py`, og testavsnittet nemner ikkje at suiten òg dekkjer sperra.
