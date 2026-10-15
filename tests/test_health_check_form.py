@@ -657,15 +657,18 @@ class HealthCheckFormTests(unittest.TestCase):
     def test_stylesheet_is_the_retro_theme(self):
         styles = read_static("styles.css")
         # The mid-1990s look of section 32.2: the grey desktop, the navy title
-        # bar, the two bevels, and no shadow or gradient anywhere.
+        # bar, the two bevels, and no shadow or gradient in the styling itself.
         self.assertIn("background: #c0c0c0", styles)
         self.assertIn("--title: #000080", styles)
         self.assertIn("border-color: #ffffff #000000 #000000 #ffffff", styles)
         self.assertIn("border-color: #808080 #ffffff #ffffff #808080", styles)
         self.assertIn("outline: 1px dotted #000000", styles)
         self.assertIn('"MS Sans Serif", Tahoma, Verdana, Geneva, sans-serif', styles)
-        self.assertNotIn("box-shadow", styles)
-        self.assertNotIn("gradient", styles)
+        # The declarations are what matter: the header comment names the shadow
+        # and the gradient it rules out, so the words alone prove nothing.
+        self.assertNotIn("box-shadow:", styles)
+        for function in ("linear-gradient(", "radial-gradient(", "conic-gradient("):
+            self.assertNotIn(function, styles)
         # Every corner is square: the sheet may carry a border-radius only as an
         # explicit reset to 0, which keeps a browser's own rounded button from
         # showing through.
