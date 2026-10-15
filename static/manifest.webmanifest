@@ -4,8 +4,8 @@
   "description": "Bitcoin Multisig Health Monitor",
   "start_url": "/",
   "display": "standalone",
-  "theme_color": "#f4f6f2",
-  "background_color": "#f4f6f2",
+  "theme_color": "#c0c0c0",
+  "background_color": "#c0c0c0",
   "icons": [
     {
       "src": "/icon.svg",
