@@ -620,11 +620,16 @@ class HealthCheckFormTests(unittest.TestCase):
         # three pages that put a block right under one (section 32.2 point 1).
         self.assertIn(".field-help + .field-grid,", styles)
         self.assertIn(".field-help + .form-stack { margin-top: 12px; }", styles)
-        for name in ("setup.html", "health-check.html", "settings.html"):
+        # The block is a field grid on the setup page and a stack on the check
+        # form and the settings page, and all three put a help line above it.
+        for name, block in (
+            ("setup.html", 'class="field-grid"'),
+            ("health-check.html", 'class="form-stack"'),
+            ("settings.html", 'class="form-stack"'),
+        ):
             html = read_static(name)
             self.assertIn('<p class="field-help"', html)
-            self.assertIn('class="field-grid"', html)
-            self.assertIn('class="form-stack"', html)
+            self.assertIn(block, html, name)
 
     def test_stylesheet_keeps_the_history_tables_inside_the_page(self):
         styles = read_static("styles.css")
@@ -652,16 +657,22 @@ class HealthCheckFormTests(unittest.TestCase):
     def test_stylesheet_is_the_retro_theme(self):
         styles = read_static("styles.css")
         # The mid-1990s look of section 32.2: the grey desktop, the navy title
-        # bar, and no radius, shadow or gradient anywhere.
+        # bar, the two bevels, and no shadow or gradient anywhere.
         self.assertIn("background: #c0c0c0", styles)
         self.assertIn("--title: #000080", styles)
         self.assertIn("border-color: #ffffff #000000 #000000 #ffffff", styles)
         self.assertIn("border-color: #808080 #ffffff #ffffff #808080", styles)
         self.assertIn("outline: 1px dotted #000000", styles)
         self.assertIn('"MS Sans Serif", Tahoma, Verdana, Geneva, sans-serif', styles)
-        self.assertNotIn("border-radius", styles)
         self.assertNotIn("box-shadow", styles)
         self.assertNotIn("gradient", styles)
+        # Every corner is square: the sheet may carry a border-radius only as an
+        # explicit reset to 0, which keeps a browser's own rounded button from
+        # showing through.
+        radii = re.findall(r"border-radius:\s*([^;]+);", styles)
+        self.assertTrue(radii)
+        for radius in radii:
+            self.assertEqual(radius.strip(), "0", radius)
 
 
 if __name__ == "__main__":
