@@ -45,8 +45,6 @@ const availabilityOptions = [["", "Select availability"], ["1", "Yes"], ["0", "N
 // Hardware works requires an active choice, so the placeholder is not an answer
 // (section 24.1).
 const hardwareWorksOptions = [["", "Select status"], ["1", "Yes"], ["0", "No"]];
-// The reminder that belongs with every free-text field (sections 2 and 15).
-const SECRET_WARNING = "Never paste a seed phrase or a private key here.";
 let keyProfiles = [];
 let previousValues = { keys: [] };
 // The wallet software list the user maintains in the settings (section 25.4).
@@ -62,16 +60,6 @@ function emptyState(text) {
   message.className = "empty-state";
   message.textContent = text;
   return message;
-}
-
-function secretWarning() {
-  // A short reminder that sits with a free-text field. The server refuses a value
-  // that looks like a wallet secret and stores nothing, so the field says so
-  // before the user types (sections 2 and 15).
-  const warning = document.createElement("span");
-  warning.className = "field-help secret-warning";
-  warning.textContent = SECRET_WARNING;
-  return warning;
 }
 
 function makeField(labelText, name, control) {
@@ -325,7 +313,6 @@ function renderKeyCheck() {
       "firmware_version",
       makeTextInput("firmware_version", 100, previousText(previous, "firmware_version")),
     ));
-    details.append(secretWarning());
     details.append(makeField(
       "Seed backup intact and matching the device",
       "seed_backup_verified",
@@ -342,7 +329,6 @@ function renderKeyCheck() {
     makeTextInput("address_path", 200, key.address_path || ""),
   ));
   card.append(makeField("Key notes", "key_comments", makeTextarea("key_comments")));
-  card.append(secretWarning());
   keyCheck.append(card);
 
   available.addEventListener("change", () => {
@@ -481,7 +467,6 @@ function renderSecurityChecks() {
     status.required = true;
     card.append(makeField("Security status", statusName, status));
     card.append(makeField("Comment", commentName, makeTextarea(commentName, 1000)));
-    card.append(secretWarning());
     securityChecks.append(card);
   }
 }
@@ -565,8 +550,10 @@ function derivedSummary(key, available, mismatch) {
 
 function buildReview() {
   const data = new FormData(form);
-  const missing = [];
   const problems = [];
+  // The summary lists the results that need follow-up. The list of the checks
+  // that were still awaiting an answer was removed, because the form itself
+  // already shows what is missing (section 32.2 point 11).
   for (const select of form.querySelectorAll("select")) {
     if (select.closest("[hidden]")) {
       continue;
@@ -574,17 +561,14 @@ function buildReview() {
     const fieldLabel = select.closest(".field")?.querySelector("span");
     const label = fieldLabel?.textContent || select.name;
     const value = data.get(select.name);
-    if (value === "" || value === "NOT_ASSESSED") {
-      missing.push(label);
-    } else if (
+    if (
       value === "PROBLEM"
       || value === "0"
       || value === "VULNERABLE"
       || value === "COMPROMISED"
       || value === CONTACT_NEEDS_UPDATE
     ) {
-      const problem = `${label}: ${value}`;
-      problems.push(problem);
+      problems.push(`${label}: ${value}`);
     }
   }
 
@@ -600,7 +584,6 @@ function buildReview() {
       "The hardware, the software, and the security results are not recorded, and this check raises a critical alert.",
     ]);
   }
-  appendSummaryList(fragment, "Needs assessment", missing.length ? missing : ["None"]);
   appendSummaryList(fragment, "Results requiring follow-up", problems.length ? problems : ["None"]);
 
   const derived = derivedSummary(key, available, mismatch);
@@ -608,11 +591,6 @@ function buildReview() {
     appendSummaryList(fragment, "Derived from availability and the address path", derived);
   }
 
-  const checkedAt = data.get("checked_at");
-  const dates = document.createElement("p");
-  const keyLabelText = key ? keyLabel(key) : "No key selected";
-  dates.textContent = `${keyLabelText} · Check date: ${checkedAt} · Next check due: ${nextCheckDate(checkedAt)}`;
-  fragment.append(dates);
   reviewSummary.replaceChildren(fragment);
   reviewPanel.hidden = false;
   saveStatus.textContent = "";
