@@ -382,12 +382,42 @@ class AlertTests(unittest.TestCase):
 
         alerts = {alert["source"]: alert for alert in build_alerts(record)}
 
+        # The key form carries the key source, the same label every other key
+        # alert uses, so the message can say "this key" (section 32.1).
         # A compromised key must be replaced, so closing is not enough there.
-        self.assertEqual(alerts["SeedSigner"]["key_id"], 1)
-        self.assertIsNone(alerts["SeedSigner"]["software"])
-        # A problem in the software is not resolved by replacing the key.
+        self.assertEqual(alerts["Key 1: SeedSigner"]["key_id"], 1)
+        self.assertIsNone(alerts["Key 1: SeedSigner"]["software"])
+        # A problem in the software is not resolved by replacing the key, so its
+        # source stays the plain software name.
         self.assertIsNone(alerts["Sparrow Wallet"]["key_id"])
         self.assertEqual(alerts["Sparrow Wallet"]["software"], "Sparrow Wallet")
+
+    def test_a_key_named_security_alert_carries_the_key_source(self):
+        # A security alert whose provider is the key's own name belongs to the
+        # key, so its source is the "Key N: <name>" label every key alert
+        # carries, and it is closed by a rotation (section 32.1).
+        record = clean_record(key_number=2, name="Blockstream Jade")
+        record["ai_security_checks"][0]["provider"] = "Blockstream Jade"
+        record["ai_security_checks"][0]["status"] = "VULNERABLE"
+
+        alerts = {alert["source"]: alert for alert in build_alerts(record)}
+
+        self.assertEqual(list(alerts), ["Key 2: Blockstream Jade"])
+        self.assertEqual(alerts["Key 2: Blockstream Jade"]["key_id"], 2)
+        self.assertIsNone(alerts["Key 2: Blockstream Jade"]["software"])
+        self.assertEqual(alerts["Key 2: Blockstream Jade"]["actions"], [ROTATE, IGNORE])
+
+    def test_a_software_security_alert_keeps_the_plain_provider_name(self):
+        # The software form stays the plain provider name, so the settings link
+        # and the removal point at the right entry (sections 26.7 and 32.1).
+        record = clean_record()
+        record["ai_security_checks"][1]["status"] = "VULNERABLE"
+
+        alerts = build_alerts(record)
+
+        self.assertEqual(alerts[0]["source"], "Sparrow Wallet")
+        self.assertIsNone(alerts[0]["key_id"])
+        self.assertEqual(alerts[0]["software"], "Sparrow Wallet")
 
 
 class AlertActionTests(unittest.TestCase):
@@ -400,9 +430,9 @@ class AlertActionTests(unittest.TestCase):
             ("hardware_failure", _hardware_failure, "Key 1: SeedSigner", [ROTATE, REPLACE_HARDWARE]),
             ("seed_backup_problem", _seed_backup, "Key 1: SeedSigner", [ROTATE]),
             ("software_incompatible", _software_incompatible, "Sparrow Wallet", [REMOVE_SOFTWARE]),
-            ("security_vulnerable", _vulnerable_key, "SeedSigner", [ROTATE, IGNORE]),
+            ("security_vulnerable", _vulnerable_key, "Key 1: SeedSigner", [ROTATE, IGNORE]),
             ("security_vulnerable", _vulnerable_software, "Sparrow Wallet", [REMOVE_SOFTWARE, IGNORE]),
-            ("security_compromised", _compromised_key, "SeedSigner", [ROTATE]),
+            ("security_compromised", _compromised_key, "Key 1: SeedSigner", [ROTATE]),
             ("security_compromised", _compromised_software, "Sparrow Wallet", [REMOVE_SOFTWARE]),
             ("contact_info_unconfirmed", _contact_unconfirmed, "Key 1: SeedSigner", [CONTACT_UPDATED]),
         )
@@ -450,7 +480,7 @@ class AlertActionTests(unittest.TestCase):
 
     def test_a_compromised_key_or_software_can_never_be_ignored(self):
         for change, source in (
-            (_compromised_key, "SeedSigner"),
+            (_compromised_key, "Key 1: SeedSigner"),
             (_compromised_software, "Sparrow Wallet"),
         ):
             record = clean_record()
@@ -640,7 +670,8 @@ class CollectAlertsTests(unittest.TestCase):
         self.assertEqual(alerts[0]["checked_at"], "2026-10-01")
 
     def test_alerts_with_the_same_code_but_another_source_are_kept(self):
-        # The source of a security alert is the provider, not the key.
+        # The source of a security alert whose provider is the key's own name is
+        # the key, so the two keys keep their own alert (section 32.1).
         first = dated_record(1, "2025-10-01")
         first["ai_security_checks"][0]["status"] = "VULNERABLE"
         second = dated_record(2, "2026-10-01", key_number=2, name="Blockstream Jade")
@@ -649,7 +680,10 @@ class CollectAlertsTests(unittest.TestCase):
         alerts = collect_alerts([second, first])
 
         self.assertEqual(self.codes(alerts), ["security_vulnerable", "security_vulnerable"])
-        self.assertEqual([alert["source"] for alert in alerts], ["Blockstream Jade", "SeedSigner"])
+        self.assertEqual(
+            [alert["source"] for alert in alerts],
+            ["Key 2: Blockstream Jade", "Key 1: SeedSigner"],
+        )
         self.assertEqual([alert["check_id"] for alert in alerts], [2, 1])
 
     def test_a_security_alert_for_the_same_provider_is_merged_across_keys(self):
@@ -700,6 +734,18 @@ class CollectAlertsTests(unittest.TestCase):
 
         acknowledgements = [acknowledgement(
             "key_unavailable", "Key 1: SeedSigner", 1, 1
+        )]
+
+        self.assertEqual(collect_alerts([record], acknowledgements), [])
+
+    def test_a_key_named_security_alert_is_hidden_by_its_key(self):
+        # The source of the key form changed to the key label, but the
+        # acknowledgement hides it by its key, so an alert closed before the
+        # change stays closed (sections 27 and 32.1).
+        record = dated_record(1, "2026-10-01")
+        record["ai_security_checks"][0]["status"] = "VULNERABLE"
+        acknowledgements = [acknowledgement(
+            "security_vulnerable", "SeedSigner", 1, 1
         )]
 
         self.assertEqual(collect_alerts([record], acknowledgements), [])
@@ -815,12 +861,14 @@ class RotationAlertTargetsTests(unittest.TestCase):
         self.assertEqual(rotation_alert_targets([record], key_profile()), [])
 
     def test_a_rotation_closes_a_key_named_security_alert(self):
+        # The key form carries the key source, so the rotation closes it
+        # (sections 25.3, 26.4 and 32.1).
         record = dated_record(1, "2026-10-01")
         record["ai_security_checks"][0]["status"] = "COMPROMISED"
 
         targets = rotation_alert_targets([record], key_profile())
 
-        self.assertEqual(targets, [("security_compromised", "SeedSigner")])
+        self.assertEqual(targets, [("security_compromised", "Key 1: SeedSigner")])
 
     def test_a_rotation_does_not_close_a_software_named_security_alert(self):
         # A problem in the software the key runs with is not resolved by
