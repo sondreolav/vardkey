@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#f4f6f2">
+    <meta name="theme-color" content="#c0c0c0">
     <title>Annual health check — VardKey</title>
     <link rel="stylesheet" href="/styles.css">
     <link rel="manifest" href="/manifest.webmanifest">
@@ -87,12 +87,10 @@
           <div class="field-grid">
             <label class="field"><span>Software version</span><input id="software-version" name="software_version" type="text" maxlength="100" autocomplete="off"></label>
           </div>
-          <p class="secret-warning" role="note">Never paste a seed phrase or a private key here.</p>
           <!-- The help is filled in by the script, because its wording depends on
                the selected key (sections 25.5 and 32.3). -->
           <p class="field-help" id="software-help"></p>
           <label class="field"><span>Compatibility notes</span><textarea name="software_comments" rows="3" maxlength="2000"></textarea></label>
-          <p class="secret-warning" role="note">Never paste a seed phrase or a private key here.</p>
         </section>
 
         <section class="form-section" aria-labelledby="security-title">
@@ -122,7 +120,6 @@
             <h2 id="comments-title">Overall comments</h2>
           </div>
           <label class="field"><span>Observations and follow-up notes</span><textarea name="comments" rows="4" maxlength="4000"></textarea></label>
-          <p class="secret-warning" role="note">Never paste a seed phrase or a private key here.</p>
         </section>
 
         <div class="form-actions">
@@ -145,6 +142,6 @@
         </div>
       </section>
     </main>
-    <footer class="footer"><span>VardKey</span><span>Your data stays local.</span></footer>
+    <footer class="footer"><span>VardKey</span></footer>
   </body>
 </html>
