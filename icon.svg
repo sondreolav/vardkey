@@ -1,6 +1,30 @@
-<!-- Placeholder icon for the StartOS package. Replace with the real VardKey
-     icon in the round that raises the package to 1.0.0 (TODO.md section 30). -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="VardKey placeholder icon">
-  <rect width="128" height="128" rx="20" fill="#1f2933"/>
-  <path d="M34 38 L64 96 L94 38" fill="none" stroke="#f5f7fa" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+<!-- The VardKey icon of section 32.1, drawn for the retro theme of section 32.2:
+     a raised grey window with the classic navy title bar, and the three keys of
+     the default multisig setup. It is the package icon, and the installable PWA
+     points at the same drawing in static/icon.svg. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="VardKey icon">
+  <rect x="4" y="4" width="120" height="120" fill="#c0c0c0"/>
+  <path d="M4 124 V4 H124" fill="none" stroke="#ffffff" stroke-width="4"/>
+  <path d="M124 4 V124 H4" fill="none" stroke="#000000" stroke-width="4"/>
+  <rect x="10" y="10" width="108" height="18" fill="#000080"/>
+  <g fill="none" stroke="#000000" stroke-width="4" stroke-linecap="square">
+    <g transform="translate(23,42)">
+      <circle cx="11" cy="11" r="7"/>
+      <path d="M18 11 H78"/>
+      <path d="M64 11 V21"/>
+      <path d="M74 11 V18"/>
+    </g>
+    <g transform="translate(23,68)">
+      <circle cx="11" cy="11" r="7"/>
+      <path d="M18 11 H78"/>
+      <path d="M64 11 V21"/>
+      <path d="M74 11 V18"/>
+    </g>
+    <g transform="translate(23,94)">
+      <circle cx="11" cy="11" r="7"/>
+      <path d="M18 11 H78"/>
+      <path d="M64 11 V21"/>
+      <path d="M74 11 V18"/>
+    </g>
+  </g>
 </svg>
