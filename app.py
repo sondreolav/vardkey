@@ -908,8 +908,32 @@ class AppHandler(BaseHTTPRequestHandler):
         }
 
     def _send_health_check_list(self):
+        """Return every saved check, newest first, with what needs follow-up.
+
+        Each summary keeps the fields ``list_health_checks`` returns and adds two
+        of its own (section 32.2 point 14). ``key_names`` is the name each key of
+        the check has now, in the same order as ``key_numbers``, so the history
+        card can name the key. ``needs_follow_up`` says whether that check raised
+        anything to follow up, read from the same alert rules the dashboard uses;
+        it is a property of the saved check itself, so it does not change when
+        the user closes an alert later. Both fields are additive, so the existing
+        names and types are unchanged.
+        """
+        database_path = get_database_path()
         try:
-            self._send_json(200, list_health_checks(get_database_path()))
+            keys = list_keys(database_path)
+            names = {key["key_number"]: key["name"] for key in keys}
+            cloud_names = cloud_key_names(keys)
+            summaries = list_health_checks(database_path)
+            for summary in summaries:
+                summary["key_names"] = [
+                    names.get(number, "") for number in summary.get("key_numbers", [])
+                ]
+                record = get_health_check(summary["id"], database_path)
+                summary["needs_follow_up"] = bool(record) and bool(
+                    build_alerts(record, cloud_names)
+                )
+            self._send_json(200, summaries)
         except STORAGE_ERRORS:
             self._send_json(500, {"error": "Saved health checks are unavailable"})
 
