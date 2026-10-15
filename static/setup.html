@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#f4f6f2">
+    <meta name="theme-color" content="#c0c0c0">
     <title>Key setup — VardKey</title>
     <link rel="stylesheet" href="/styles.css">
     <link rel="manifest" href="/manifest.webmanifest">
@@ -54,6 +54,10 @@
           <p class="field-help">A hardware key is a device you hold yourself. A cloud key is held by a provider; its own name is also offered as wallet software for the other keys.</p>
           <p class="field-help">The model or service is optional documentation: the hardware model, such as ColdCard Q, or the service a cloud key comes from, such as Casa. It is only a label, so it is never locked.</p>
           <p class="field-help">The address path is the public derivation path the key is used at, for example <code>m/48'/0'/0'/2'</code>. It is the identity of the key, together with its type, and it holds no secret.</p>
+          <!-- The reminder stands once for the whole key list, not once per key
+               card, and it is not repeated anywhere else in the app
+               (sections 2, 12, 15 and 32.2 points 2 and 10). -->
+          <p class="secret-warning" role="note">Never paste a seed phrase or a private key here.</p>
           <div class="form-stack" id="key-fields">
             <fieldset class="check-card">
               <legend>Key 1</legend>
@@ -63,7 +67,6 @@
               </div>
               <label class="field"><span>Model or service</span><input name="key_1_model" type="text" maxlength="60" autocomplete="off"></label>
               <label class="field"><span>Address path</span><input name="key_1_address_path" type="text" maxlength="200" autocomplete="off" required></label>
-              <p class="secret-warning" role="note">Never paste a seed phrase or a private key here.</p>
             </fieldset>
             <fieldset class="check-card">
               <legend>Key 2</legend>
@@ -73,7 +76,6 @@
               </div>
               <label class="field"><span>Model or service</span><input name="key_2_model" type="text" maxlength="60" autocomplete="off"></label>
               <label class="field"><span>Address path</span><input name="key_2_address_path" type="text" maxlength="200" autocomplete="off" required></label>
-              <p class="secret-warning" role="note">Never paste a seed phrase or a private key here.</p>
             </fieldset>
             <fieldset class="check-card">
               <legend>Key 3</legend>
@@ -83,7 +85,6 @@
               </div>
               <label class="field"><span>Model or service</span><input name="key_3_model" type="text" maxlength="60" autocomplete="off"></label>
               <label class="field"><span>Address path</span><input name="key_3_address_path" type="text" maxlength="200" autocomplete="off" required></label>
-              <p class="secret-warning" role="note">Never paste a seed phrase or a private key here.</p>
             </fieldset>
           </div>
         </section>
@@ -96,6 +97,6 @@
 
       <p class="workflow-note" id="setup-status" role="status"></p>
     </main>
-    <footer class="footer"><span>VardKey</span><span>Your data stays local.</span></footer>
+    <footer class="footer"><span>VardKey</span></footer>
   </body>
 </html>
