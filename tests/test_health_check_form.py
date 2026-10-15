@@ -573,12 +573,15 @@ class HealthCheckFormTests(unittest.TestCase):
     def test_history_shows_the_follow_up_that_was_closed(self):
         script = read_static("history.js")
         # A closure that belongs to a key is shown as a card, with the code, the
-        # source, the action written out, and the date (section 27).
+        # action written out, and the date (section 27). The source is not a
+        # column of its own (section 32.1).
         self.assertIn("Follow-up closed", script)
         self.assertIn("closed_alerts", script)
         self.assertIn("closedAlertsTable", script)
         self.assertIn("acknowledged_at", script)
         self.assertIn("No follow-up was closed on this check.", script)
+        self.assertIn('["Alert", "Action", "Closed"]', script)
+        self.assertNotIn('"Source"', script)
         # The action labels are duplicated here, which is the existing pattern.
         self.assertIn("ACTION_LABELS", script)
         self.assertIn('rotate: "Rotate key"', script)
@@ -599,6 +602,40 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertNotIn("Next check due ${check.next_check_due}", script)
         self.assertNotIn("Software ${check.software_compatibility_status}", script)
         self.assertNotIn("keyNumbersText", script)
+
+    def test_history_merges_the_software_and_the_hardware_lines(self):
+        # The wallet software and its version share one line, and so do the
+        # hardware model and the firmware version (section 32.1).
+        script = read_static("history.js")
+
+        self.assertIn("mergedLine", script)
+        self.assertIn(
+            '["Wallet software", mergedLine(record.wallet_software, record.software_version)]',
+            script,
+        )
+        self.assertIn("mergedLine(keyCheck.model, keyCheck.firmware_version)", script)
+        # The two separate lines are gone.
+        self.assertNotIn('["Software version", record.software_version]', script)
+        self.assertNotIn('["Firmware version", keyCheck.firmware_version]', script)
+
+    def test_the_pages_offer_one_way_back_to_the_dashboard(self):
+        # The brand mark is the way back to the dashboard, so the pages carry no
+        # extra "Back to dashboard" link in the top bar. The blocked-keys note
+        # keeps its own link, which points at the dashboard for another reason
+        # (sections 26.1 and 32.1).
+        for name in ("history.html", "settings.html", "setup.html", "health-check.html"):
+            self.assertNotIn("Back to dashboard", read_static(name), name)
+        self.assertIn(
+            "Open the dashboard to close the alerts", read_static("health-check.html")
+        )
+
+    def test_the_history_page_starts_no_check(self):
+        # A check is started from the dashboard, so the history page carries no
+        # button of its own (section 32.1).
+        html = read_static("history.html")
+
+        self.assertNotIn("Start annual health check", html)
+        self.assertIn("Saved health checks", html)
 
     def test_stylesheet_makes_the_hidden_attribute_work_on_grid_containers(self):
         styles = read_static("styles.css")
