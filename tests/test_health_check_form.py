@@ -62,8 +62,11 @@ class HealthCheckFormTests(unittest.TestCase):
         for status in ("SECURE", "PATCHED", "VULNERABLE", "COMPROMISED"):
             self.assertIn(status, script)
         self.assertIn("formatLocalDate", script)
-        self.assertIn("Needs assessment", script)
+        # The summary lists the results that need follow-up. The list of the
+        # checks that were still awaiting an answer was removed, because the form
+        # itself already shows what is missing (section 32.2 point 11).
         self.assertIn("Results requiring follow-up", script)
+        self.assertNotIn("Needs assessment", script)
 
     def test_the_bip327_and_slip39_function_is_gone(self):
         html = read_static("health-check.html")
@@ -326,14 +329,36 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn(".key-alert-message", styles)
         self.assertIn(".key-alert-detail", styles)
 
-    def test_dashboard_key_card_keeps_the_dates_with_an_open_alert(self):
+    def test_dashboard_key_card_shows_the_number_the_type_and_the_next_date(self):
         script = read_static("app.js")
-        # The alert note comes in addition to the dates, not instead of them, so
-        # a key whose only alert is the informational contact one keeps its last
-        # check and its next due date (section 27).
-        self.assertIn('appendDateRow(dates, "Last checked", entry.last_checked_at)', script)
+        styles = read_static("styles.css")
+        # The number and the type share the top line, so the card has no line of
+        # its own for the type (section 32.2 point 6).
+        self.assertIn("keyTypeLabel", script)
+        self.assertIn('`${String(entry.key_number).padStart(2, "0")} · ${keyTypeLabel(entry.type)}`', script)
+        self.assertNotIn("Hardware key", script)
+        self.assertNotIn("Cloud key", script)
+        # The path stands alone and in italics, without a label
+        # (section 32.2 point 7).
+        self.assertIn('path.className = "key-path";', script)
+        self.assertIn("path.textContent = entry.address_path;", script)
+        self.assertNotIn("Address path:", script)
+        self.assertIn(".key-path { font-style: italic; }", styles)
+        # The model is shown under the name with no label, and a model that only
+        # repeats the key's own name is left out (section 32.2 point 8).
+        self.assertIn("sameLabel(entry.model, entry.name)", script)
+        self.assertNotIn('entry.type === "cloud" ? "Service" : "Model"', script)
+        # Only the next due date stays; the last checked date is gone
+        # (section 32.2 point 9).
+        self.assertNotIn('appendDateRow(dates, "Last checked"', script)
         self.assertIn('appendDateRow(dates, "Next check due", entry.next_check_due)', script)
         self.assertIn("card.append(dates);", script)
+
+    def test_dashboard_key_card_keeps_the_next_date_with_an_open_alert(self):
+        script = read_static("app.js")
+        # The alert note comes in addition to the date, not instead of it, so a
+        # key whose only alert is the informational contact one keeps its next
+        # due date (sections 27 and 32.2 point 9).
         dates_index = script.index('appendDateRow(dates, "Next check due"')
         note_index = script.index("card.append(createKeyAlertNote(entry, open))")
         self.assertLess(dates_index, note_index)
@@ -388,6 +413,25 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn("redirectWhenSetupIsMissing", script)
         self.assertIn('/api/setup', script)
         self.assertIn('window.location.assign("/setup")', script)
+
+    def test_the_dashboard_heading_names_the_configured_setup(self):
+        html = read_static("index.html")
+        script = read_static("app.js")
+        # The heading under the title is built from the stored threshold and key
+        # count, and the line in the markup is the fallback until they arrive
+        # (section 32.2 point 3). The setup card and the description line that
+        # stood beside it are gone (points 4 and 5).
+        self.assertIn('id="setup-shape"', html)
+        self.assertIn("Bitcoin Health Monitor for a Multisig Setup.", html)
+        self.assertIn("renderSetupHeading", script)
+        self.assertIn("Bitcoin Health Monitor for a ${setup.threshold}-of-${setup.key_count} Multisig Setup.", script)
+        self.assertNotIn("An overview of your multisig setup and annual checks.", html)
+        self.assertNotIn("setup-card", html)
+        self.assertNotIn("setup-title", html)
+        self.assertNotIn("setup-description", html)
+        self.assertNotIn("setupTitle", script)
+        self.assertNotIn("setupDescription", script)
+        self.assertNotIn("renderSetupShape", script)
 
     def test_health_check_page_sends_to_the_key_setup_when_it_is_missing(self):
         script = read_static("health-check.js")
@@ -541,6 +585,21 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn('replace_hardware: "Replace hardware"', script)
         self.assertIn('contact_updated: "Contact details updated"', script)
 
+    def test_history_card_shows_the_key_and_a_short_status(self):
+        script = read_static("history.js")
+        # The card shows the date, the key by its number and name, and whether the
+        # check left anything to follow up. The next due date and the software
+        # text are gone (section 32.2 point 14).
+        self.assertIn("check.checked_at", script)
+        self.assertIn("keyNamesText(check)", script)
+        self.assertIn("check.key_names", script)
+        self.assertIn("followUpText(check)", script)
+        self.assertIn("check.needs_follow_up", script)
+        self.assertIn('"Needs follow-up" : "All OK"', script)
+        self.assertNotIn("Next check due ${check.next_check_due}", script)
+        self.assertNotIn("Software ${check.software_compatibility_status}", script)
+        self.assertNotIn("keyNumbersText", script)
+
     def test_stylesheet_makes_the_hidden_attribute_work_on_grid_containers(self):
         styles = read_static("styles.css")
         self.assertIn(".form-stack[hidden]", styles)
@@ -555,6 +614,27 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn('class="form-stack rotation-list"', html)
         self.assertIn(".rotation-list { margin-top: 22px; }", styles)
 
+    def test_stylesheet_gives_the_help_line_room_before_its_block(self):
+        styles = read_static("styles.css")
+        # A help line is followed by its block with a little more air, on the
+        # three pages that put a block right under one (section 32.2 point 1).
+        self.assertIn(".field-help + .field-grid,", styles)
+        self.assertIn(".field-help + .form-stack { margin-top: 12px; }", styles)
+        for name in ("setup.html", "health-check.html", "settings.html"):
+            html = read_static(name)
+            self.assertIn('<p class="field-help"', html)
+            self.assertIn('class="field-grid"', html)
+            self.assertIn('class="form-stack"', html)
+
+    def test_stylesheet_keeps_the_history_tables_inside_the_page(self):
+        styles = read_static("styles.css")
+        # The two history tables are a grid of 1px rules with a fixed layout and
+        # a word break, so a long value cannot push them out of a narrow page
+        # (section 32.2 point 15). The fix is CSS only, with no new script.
+        self.assertIn("table-layout: fixed", styles)
+        self.assertIn("overflow-wrap: break-word", styles)
+        self.assertIn(".detail-table { font-size: 11px; }", styles)
+
     def test_stylesheet_covers_the_new_elements(self):
         styles = read_static("styles.css")
         for rule in (
@@ -565,8 +645,23 @@ class HealthCheckFormTests(unittest.TestCase):
             ".topbar-actions",
             ".status-alert",
             ".key-alert-note",
+            ".secret-warning",
         ):
             self.assertIn(rule, styles)
+
+    def test_stylesheet_is_the_retro_theme(self):
+        styles = read_static("styles.css")
+        # The mid-1990s look of section 32.2: the grey desktop, the navy title
+        # bar, and no radius, shadow or gradient anywhere.
+        self.assertIn("background: #c0c0c0", styles)
+        self.assertIn("--title: #000080", styles)
+        self.assertIn("border-color: #ffffff #000000 #000000 #ffffff", styles)
+        self.assertIn("border-color: #808080 #ffffff #ffffff #808080", styles)
+        self.assertIn("outline: 1px dotted #000000", styles)
+        self.assertIn('"MS Sans Serif", Tahoma, Verdana, Geneva, sans-serif', styles)
+        self.assertNotIn("border-radius", styles)
+        self.assertNotIn("box-shadow", styles)
+        self.assertNotIn("gradient", styles)
 
 
 if __name__ == "__main__":
