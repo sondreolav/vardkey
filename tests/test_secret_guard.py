@@ -430,37 +430,38 @@ class FieldRejectionTests(unittest.TestCase):
 
 
 class WarningTests(unittest.TestCase):
-    """A short reminder sits with every free-text field (section 2)."""
+    """The short reminder stands in the key setup, and nowhere else.
 
-    def test_the_check_form_warns_at_each_static_free_text_field(self):
-        html = read_static("health-check.html")
+    It used to sit with every free-text field, which meant one copy per key card
+    in the setup. Round 32.2 moved it up so it stands once for the whole key list,
+    and took it out of the check form and the settings (sections 2, 12, 15 and
+    32.2 points 2 and 10). The server-side guard is unchanged: every free-text
+    field is still refused.
+    """
 
-        self.assertEqual(html.count('class="secret-warning"'), 3)
-        self.assertIn("Never paste a seed phrase or a private key here.", html)
+    WARNING = "Never paste a seed phrase or a private key here."
 
-    def test_the_check_script_warns_at_the_fields_it_builds(self):
-        script = read_static("health-check.js")
-
-        self.assertIn("SECRET_WARNING", script)
-        self.assertIn("secret-warning", script)
-        self.assertIn("details.append(secretWarning());", script)
-        self.assertIn('card.append(makeField("Key notes", "key_comments", makeTextarea("key_comments")));', script)
-        self.assertIn('card.append(makeField("Comment", commentName, makeTextarea(commentName, 1000)));', script)
-
-    def test_the_setup_page_warns_at_every_key_card(self):
+    def test_the_key_setup_carries_the_reminder_once(self):
         html = read_static("setup.html")
+
+        # One reminder for the whole key list, not one per key card, and the text
+        # itself appears exactly once.
+        self.assertEqual(html.count('class="secret-warning"'), 1)
+        self.assertEqual(html.count(self.WARNING), 1)
+
+    def test_the_reminder_is_not_repeated_by_the_setup_script(self):
         script = read_static("setup.js")
 
-        self.assertEqual(html.count('class="secret-warning"'), 3)
-        self.assertIn("SECRET_WARNING", script)
-        self.assertIn("fieldset.append(grid, modelLabel, pathLabel, secretWarning());", script)
+        # The key cards are rebuilt whenever the number of key slots changes, so
+        # the reminder is part of the markup and not of a card.
+        self.assertNotIn("secretWarning", script)
+        self.assertNotIn(self.WARNING, script)
 
-    def test_the_settings_script_warns_at_the_fields_it_builds(self):
-        script = read_static("settings.js")
-
-        self.assertIn("SECRET_WARNING", script)
-        self.assertIn("field.append(secretWarning());", script)
-        self.assertIn("card.append(secretWarning());", script)
+    def test_the_check_form_and_the_settings_carry_no_field_reminder(self):
+        for name in ("health-check.html", "health-check.js", "settings.html", "settings.js"):
+            text = read_static(name)
+            self.assertNotIn('class="secret-warning"', text, name)
+            self.assertNotIn(self.WARNING, text, name)
 
     def test_the_stylesheet_carries_the_reminder_style(self):
         styles = read_static("styles.css")
@@ -468,8 +469,8 @@ class WarningTests(unittest.TestCase):
         self.assertIn(".secret-warning", styles)
 
     def test_the_page_notice_is_still_there(self):
-        # The page-level notice is the existing one; the field reminder is added
-        # on top of it, not instead of it.
+        # The page-level notice is the existing one, and the server-side guard is
+        # unchanged.
         for name in ("health-check.html", "setup.html", "settings.html"):
             self.assertIn("Never enter seed phrases", read_static(name))
 
