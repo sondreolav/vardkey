@@ -597,16 +597,20 @@ class AppHandlerTests(ServerTestCase):
         self.assertIn("Download CSV", body)
         self.assertNotIn("Report export is not implemented", body)
 
-    def test_the_dashboard_shows_the_product_name_and_the_description(self):
+    def test_the_dashboard_shows_the_product_name_and_the_setup_heading(self):
         with self.get("/") as response:
             body = response.read().decode("utf-8")
 
         self.assertEqual(response.status, 200)
-        # The app is called VardKey, and its description is shown on the
-        # dashboard, under the title (section 29).
+        # The app is called VardKey, and the line under the title names the
+        # configured setup. The line in the markup is the fallback that stands
+        # there until the setup has been read, and the static description that
+        # used to sit beside it is gone (section 32.2 points 3 to 5).
         self.assertIn("<title>VardKey</title>", body)
         self.assertIn("VardKey", body)
-        self.assertIn("Bitcoin Multisig Health Monitor", body)
+        self.assertIn('id="setup-shape"', body)
+        self.assertIn("Bitcoin Health Monitor for a Multisig Setup.", body)
+        self.assertNotIn("Bitcoin Multisig Health Monitor", body)
 
     def test_alerts_api_is_empty_before_anything_is_saved(self):
         self.assertEqual(self.get_alerts(), [])
@@ -815,6 +819,42 @@ class AppHandlerTests(ServerTestCase):
         )
         # A check whose alerts are all still open has no closure (section 27).
         self.assertEqual(record["closed_alerts"], [])
+
+    def test_the_history_list_reports_the_key_and_the_follow_up_status(self):
+        # Every summary keeps the fields it already carried and adds two of its
+        # own: the name each key of the check has now, and whether the check
+        # raised anything to follow up (section 32.2 point 14).
+        key = self.key_profiles()[0]
+        saved_id = self.post_health_check(sample_payload(key))
+
+        summary = next(entry for entry in self.get_health_checks() if entry["id"] == saved_id)
+
+        self.assertEqual(summary["key_numbers"], [1])
+        self.assertEqual(summary["key_names"], ["SeedSigner"])
+        self.assertFalse(summary["needs_follow_up"])
+        # The fields the summary already had are unchanged.
+        self.assertEqual(summary["checked_at"], "2026-10-01")
+        self.assertEqual(summary["next_check_due"], "2027-10-01")
+        self.assertEqual(summary["wallet_software"], "Sparrow Wallet")
+        self.assertEqual(summary["software_compatibility_status"], "OK")
+        self.assertEqual(summary["contact_info_verified"], "Confirmed current")
+
+    def test_the_history_list_marks_a_check_that_needs_follow_up(self):
+        key = self.key_profiles()[1]
+        self.post_health_check(unavailable_payload(key))
+
+        summary = self.get_health_checks()[0]
+        self.assertEqual(summary["key_names"], ["Blockstream Jade"])
+        self.assertTrue(summary["needs_follow_up"])
+
+        # The name is the one the key has now, and the status belongs to the saved
+        # check itself: closing the alert and renaming the key change neither.
+        self.rotate(key["id"], keep_name=False, name="Replacement")
+
+        summary = self.get_health_checks()[0]
+        self.assertEqual(summary["key_names"], ["Replacement"])
+        self.assertTrue(summary["needs_follow_up"])
+        self.assertEqual(self.get_alerts(), [])
 
     def test_the_history_detail_shows_a_key_closure_and_leaves_out_a_software_one(self):
         key = self.key_profiles()[0]
