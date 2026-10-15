@@ -187,12 +187,23 @@ function renderDetail(record) {
   detailSection.hidden = false;
 }
 
-function keyNumbersText(check) {
+function keyNamesText(check) {
+  // The card names the key by its number and the name it has now, which the
+  // settings may change (sections 25.2 and 32.2 point 14).
   const numbers = check.key_numbers || [];
+  const names = check.key_names || [];
   if (!numbers.length) {
     return "Key not recorded";
   }
-  return numbers.map((number) => `Key ${number}`).join(", ");
+  return numbers
+    .map((number, index) => `Key ${number}: ${names[index] || "—"}`)
+    .join(", ");
+}
+
+function followUpText(check) {
+  // The summary reports whether the check raised anything to follow up, so the
+  // card says so in one word (section 32.2 point 14).
+  return check.needs_follow_up ? "Needs follow-up" : "All OK";
 }
 
 function renderList(checks) {
@@ -215,7 +226,7 @@ function renderList(checks) {
     const heading = document.createElement("h3");
     heading.textContent = check.checked_at;
     const meta = document.createElement("p");
-    meta.textContent = `${keyNumbersText(check)} · Next check due ${check.next_check_due} · Software ${check.software_compatibility_status}`;
+    meta.textContent = `${keyNamesText(check)} · ${followUpText(check)}`;
     text.append(heading, meta);
 
     const link = document.createElement("a");
