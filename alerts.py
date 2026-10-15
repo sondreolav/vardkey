@@ -24,6 +24,12 @@ the software, so the message itself does not repeat that name; the one exception
 is the cloud-key form of ``software_incompatible``, whose source is the key while
 the message has to name the software.
 
+The source of a security alert follows the same rule. When the provider is the
+key's own configured name, the key is the source and the alert carries
+``Key N: <name>`` like every other key alert; otherwise the provider is the
+software the key runs with, and the source is the software name alone
+(section 32.1).
+
 Two alerts belong to the checked key although they are not about the key itself
 (section 27). The contact alert is one of them, so it blocks the key until the
 user has updated the contact details externally. The other one is a wallet
@@ -157,20 +163,28 @@ def build_alerts(record, cloud_names=()):
     severity follows the checklist order. ``cloud_names`` holds the configured
     names of the cloud keys, because such a name is also a wallet software choice
     and can never be removed from the settings (section 27).
+
+    The key checks are read once into two lookups. ``key_ids`` answers which key a
+    provider belongs to, and ``key_sources`` gives that key the same
+    ``Key N: <name>`` source every other key alert carries, so a security alert
+    whose provider is the key's own name is labelled like the rest
+    (section 32.1).
     """
     key_checks = record.get("key_checks") or ()
     key_ids = {}
+    key_sources = {}
     for key_check in key_checks:
         name = key_check.get("name")
         if name is not None:
             key_ids.setdefault(name, key_check.get("key_id"))
+            key_sources.setdefault(name, _key_source(key_check))
 
     alerts = []
     for key_check in key_checks:
         alerts.extend(_key_alerts(key_check))
     alerts.extend(_software_alerts(record, cloud_names))
     for security_check in record.get("ai_security_checks") or ():
-        alerts.extend(_security_alerts(security_check, key_ids))
+        alerts.extend(_security_alerts(security_check, key_ids, key_sources))
     alerts.extend(_contact_alerts(record))
     alerts.sort(key=lambda alert: _SEVERITY_ORDER[alert["severity"]])
     return alerts
@@ -437,20 +451,30 @@ def _software_alerts(record, cloud_names):
     )]
 
 
-def _security_alerts(security_check, key_ids):
+def _security_alerts(security_check, key_ids, key_sources):
     """Return the alerts for one external security status.
 
-    The source of a security alert is the provider. When that provider is the
-    key's own configured name, the key is the source and a rotation closes the
-    alert; otherwise the provider is the software the key runs with, so the alert
-    names it and is closed by removing it from the settings (sections 25.3, 26.4
-    and 26.7). A compromised key or software can never be ignored: the key must
-    be replaced, and the software must be removed.
+    The provider is the label the status was recorded under. When it is the key's
+    own configured name, the key is the source and the alert belongs to it, so it
+    carries the same ``Key N: <name>`` source as every other key alert and a
+    rotation closes it; otherwise the provider is the software the key runs with,
+    so the source is the software name alone and the alert is closed by removing
+    it from the settings (sections 25.3, 26.4, 26.7 and 32.1). A compromised key
+    or software can never be ignored: the key must be replaced, and the software
+    must be removed.
     """
     provider = security_check.get("provider")
     status = security_check.get("status")
     key_id = key_ids.get(provider)
-    software = None if key_id is not None else provider
+    if key_id is not None:
+        # The provider is the key's own name, so the source names the key the
+        # same way every other key alert does (section 32.1).
+        source = key_sources.get(provider, provider)
+        software = None
+    else:
+        # A software source stays the plain provider name (section 32.1).
+        source = provider
+        software = provider
 
     if status == "VULNERABLE":
         if key_id is not None:
@@ -462,7 +486,7 @@ def _security_alerts(security_check, key_ids):
         return [_alert(
             "security_vulnerable",
             CRITICAL,
-            provider,
+            source,
             message,
             actions,
             key_id,
@@ -478,7 +502,7 @@ def _security_alerts(security_check, key_ids):
         return [_alert(
             "security_compromised",
             CRITICAL,
-            provider,
+            source,
             message,
             actions,
             key_id,
