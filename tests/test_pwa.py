@@ -1,9 +1,9 @@
 """Tests for the installable PWA (section 31 point 6).
 
 The service worker caches only the shell, the manifest describes the app, and
-every page links the manifest. The icon is still the repository placeholder: the
-real 192 and 512 px PNGs arrive with the artwork, and only the manifest and its
-icons entry change then.
+every page links the manifest. The icon is the retro SVG of section 32.1, served
+with ``sizes: "any"``; the 192 and 512 px PNGs still need a rasterizer, and only
+the manifest and its icons entry change when they arrive.
 """
 
 from http.server import ThreadingHTTPServer
@@ -148,9 +148,10 @@ class ManifestTests(SessionMixin, unittest.TestCase):
         self.assertEqual(manifest["start_url"], "/")
         self.assertEqual(manifest["display"], "standalone")
         # The colours are the ones the pages already declare in their
-        # theme-color meta and use as the page background.
-        self.assertEqual(manifest["theme_color"], "#f4f6f2")
-        self.assertEqual(manifest["background_color"], "#f4f6f2")
+        # theme-color meta and use as the page background. They follow the retro
+        # theme of section 32.2, so the two move together with the stylesheet.
+        self.assertEqual(manifest["theme_color"], "#c0c0c0")
+        self.assertEqual(manifest["background_color"], "#c0c0c0")
         self.assertTrue(manifest["icons"])
 
     def test_the_manifest_lists_the_served_icon(self):
