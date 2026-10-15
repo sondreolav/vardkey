@@ -1,9 +1,10 @@
 /* The retro theme of section 32.2: the look of a Windows application from the
    mid-1990s. The page is the grey desktop, every panel is a raised face, and
    every field is a sunken well. The depth comes from two-tone bevels alone:
-   there is no border radius, no box shadow and no gradient anywhere. The
-   layout, the responsive rules and every selector the scripts and the tests
-   rely on are unchanged. */
+   no rounded corner, no box shadow and no gradient anywhere, and the only
+   border-radius in the sheet is an explicit reset to 0, so a browser's own
+   rounded control never shows through. The layout, the responsive rules and
+   every selector the scripts and the tests rely on are unchanged. */
 :root {
   color-scheme: light;
   font-family: "MS Sans Serif", Tahoma, Verdana, Geneva, sans-serif;
