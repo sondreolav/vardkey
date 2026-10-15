@@ -1,14 +1,15 @@
 """Tests for the installable PWA (section 31 point 6).
 
 The service worker caches only the shell, the manifest describes the app, and
-every page links the manifest. The icon is the retro SVG of section 32.1, served
-with ``sizes: "any"``; the 192 and 512 px PNGs still need a rasterizer, and only
-the manifest and its icons entry change when they arrive.
+every page links the manifest and the icon. The icon is the retro SVG of
+section 32.1, served with ``sizes: "any"``; the 192 and 512 px PNGs still need a
+rasterizer, and only the manifest and its icons entry change when they arrive.
 """
 
 from http.server import ThreadingHTTPServer
 import json
 import os
+from pathlib import Path
 import tempfile
 import threading
 import unittest
@@ -101,6 +102,63 @@ class ServiceWorkerTests(unittest.TestCase):
 
         self.assertIn('addEventListener("offline"', body)
         self.assertIn("You are offline", body)
+
+
+class IconTests(unittest.TestCase):
+    """The favicon and the top-bar brand mark (section 32.1).
+
+    Every page links the icon, and the brand mark is the icon image itself. The
+    class name ``brand-mark`` is kept, because the stylesheet styles it by that
+    name.
+    """
+
+    PAGES = (
+        "index.html",
+        "setup.html",
+        "settings.html",
+        "health-check.html",
+        "history.html",
+        "login.html",
+    )
+    ICON_LINK = '<link rel="icon" type="image/svg+xml" href="/icon.svg">'
+    BRAND_MARK = '<img class="brand-mark" src="/icon.svg" alt="" aria-hidden="true">'
+    LETTER_MARK = '<span class="brand-mark" aria-hidden="true">V</span>'
+
+    def read_static(self, filename):
+        return (ROOT / "static" / filename).read_text(encoding="utf-8")
+
+    def test_every_page_links_the_icon(self):
+        # The favicon is the same retro drawing as the manifest icon, and every
+        # page links it, including the login page, which links no manifest
+        # (section 32.1).
+        for name in self.PAGES:
+            self.assertIn(self.ICON_LINK, self.read_static(name), name)
+
+    def test_every_page_shows_the_icon_in_the_top_bar(self):
+        for name in self.PAGES:
+            body = self.read_static(name)
+            self.assertIn(self.BRAND_MARK, body, name)
+            # The letter that used to stand there is gone.
+            self.assertNotIn(self.LETTER_MARK, body, name)
+
+    def test_the_brand_mark_is_styled_for_an_image(self):
+        styles = self.read_static("styles.css")
+
+        self.assertIn(".brand-mark {", styles)
+        # An 18 by 18 image on the raised face, kept crisp when it is scaled
+        # down. The rules that only made sense for the letter are gone.
+        self.assertIn("image-rendering: pixelated", styles)
+        self.assertNotIn("place-items: center", styles)
+
+    def test_the_stylesheet_keeps_the_footer_at_the_bottom(self):
+        # The page is a column that fills the window, so a short page still puts
+        # the footer at the bottom (section 32.1).
+        styles = self.read_static("styles.css")
+
+        self.assertIn("min-height: 100vh", styles)
+        self.assertIn("min-height: 100dvh", styles)
+        self.assertIn("flex-direction: column", styles)
+        self.assertIn("main { flex: 1 1 auto; }", styles)
 
 
 class ManifestTests(SessionMixin, unittest.TestCase):
