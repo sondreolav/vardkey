@@ -3,8 +3,10 @@
    every field is a sunken well. The depth comes from two-tone bevels alone:
    no rounded corner, no box shadow and no gradient anywhere, and the only
    border-radius in the sheet is an explicit reset to 0, so a browser's own
-   rounded control never shows through. The layout, the responsive rules and
-   every selector the scripts and the tests rely on are unchanged. */
+   rounded control never shows through. Every heading is a title bar that spans
+   its whole row, so all the bars on one page are the same width. The layout,
+   the responsive rules and every selector the scripts and the tests rely on are
+   unchanged. */
 :root {
   color-scheme: light;
   font-family: "MS Sans Serif", Tahoma, Verdana, Geneva, sans-serif;
@@ -48,7 +50,12 @@ a { color: var(--title); }
 .muted-label { color: var(--muted); font-size: 12px; }
 .topbar-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .page-shell { width: min(100% - 24px, 1120px); margin: 0 auto; padding: 16px 0 24px; }
-.page-heading, .section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+/* The heading row stacks: the bar takes the whole row, and the action, the
+   counter or the note that belongs to the heading goes on the next line. That
+   is what keeps every bar on a page the same width (section 32.2). */
+.page-heading, .section-heading { display: block; }
+.page-heading { margin-bottom: 4px; }
+.section-heading { margin-bottom: 10px; }
 .eyebrow { margin: 0 0 4px; color: var(--title); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
 h1, h2, h3, p { margin-top: 0; }
 /* Every heading is a title bar: navy, with white text. */
@@ -64,9 +71,8 @@ h3 { margin-bottom: 4px; font-size: 13px; font-weight: 700; }
 .primary-button:active, .secondary-button:active { border-color: #000000 #ffffff #ffffff #000000; }
 .primary-button:disabled, .secondary-button:disabled, .active-button:disabled { color: var(--line); cursor: not-allowed; }
 .section-block { margin-top: 20px; }
-.section-heading { margin-bottom: 10px; align-items: center; }
 .key-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.key-card, .info-card, .alerts-card, .history-card { border: 2px solid; border-color: #ffffff #000000 #000000 #ffffff; background: var(--face); }
+.key-card, .info-card { border: 2px solid; border-color: #ffffff #000000 #000000 #ffffff; background: var(--face); }
 .key-card { min-height: 110px; padding: 8px; }
 .key-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .key-number { color: var(--muted); font-size: 11px; font-weight: 700; }
@@ -90,8 +96,9 @@ h3 { margin-bottom: 4px; font-size: 13px; font-weight: 700; }
 .key-alert-note .back-link { font-size: 12px; }
 .overview-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .info-card { min-height: 92px; padding: 8px; }
-.info-card h2 { margin-bottom: 6px; font-size: 14px; }
-.alerts-card { padding: 8px; }
+/* The value in an overview card is a read-out, not a section title, so it is
+   not a title bar: it sits in a sunken well, the way a status read-out did. */
+.info-card h2 { margin-bottom: 6px; padding: 4px 6px; border: 2px solid; border-color: #808080 #ffffff #ffffff #808080; color: #000000; background: var(--field); font-size: 15px; font-weight: 700; }
 .alert-list { margin: 0; padding: 0; display: grid; gap: 8px; list-style: none; }
 .alert-item { padding: 6px 8px; border: 1px solid #000000; border-left: 4px solid var(--line); background: var(--field); }
 .alert-item strong { display: block; margin-bottom: 2px; font-size: 12px; }
@@ -104,14 +111,12 @@ h3 { margin-bottom: 4px; font-size: 13px; font-weight: 700; }
 .alert-close .form-actions { margin-top: 0; }
 .alert-close .field { margin: 0; }
 .empty-state { margin: 0; padding: 6px 8px; border: 2px solid; border-color: #808080 #ffffff #ffffff #808080; color: var(--muted); background: var(--field); font-size: 12px; line-height: 1.4; }
-.history-card { margin-top: 12px; padding: 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.history-card h2 { font-size: 14px; }
+.history-card { margin-top: 12px; }
 .card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .workflow-note { margin: 12px 0 0; color: var(--muted); font-size: 12px; }
 .footer { min-height: 34px; padding: 8px max(8px, calc((100% - 1120px) / 2)); display: flex; justify-content: space-between; gap: 12px; border-top: 2px solid var(--line); color: var(--muted); background: var(--face); font-size: 12px; }
 
 .form-shell { max-width: 900px; }
-.form-heading { align-items: flex-start; }
 .back-link { color: var(--title); font-size: 12px; font-weight: 700; text-decoration: none; }
 .back-link:hover { text-decoration: underline; }
 .privacy-notice { margin: 12px 0; padding: 6px 8px; border: 2px solid; border-color: #808080 #ffffff #ffffff #808080; color: #000000; background: var(--field); font-size: 12px; line-height: 1.4; }
@@ -119,13 +124,19 @@ h3 { margin-bottom: 4px; font-size: 13px; font-weight: 700; }
 .warning-note p { margin: 0 0 6px; }
 .warning-note p:last-child { margin-bottom: 0; }
 .warning-note .field-help { color: var(--muted); }
-.form-section { margin-top: 12px; padding: 10px; border: 2px solid; border-color: #ffffff #000000 #000000 #ffffff; background: var(--face); }
+/* A section is a flat block: the title bar is what separates it from the one
+   above. The bar is pulled out over the section's own side padding, so it spans
+   the whole page and matches every other bar on the page (section 32.2). */
+.form-section { margin-top: 12px; padding: 0 8px 10px; }
 .form-section-heading { margin-bottom: 8px; }
-.form-section-heading h2 { font-size: 14px; }
+.form-section-heading h2 { margin-left: -8px; margin-right: -8px; font-size: 14px; }
 .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .form-stack { display: grid; gap: 8px; }
-.check-card { min-width: 0; padding: 8px; border: 2px solid; border-color: #808080 #ffffff #ffffff #808080; background: var(--field); }
-.check-card legend { padding: 0 4px; font-size: 13px; font-weight: 700; }
+/* A fieldset is the classic etched group box: a thin two-tone frame with the
+   legend inside it, on the grey face. The legend is a block, so it no longer
+   cuts a notch out of the frame (section 32.2). */
+.check-card { min-width: 0; margin: 0; padding: 6px 8px 8px; border: 1px solid var(--line); outline: 1px solid #ffffff; outline-offset: -1px; background: var(--face); }
+.check-card legend { display: block; width: 100%; padding: 0 0 4px; font-size: 13px; font-weight: 700; }
 .field { display: grid; gap: 4px; margin: 8px 0; color: #000000; font-size: 12px; font-weight: 700; }
 .field input, .field select, .field textarea { width: 100%; min-height: 24px; padding: 2px 4px; border: 2px solid; border-color: #808080 #ffffff #ffffff #808080; border-radius: 0; color: #000000; background: var(--field); font: inherit; font-weight: 400; }
 .field textarea { min-height: 68px; resize: vertical; }
@@ -172,12 +183,8 @@ h3 { margin-bottom: 4px; font-size: 13px; font-weight: 700; }
 
 @media (max-width: 700px) {
   .page-shell { width: min(100% - 16px, 1120px); padding-top: 12px; }
-  .page-heading { align-items: flex-start; flex-direction: column; }
   .key-grid, .overview-grid, .field-grid { grid-template-columns: 1fr; }
   .key-card { min-height: 0; }
-  .history-card { align-items: flex-start; flex-direction: column; }
-  .card-actions { width: 100%; }
-  .form-section { padding: 8px; }
   .detail-list { grid-template-columns: 1fr; }
   .history-item { align-items: flex-start; flex-direction: column; }
   .software-row { align-items: stretch; flex-direction: column; }
