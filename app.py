@@ -84,6 +84,8 @@ STATIC_FILES = {
     "/sw.js": ("sw.js", "text/javascript; charset=utf-8"),
     "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
     "/icon.svg": ("icon.svg", "image/svg+xml"),
+    "/icon-192.png": ("icon-192.png", "image/png"),
+    "/icon-512.png": ("icon-512.png", "image/png"),
 }
 # The five application pages are served only to a signed-in user, and every API
 # endpoint answers 401 without one. ``GET /health``, the login page, the two
