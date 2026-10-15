@@ -102,18 +102,22 @@ class KeyStatusAddressPathTests(SessionMixin, unittest.TestCase):
         self.assertEqual([entry["last_checked_at"] for entry in status], [None, None, None])
         self.assertEqual([entry["next_check_due"] for entry in status], [None, None, None])
 
-    def test_the_dashboard_card_shows_the_path_between_the_name_and_the_type(self):
-        # createKeyCard() renders the path between the name and the type, and an
-        # empty path is skipped (section 31 point 4).
+    def test_the_dashboard_card_shows_the_path_under_the_name(self):
+        # createKeyCard() renders the name, then the model, then the path, and an
+        # empty path is skipped (sections 31.4 and 32.2 point 7). The type shares
+        # the top line with the number now, so it has no line of its own
+        # (section 32.2 point 6).
         script = read_static("app.js")
 
         self.assertIn("entry.address_path", script)
         name_index = script.index("card.append(top, name);")
+        model_index = script.index("card.append(model);")
         path_index = script.index("card.append(path);")
-        type_index = script.index("card.append(type);")
-        self.assertLess(name_index, path_index)
-        self.assertLess(path_index, type_index)
+        self.assertLess(name_index, model_index)
+        self.assertLess(model_index, path_index)
         self.assertIn("if (entry.address_path) {", script)
+        self.assertNotIn("card.append(type);", script)
+        self.assertNotIn("Hardware key", script)
 
 
 if __name__ == "__main__":
