@@ -1201,7 +1201,9 @@ def get_health_check(health_check_id, database_path="data/vardkey.sqlite3"):
 
     The key rows are read through ``keys``, so the history, the alerts and the
     export show the name a key has now, which the settings may change
-    (section 25.2).
+    (section 25.2). The model of the key is carried as well, so the history can
+    name the hardware and the firmware on one line; it is an added field and the
+    existing ones keep their names (section 32.1).
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
@@ -1223,7 +1225,7 @@ def get_health_check(health_check_id, database_path="data/vardkey.sqlite3"):
             dict(row)
             for row in connection.execute(
                 """
-                SELECT kc.id, kc.key_id, k.key_number, k.name, k.type,
+                SELECT kc.id, kc.key_id, k.key_number, k.name, k.type, k.model,
                        kc.available, kc.hardware_works, kc.firmware_version,
                        kc.seed_backup_verified, kc.address_path_verified,
                        kc.address_path, kc.comments
