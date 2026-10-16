@@ -1,10 +1,7 @@
 "use strict";
 
 const keyList = document.querySelector("#key-list");
-const keyCount = document.querySelector("#key-count");
 const setupShape = document.querySelector("#setup-shape");
-const nextCheckTitle = document.querySelector("#next-check-title");
-const nextCheckDetail = document.querySelector("#next-check-detail");
 const overdueTitle = document.querySelector("#overdue-title");
 const overdueDetail = document.querySelector("#overdue-detail");
 const alertsList = document.querySelector("#alerts-list");
@@ -226,28 +223,28 @@ function renderSetupHeading(setup) {
 }
 
 function renderSummary(status) {
-  const scheduled = status.filter((entry) => entry.next_check_due);
-  if (!scheduled.length) {
-    nextCheckTitle.textContent = "Not scheduled";
-    nextCheckDetail.textContent = "No key has a next check date yet. Save a health check to schedule one.";
-  } else {
-    const earliest = scheduled.reduce((first, entry) => (
-      entry.next_check_due < first.next_check_due ? entry : first
-    ));
-    nextCheckTitle.textContent = earliest.next_check_due;
-    nextCheckDetail.textContent = `Earliest next check, for key ${earliest.key_number}: ${earliest.name}.`;
-  }
-
+  // The Attention card is the only summary card now that the Next check card is
+  // gone, so it carries the earliest due date when nothing is overdue
+  // (section 32.7 point 3).
   const overdue = status.filter(isOverdue);
-  if (!overdue.length) {
-    overdueTitle.textContent = "Nothing overdue";
-    overdueDetail.textContent = "No key has passed its next check date.";
-  } else {
+  if (overdue.length) {
     overdueTitle.textContent = overdue.length === 1 ? "1 key overdue" : `${overdue.length} keys overdue`;
     overdueDetail.textContent = overdue
       .map((entry) => `Key ${entry.key_number}: ${entry.name} (due ${entry.next_check_due})`)
       .join(" · ");
+    return;
   }
+
+  overdueTitle.textContent = "Nothing overdue";
+  const scheduled = status.filter((entry) => entry.next_check_due);
+  if (!scheduled.length) {
+    overdueDetail.textContent = "No key has a next check date yet. Save a health check to schedule one.";
+    return;
+  }
+  const earliest = scheduled.reduce((first, entry) => (
+    entry.next_check_due < first.next_check_due ? entry : first
+  ));
+  overdueDetail.textContent = `Earliest next check ${earliest.next_check_due}, for Key ${earliest.key_number}: ${earliest.name}.`;
 }
 
 function createAlertItem(alert) {
@@ -453,15 +450,11 @@ function renderKeyCards() {
     keyList.replaceChildren(createEmptyState(unavailableText(
       "Key status is unavailable. Please reload the page or contact the service administrator.",
     )));
-    keyCount.textContent = "Unavailable";
-    nextCheckTitle.textContent = "Unavailable";
-    nextCheckDetail.textContent = "The next check dates could not be loaded.";
     overdueTitle.textContent = "Unavailable";
     overdueDetail.textContent = "The overdue keys could not be determined.";
     return;
   }
   keyList.replaceChildren(...keyStatus.map(createKeyCard));
-  keyCount.textContent = `${keyStatus.length} keys`;
   renderSummary(keyStatus);
 }
 
@@ -474,9 +467,9 @@ function renderAlerts() {
     return;
   }
   if (!alerts.length) {
-    alertsList.replaceChildren(createEmptyState(
-      "No alerts. No saved check has a result that needs follow-up.",
-    ));
+    // An empty list carries no text of its own: the count beside the heading
+    // already says that there is nothing to follow up (section 32.7 point 4).
+    alertsList.replaceChildren();
     alertCount.textContent = "No alerts";
     return;
   }
