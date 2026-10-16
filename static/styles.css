@@ -67,7 +67,11 @@ a { color: var(--title); }
 .menu-panel { position: absolute; right: 0; z-index: 10; min-width: 190px; margin-top: 2px; padding: 2px; display: grid; gap: 2px; border: 2px solid; border-color: #ffffff #000000 #000000 #ffffff; background: var(--face); }
 .menu-panel[hidden] { display: none; }
 .menu-item { width: 100%; padding: 3px 8px; display: block; border: 0; color: #000000; background: var(--face); font: inherit; font-size: 13px; font-weight: 400; text-align: left; text-decoration: none; cursor: pointer; }
-.menu-item:hover, .menu-item:focus { color: var(--title-text); background: var(--title); outline: 1px dotted #000000; outline-offset: -4px; }
+/* The page the user is already on is greyed out and is not a link, so the menu
+   says where they are and never reloads the page underneath them. It is left
+   out of the hover and focus rule for the same reason. */
+.menu-item-current { color: var(--line); cursor: default; }
+.menu-item:not(.menu-item-current):hover, .menu-item:not(.menu-item-current):focus { color: var(--title-text); background: var(--title); outline: 1px dotted #000000; outline-offset: -4px; }
 .menu-separator { height: 2px; margin: 2px 0; border-top: 1px solid var(--line); border-bottom: 1px solid #ffffff; }
 .page-shell { width: min(100% - 24px, 1120px); margin: 0 auto; padding: 16px 0 24px; }
 /* The heading row stacks: the bar takes the whole row, and the action, the
@@ -75,6 +79,9 @@ a { color: var(--title); }
    is what keeps every bar on a page the same width (section 32.2). */
 .page-heading, .section-heading { display: block; }
 .page-heading { margin-bottom: 4px; }
+/* An action that sits in the heading row is given room of its own, so it does
+   not touch the line above it (section 32.7 follow-up point 1). */
+.page-heading > .secondary-button { margin-top: 12px; }
 .section-heading { margin-bottom: 10px; }
 .eyebrow { margin: 0 0 4px; color: var(--title); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
 h1, h2, h3, p { margin-top: 0; }
