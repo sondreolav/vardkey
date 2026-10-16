@@ -453,7 +453,9 @@ class HealthCheckFormTests(unittest.TestCase):
     def test_the_dashboard_has_no_next_check_card_and_no_history_block(self):
         # The earliest due date reads inside the Attention card, and the history,
         # the export and the note that explains it live on their own page
-        # (section 32.7 points 3 and 5, and follow-up point 1).
+        # (section 32.7 points 3 and 5, and follow-up points 1 and 4). The
+        # dashboard note that carried the same sentence is gone as well
+        # (follow-up point 5).
         #
         # The removed card is named by its own markup, not by the bare phrase: a
         # bare substring also catches a comment, which is how this test failed
@@ -799,10 +801,11 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertNotIn("Start annual health check", html)
         self.assertIn("Saved health checks", html)
 
-    def test_the_history_page_offers_the_export_and_the_note(self):
-        # The export link and the note that explains it moved from the dashboard
-        # to the history page, and the note stands under the button
-        # (section 32.7 points 5 and follow-up point 1).
+    def test_the_history_page_offers_the_export_in_its_own_section(self):
+        # The export moved from the dashboard to the history page, and it has a
+        # section of its own there, after the saved-check list: a title bar, the
+        # button, and the line that explains what the file holds (section 32.7
+        # point 5 and follow-up points 1 and 4).
         html = read_static("history.html")
         styles = read_static("styles.css")
 
@@ -811,12 +814,26 @@ class HealthCheckFormTests(unittest.TestCase):
         # No download attribute, so the dated filename from Content-Disposition is
         # the one that wins (section 31 point 3).
         self.assertNotIn("download=", html)
-        self.assertIn('id="workflow-note"', html)
-        self.assertLess(html.index(link), html.index('id="workflow-note"'))
-        self.assertIn("one row per key check, as a dated file", html)
-        # The button is given room of its own, so it does not touch the line above
-        # it (section 32.7 follow-up point 1).
-        self.assertIn(".page-heading > .secondary-button { margin-top: 12px; }", styles)
+        # The section stands after the list and before the detail section, and it
+        # carries a title bar of its own.
+        self.assertLess(html.index('id="history-list-title"'), html.index('id="export-title"'))
+        self.assertLess(html.index('id="export-title"'), html.index('id="history-detail"'))
+        self.assertLess(html.index('id="export-title"'), html.index(link))
+        self.assertIn('<p class="eyebrow">Export</p>', html)
+        self.assertIn('<h2 id="export-title">Download the report</h2>', html)
+        # The line that explains the file stands under the button, and the
+        # free-standing note the dashboard used to carry is gone with the section
+        # that held it (follow-up points 4 and 5).
+        self.assertIn(
+            '<p class="workflow-note">Every saved key check is exported', html
+        )
+        self.assertIn("one row per key check, as a dated CSV file.", html)
+        self.assertLess(html.index(link), html.index("one row per key check"))
+        self.assertNotIn('id="workflow-note"', html)
+        self.assertNotIn("Save a health check to see it in the history.", html)
+        # The button no longer needs the rule that gave it room inside the page
+        # heading, because it has a section of its own now.
+        self.assertNotIn(".page-heading > .secondary-button", styles)
 
     def test_the_history_links_to_the_detail_section(self):
         # Both entry points land on the detail section of the history page: the
