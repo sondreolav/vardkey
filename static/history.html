@@ -27,10 +27,11 @@
           <h1>History</h1>
           <p class="intro">Every saved annual health check, newest first. Saved checks are never overwritten.</p>
         </div>
-        <!-- The export link lives here now, with no `download` attribute, so the
-             dated filename from Content-Disposition is the one that wins
-             (sections 31 point 3 and 32.7 point 5). -->
+        <!-- The export link and the note that explains it live here now, with no
+             `download` attribute, so the dated filename from Content-Disposition
+             is the one that wins (sections 31 point 3 and 32.7 point 5). -->
         <a class="secondary-button" href="/api/export">Download CSV</a>
+        <p class="workflow-note" id="workflow-note">Save a health check to see it in the history. Download CSV exports every saved key check, one row per key check, as a dated file.</p>
       </div>
 
       <section class="section-block" aria-labelledby="history-list-title">
