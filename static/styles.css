@@ -79,9 +79,6 @@ a { color: var(--title); }
    is what keeps every bar on a page the same width (section 32.2). */
 .page-heading, .section-heading { display: block; }
 .page-heading { margin-bottom: 4px; }
-/* An action that sits in the heading row is given room of its own, so it does
-   not touch the line above it (section 32.7 follow-up point 1). */
-.page-heading > .secondary-button { margin-top: 12px; }
 .section-heading { margin-bottom: 10px; }
 .eyebrow { margin: 0 0 4px; color: var(--title); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
 h1, h2, h3, p { margin-top: 0; }
