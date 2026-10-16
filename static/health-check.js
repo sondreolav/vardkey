@@ -690,7 +690,9 @@ async function saveHealthCheck() {
     }
     const saved = await response.json();
     saveStatus.textContent = "Health check saved.";
-    const target = `/history?id=${encodeURIComponent(saved.id)}`;
+    // The saved check is opened on the history page, so the anchor of the detail
+    // section is part of the target (section 32.7 follow-up point 3).
+    const target = `/history?id=${encodeURIComponent(saved.id)}#history-detail`;
     window.location.assign(target);
   } catch (error) {
     saveStatus.textContent = error.message;
