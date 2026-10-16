@@ -91,6 +91,13 @@ class ServiceWorkerTests(unittest.TestCase):
         self.assertIn("response.type", body)
         self.assertIn("!response.redirected", body)
 
+    def test_the_robots_file_is_served_but_never_cached_as_shell(self):
+        # The crawler rule is a file the server answers, and it is deliberately
+        # not part of the PWA shell: the worker caches only what the app needs
+        # offline (sections 31 point 6 and 32.7 point 6).
+        self.assertIn("/robots.txt", STATIC_FILES)
+        self.assertNotIn('"/robots.txt"', self.read_static("sw.js"))
+
     def test_the_dashboard_registers_the_service_worker(self):
         body = self.read_static("app.js")
 
