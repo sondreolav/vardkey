@@ -1,6 +1,6 @@
 """Tests for the dated CSV export filename (section 31 point 3).
 
-The server names every download with its own date, and the dashboard link leaves
+The server names every download with its own date, and the history link leaves
 the name to the server, because a valued ``download`` attribute would override
 the ``Content-Disposition`` filename.
 """
@@ -41,14 +41,19 @@ class ExportFilenameTests(unittest.TestCase):
         )
         self.assertRegex(export_filename(), FILENAME_PATTERN)
 
-    def test_the_dashboard_link_does_not_override_the_filename(self):
+    def test_the_history_link_does_not_override_the_filename(self):
         # A ``download`` attribute with a value would override the
-        # ``Content-Disposition`` filename, so the dashboard link must not carry
-        # one (section 31 point 3).
-        html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        # ``Content-Disposition`` filename, so the link must not carry one. The
+        # link moved from the dashboard to the history page in section 32.7
+        # point 5, and the rule moved with it.
+        html = (ROOT / "static" / "history.html").read_text(encoding="utf-8")
 
         self.assertIn('href="/api/export"', html)
         self.assertNotIn('download="', html)
+        # The dashboard carries no export link of its own any more.
+        dashboard = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+
+        self.assertNotIn("/api/export", dashboard)
 
 
 class ExportFilenameApiTests(SessionMixin, unittest.TestCase):
