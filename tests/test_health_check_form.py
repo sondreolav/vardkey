@@ -451,8 +451,13 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertNotIn("#key-count", script)
 
     def test_the_dashboard_has_no_next_check_card_and_no_history_block(self):
-        # The earliest due date reads inside the Attention card, and the history
-        # and the export live on their own page (section 32.7 points 3 and 5).
+        # The earliest due date reads inside the Attention card, and the history,
+        # the export and the note that explains it live on their own page
+        # (section 32.7 points 3 and 5, and follow-up point 1).
+        #
+        # The removed card is named by its own markup, not by the bare phrase: a
+        # bare substring also catches a comment, which is how this test failed
+        # once already (see the traps in ai-note.md).
         html = read_static("index.html")
         script = read_static("app.js")
 
@@ -461,11 +466,12 @@ class HealthCheckFormTests(unittest.TestCase):
         for gone in (
             'id="next-check-title"',
             'id="next-check-detail"',
-            "Next check",
+            '<p class="eyebrow">Next check</p>',
             "history-card",
             "Previous checks",
             "Open history",
             "Download CSV",
+            "workflow-note",
         ):
             self.assertNotIn(gone, html, gone)
         for gone in ("nextCheckTitle", "nextCheckDetail", "#next-check-title", "#next-check-detail"):
@@ -510,20 +516,21 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertIn('"Alerts could not be loaded. Please reload the page."', script)
         self.assertIn('addEventListener("offline"', script)
 
-    def test_the_top_bar_menu_offers_the_three_pages_and_sign_out(self):
-        # The menu replaced the lone Sign out button on every application page,
-        # in the order the round asks for, and the dashboard keeps no navigation
-        # link of its own (section 32.7 point 1).
+    def test_the_top_bar_menu_lists_the_dashboard_and_the_pages(self):
+        # The menu replaced the lone Sign out button on every application page.
+        # The dashboard comes first, then the three pages, then a separator, then
+        # Sign out (section 32.7 point 1 and follow-up point 2).
         script = read_static("session.js")
         html = read_static("index.html")
 
         for item in (
+            '{ label: "Dashboard", href: "/" },',
             '{ label: "Start health check", href: "/health-check" },',
             '{ label: "Settings", href: "/settings" },',
             '{ label: "History", href: "/history" },',
         ):
             self.assertIn(item, script)
-        # The three pages are links and Sign out is a button, after a separator.
+        # The destinations are links and Sign out is a button, after a separator.
         self.assertIn('separator.className = "menu-separator";', script)
         self.assertIn('signOutButton.type = "button";', script)
         self.assertIn('signOutButton.textContent = "Sign out";', script)
@@ -542,6 +549,25 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertNotIn("topbar-actions", html)
         for gone in ("Start annual health check", 'href="/settings"', 'href="/history"', 'href="/health-check"'):
             self.assertNotIn(gone, html, gone)
+
+    def test_the_menu_marks_the_page_you_are_on_and_greys_it_out(self):
+        # The page the user is already on is marked and greyed out, and it is not
+        # clickable at all: it is rendered as a span instead of a link, so the menu
+        # never reloads the page it is showing, and aria-current says where the
+        # user is (section 32.7 follow-up point 2).
+        script = read_static("session.js")
+        styles = read_static("styles.css")
+
+        self.assertIn("currentPath", script)
+        self.assertIn("window.location.pathname", script)
+        self.assertIn("currentPath() === item.href", script)
+        self.assertIn('document.createElement("span")', script)
+        self.assertIn('current.className = "menu-item menu-item-current";', script)
+        self.assertIn('current.setAttribute("aria-current", "page");', script)
+        # The stylesheet greys the current item out and leaves it out of the hover
+        # and focus rule, so it never lights up like a link.
+        self.assertIn(".menu-item-current { color: var(--line); cursor: default; }", styles)
+        self.assertIn(".menu-item:not(.menu-item-current):hover", styles)
 
     def test_stylesheet_covers_the_menu(self):
         styles = read_static("styles.css")
@@ -773,14 +799,43 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertNotIn("Start annual health check", html)
         self.assertIn("Saved health checks", html)
 
-    def test_the_history_page_offers_the_export(self):
-        # The export link moved from the dashboard to the history page
-        # (section 32.7 point 5).
+    def test_the_history_page_offers_the_export_and_the_note(self):
+        # The export link and the note that explains it moved from the dashboard
+        # to the history page, and the note stands under the button
+        # (section 32.7 points 5 and follow-up point 1).
         html = read_static("history.html")
+        styles = read_static("styles.css")
 
+        link = '<a class="secondary-button" href="/api/export">Download CSV</a>'
+        self.assertIn(link, html)
+        # No download attribute, so the dated filename from Content-Disposition is
+        # the one that wins (section 31 point 3).
+        self.assertNotIn("download=", html)
+        self.assertIn('id="workflow-note"', html)
+        self.assertLess(html.index(link), html.index('id="workflow-note"'))
+        self.assertIn("one row per key check, as a dated file", html)
+        # The button is given room of its own, so it does not touch the line above
+        # it (section 32.7 follow-up point 1).
+        self.assertIn(".page-heading > .secondary-button { margin-top: 12px; }", styles)
+
+    def test_the_history_links_to_the_detail_section(self):
+        # Both entry points land on the detail section of the history page: the
+        # View link carries its anchor, and the form opens the check it has just
+        # saved there (section 32.7 follow-up point 3).
+        page = read_static("history.html")
+        history = read_static("history.js")
+        form = read_static("health-check.js")
+
+        # The anchor the two links point at is the detail section itself.
+        self.assertIn('id="history-detail"', page)
+        self.assertIn("link.href = `/history?id=${check.id}#history-detail`;", history)
+        self.assertIn("const target = `/history?id=${encodeURIComponent(saved.id)}#history-detail`;", form)
+        # The section is hidden until a check is opened, and a hidden element has
+        # no box to scroll to, so the page reveals it first and then moves to it.
+        self.assertIn("revealDetail", history)
         self.assertIn(
-            '<a class="secondary-button" href="/api/export">Download CSV</a>',
-            html,
+            'detailSection.scrollIntoView({ behavior: "smooth", block: "start" });',
+            history,
         )
 
     def test_stylesheet_makes_the_hidden_attribute_work_on_grid_containers(self):
