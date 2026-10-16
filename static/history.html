@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#c0c0c0">
+    <meta name="robots" content="noindex, nofollow">
     <title>History — VardKey</title>
     <link rel="stylesheet" href="/styles.css">
     <link rel="manifest" href="/manifest.webmanifest">
@@ -26,6 +27,10 @@
           <h1>History</h1>
           <p class="intro">Every saved annual health check, newest first. Saved checks are never overwritten.</p>
         </div>
+        <!-- The export link lives here now, with no `download` attribute, so the
+             dated filename from Content-Disposition is the one that wins
+             (sections 31 point 3 and 32.7 point 5). -->
+        <a class="secondary-button" href="/api/export">Download CSV</a>
       </div>
 
       <section class="section-block" aria-labelledby="history-list-title">
