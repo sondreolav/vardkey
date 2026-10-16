@@ -58,6 +58,17 @@ a { color: var(--title); }
 .topbar .back-link:hover { text-decoration: underline; }
 .muted-label { color: var(--muted); font-size: 12px; }
 .topbar-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+/* The top-bar menu of section 32.7 point 1: a raised button with a drop-down
+   panel under it. The panel is a raised face with the same 3D edge as the rest
+   of the theme, it is hidden until the button is pressed, and it is laid out
+   over the page instead of pushing it down. */
+.menu { position: relative; }
+.menu-button { min-width: 68px; }
+.menu-panel { position: absolute; right: 0; z-index: 10; min-width: 190px; margin-top: 2px; padding: 2px; display: grid; gap: 2px; border: 2px solid; border-color: #ffffff #000000 #000000 #ffffff; background: var(--face); }
+.menu-panel[hidden] { display: none; }
+.menu-item { width: 100%; padding: 3px 8px; display: block; border: 0; color: #000000; background: var(--face); font: inherit; font-size: 13px; font-weight: 400; text-align: left; text-decoration: none; cursor: pointer; }
+.menu-item:hover, .menu-item:focus { color: var(--title-text); background: var(--title); outline: 1px dotted #000000; outline-offset: -4px; }
+.menu-separator { height: 2px; margin: 2px 0; border-top: 1px solid var(--line); border-bottom: 1px solid #ffffff; }
 .page-shell { width: min(100% - 24px, 1120px); margin: 0 auto; padding: 16px 0 24px; }
 /* The heading row stacks: the bar takes the whole row, and the action, the
    counter or the note that belongs to the heading goes on the next line. That
@@ -81,6 +92,10 @@ h3 { margin-bottom: 4px; font-size: 13px; font-weight: 700; }
 .primary-button:disabled, .secondary-button:disabled, .active-button:disabled { color: var(--line); cursor: not-allowed; }
 .section-block { margin-top: 20px; }
 .key-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+/* The key cards stand under the dashboard heading, with no section of their own,
+   so the grid keeps its distance from the line above it
+   (section 32.7 point 2). */
+.page-heading .key-grid { margin-top: 12px; }
 .key-card, .info-card { border: 2px solid; border-color: #ffffff #000000 #000000 #ffffff; background: var(--face); }
 .key-card { min-height: 110px; padding: 8px; }
 .key-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
@@ -91,7 +106,7 @@ h3 { margin-bottom: 4px; font-size: 13px; font-weight: 700; }
 .status-overdue { color: var(--danger); background: var(--field); }
 .status-alert { color: var(--danger); background: var(--field); }
 .key-card h3 { margin: 8px 0 4px; font-size: 13px; }
-.key-card p, .info-card p:not(.eyebrow), .history-card > p { margin-bottom: 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.key-card p, .info-card p:not(.eyebrow) { margin-bottom: 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
 /* The path stands on its own line, so it is set apart by its slant alone
    (section 32.2 point 7). */
 .key-path { font-style: italic; }
@@ -103,7 +118,10 @@ h3 { margin-bottom: 4px; font-size: 13px; font-weight: 700; }
 .key-alert-note .key-alert-message { color: var(--danger); font-weight: 700; }
 .key-alert-note .key-alert-detail { color: var(--muted); }
 .key-alert-note .back-link { font-size: 12px; }
-.overview-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+/* The Attention card is the only summary card left, so the grid is one column
+   wide and the card spans the whole content width at every width
+   (section 32.7 point 3). */
+.overview-grid { margin-top: 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .info-card { min-height: 92px; padding: 8px; }
 /* The value in an overview card is a read-out, not a section title, so it is
    not a title bar: it sits in a sunken well, the way a status read-out did. */
@@ -120,7 +138,6 @@ h3 { margin-bottom: 4px; font-size: 13px; font-weight: 700; }
 .alert-close .form-actions { margin-top: 0; }
 .alert-close .field { margin: 0; }
 .empty-state { margin: 0; padding: 6px 8px; border: 2px solid; border-color: #808080 #ffffff #ffffff #808080; color: var(--muted); background: var(--field); font-size: 12px; line-height: 1.4; }
-.history-card { margin-top: 12px; }
 .card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .workflow-note { margin: 12px 0 0; color: var(--muted); font-size: 12px; }
 .footer { min-height: 34px; padding: 8px max(8px, calc((100% - 1120px) / 2)); display: flex; justify-content: space-between; gap: 12px; border-top: 2px solid var(--line); color: var(--muted); background: var(--face); font-size: 12px; }
@@ -192,7 +209,7 @@ h3 { margin-bottom: 4px; font-size: 13px; font-weight: 700; }
 
 @media (max-width: 700px) {
   .page-shell { width: min(100% - 16px, 1120px); padding-top: 12px; }
-  .key-grid, .overview-grid, .field-grid { grid-template-columns: 1fr; }
+  .key-grid, .field-grid { grid-template-columns: 1fr; }
   .key-card { min-height: 0; }
   .detail-list { grid-template-columns: 1fr; }
   .history-item { align-items: flex-start; flex-direction: column; }
