@@ -576,6 +576,53 @@ class AppHandlerTests(ServerTestCase):
         self.assertIn('id="history-list"', body)
         self.assertIn("Saved health checks", body)
 
+    def test_the_history_page_offers_the_csv_download(self):
+        # The export link moved from the dashboard to the history page, and it
+        # carries no download attribute, so the dated filename from
+        # Content-Disposition is the one that wins (sections 31 point 3 and
+        # 32.7 point 5).
+        with self.get("/history") as response:
+            body = response.read().decode("utf-8")
+
+        self.assertEqual(response.status, 200)
+        self.assertIn(
+            '<a class="secondary-button" href="/api/export">Download CSV</a>',
+            body,
+        )
+        self.assertNotIn("download=", body)
+
+    def test_robots_txt_is_served_and_refuses_every_crawler(self):
+        # A file that is not listed in STATIC_FILES answers 404, and a crawler
+        # that cannot read the file would still index the service
+        # (section 32.7 point 6).
+        with self.get("/robots.txt") as response:
+            body = response.read().decode("utf-8")
+            content_type = response.headers["Content-Type"]
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(content_type, "text/plain; charset=utf-8")
+        self.assertIn("User-agent: *", body)
+        self.assertIn("Disallow: /", body)
+
+    def test_every_answer_carries_the_robots_header(self):
+        # The header is written in one place, so the pages, the JSON, the CSV and
+        # the static files are covered by it (section 32.7 point 6). A redirect
+        # is covered in AuthApiTests, which is where one happens.
+        for path in (
+            "/health",
+            "/",
+            "/history",
+            "/styles.css",
+            "/robots.txt",
+            "/api/keys",
+            "/api/export",
+        ):
+            with self.get(path) as response:
+                self.assertEqual(
+                    response.headers["X-Robots-Tag"], "noindex, nofollow", path
+                )
+                response.read()
+
     def test_every_page_loads_the_session_script(self):
         # The five pages load session.js, which puts the CSRF header on every
         # fetch, so the existing page scripts do not have to change
@@ -586,16 +633,20 @@ class AppHandlerTests(ServerTestCase):
             self.assertEqual(response.status, 200)
             self.assertIn('<script src="/session.js"', body)
 
-    def test_dashboard_links_to_the_form_the_history_the_export_and_the_settings(self):
+    def test_the_dashboard_carries_no_navigation_link_of_its_own(self):
+        # The navigation lives in the top-bar menu that session.js builds, and
+        # the export link lives on the history page, so the dashboard markup
+        # carries no link of its own (section 32.7 points 1 and 5).
         with self.get("/") as response:
             body = response.read().decode("utf-8")
 
-        self.assertIn('href="/health-check"', body)
-        self.assertIn('href="/history"', body)
-        self.assertIn('href="/api/export"', body)
-        self.assertIn('href="/settings"', body)
-        self.assertIn("Download CSV", body)
-        self.assertNotIn("Report export is not implemented", body)
+        self.assertEqual(response.status, 200)
+        for path in ("/health-check", "/history", "/api/export", "/settings"):
+            self.assertNotIn(f'href="{path}"', body, path)
+        self.assertNotIn("Download CSV", body)
+        self.assertNotIn("Start annual health check", body)
+        # The menu itself comes from the script the page loads.
+        self.assertIn('<script src="/session.js"', body)
 
     def test_the_dashboard_shows_the_product_name_and_the_setup_heading(self):
         with self.get("/") as response:
@@ -1205,6 +1256,21 @@ class AuthApiTests(ServerTestCase):
     def test_a_page_redirects_to_the_login_without_a_session(self):
         for path in ("/", "/setup", "/settings", "/health-check", "/history"):
             self.assert_redirects_to_login(path)
+
+    def test_a_redirect_carries_the_robots_header(self):
+        # A redirect is one of the answers the header has to cover, and this is
+        # the only place the app sends one (section 32.7 point 6).
+        opener = build_opener(_NoRedirect)
+        try:
+            with opener.open(self.request("/")) as response:
+                self.fail(f"Expected a redirect, received {response.status}")
+        except HTTPError as error:
+            try:
+                self.assertEqual(error.code, 302)
+                self.assertEqual(error.headers["X-Robots-Tag"], "noindex, nofollow")
+                error.read()
+            finally:
+                error.close()
 
     def test_an_api_call_answers_401_without_a_session(self):
         for path in (
