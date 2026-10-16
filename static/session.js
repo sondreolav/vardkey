@@ -9,8 +9,8 @@
 //   state-changing POST;
 // - it sends the browser to the login page when a call answers 401, so an
 //   expired session does not leave a half-loaded page behind;
-// - it adds a Sign out control to the top bar, so the logout endpoint is
-//   reachable from the UI.
+// - it adds the navigation menu to the top bar, so the three pages and the
+//   logout endpoint are reachable from every page (section 32.7 point 1).
 
 (function () {
   const CSRF_COOKIE = "vardkey_csrf";
@@ -58,19 +58,100 @@
     });
   }
 
-  function addSignOutControl() {
-    const topbar = document.querySelector(".topbar");
-    if (!topbar || topbar.querySelector(".sign-out")) {
+  // The menu replaced the lone Sign out button, so the top bar is the same on
+  // every page and the dashboard keeps no navigation link of its own
+  // (section 32.7 point 1). The order is the one the round asks for: the check
+  // form, the settings and the history, then a separator, then Sign out.
+  const MENU_ITEMS = [
+    { label: "Start health check", href: "/health-check" },
+    { label: "Settings", href: "/settings" },
+    { label: "History", href: "/history" },
+  ];
+  const MENU_PANEL_ID = "app-menu-panel";
+
+  function setMenuOpen(menu, open) {
+    const panel = menu.querySelector(".menu-panel");
+    const button = menu.querySelector(".menu-button");
+    if (!panel || !button) {
       return;
     }
-    const button = document.createElement("button");
-    button.type = "button";
-    // The existing secondary button style is reused, so no new CSS is needed.
-    button.className = "secondary-button sign-out";
-    button.textContent = "Sign out";
-    button.addEventListener("click", signOut);
-    (topbar.querySelector(".topbar-actions") || topbar).append(button);
+    panel.hidden = !open;
+    button.setAttribute("aria-expanded", open ? "true" : "false");
   }
 
-  addSignOutControl();
+  function createMenu() {
+    const menu = document.createElement("div");
+    menu.className = "menu";
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary-button menu-button";
+    button.textContent = "Menu";
+    button.setAttribute("aria-haspopup", "true");
+    button.setAttribute("aria-expanded", "false");
+    button.setAttribute("aria-controls", MENU_PANEL_ID);
+
+    // The panel is hidden until the button is pressed, so the menu never covers
+    // the page on its own.
+    const panel = document.createElement("div");
+    panel.className = "menu-panel";
+    panel.id = MENU_PANEL_ID;
+    panel.hidden = true;
+
+    for (const item of MENU_ITEMS) {
+      const link = document.createElement("a");
+      link.className = "menu-item";
+      link.href = item.href;
+      link.textContent = item.label;
+      link.addEventListener("click", () => setMenuOpen(menu, false));
+      panel.append(link);
+    }
+
+    const separator = document.createElement("div");
+    separator.className = "menu-separator";
+    separator.setAttribute("role", "separator");
+    panel.append(separator);
+
+    const signOutButton = document.createElement("button");
+    signOutButton.type = "button";
+    signOutButton.className = "menu-item";
+    signOutButton.textContent = "Sign out";
+    signOutButton.addEventListener("click", () => {
+      setMenuOpen(menu, false);
+      signOut();
+    });
+    panel.append(signOutButton);
+
+    button.addEventListener("click", () => {
+      setMenuOpen(menu, panel.hidden);
+    });
+
+    menu.append(button, panel);
+    return menu;
+  }
+
+  function addNavigationMenu() {
+    const topbar = document.querySelector(".topbar");
+    if (!topbar || topbar.querySelector(".menu")) {
+      return;
+    }
+    const menu = createMenu();
+    (topbar.querySelector(".topbar-actions") || topbar).append(menu);
+
+    // The panel closes on Escape and on a click outside it, so it never stays
+    // open behind another interaction (section 32.7 point 1). A click on the
+    // button is inside the menu, so the toggle above is what handles it.
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        setMenuOpen(menu, false);
+      }
+    });
+    document.addEventListener("click", (event) => {
+      if (!menu.contains(event.target)) {
+        setMenuOpen(menu, false);
+      }
+    });
+  }
+
+  addNavigationMenu();
 })();
