@@ -186,6 +186,15 @@ function closedAlertsTable(closedAlerts) {
   );
 }
 
+function revealDetail() {
+  // The detail section is hidden until a check is opened, and a hidden element
+  // has no box, so the browser cannot jump to #history-detail on its own. The
+  // section is revealed first and the page moves to it afterwards
+  // (section 32.7 follow-up point 3).
+  detailSection.hidden = false;
+  detailSection.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function renderDetail(record) {
   detailTitle.textContent = `Check from ${record.checked_at}`;
   const fragment = document.createDocumentFragment();
@@ -203,7 +212,7 @@ function renderDetail(record) {
   fragment.append(card("Follow-up closed", closedAlertsTable(record.closed_alerts || [])));
 
   detailBody.replaceChildren(fragment);
-  detailSection.hidden = false;
+  revealDetail();
 }
 
 function keyNamesText(check) {
@@ -248,9 +257,12 @@ function renderList(checks) {
     meta.textContent = `${keyNamesText(check)} · ${followUpText(check)}`;
     text.append(heading, meta);
 
+    // The link carries the anchor of the detail section, so the browser lands on
+    // the check that was opened and not at the top of the page
+    // (section 32.7 follow-up point 3).
     const link = document.createElement("a");
     link.className = "secondary-button";
-    link.href = `/history?id=${check.id}`;
+    link.href = `/history?id=${check.id}#history-detail`;
     link.textContent = "View";
 
     item.append(text, link);
@@ -290,7 +302,7 @@ async function loadDetail() {
   } catch {
     detailTitle.textContent = "Health check not found";
     detailBody.replaceChildren();
-    detailSection.hidden = false;
+    revealDetail();
   }
 }
 
