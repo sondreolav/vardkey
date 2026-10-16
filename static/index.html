@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#c0c0c0">
+    <meta name="robots" content="noindex, nofollow">
     <title>VardKey</title>
     <link rel="stylesheet" href="/styles.css">
     <link rel="manifest" href="/manifest.webmanifest">
@@ -17,9 +18,8 @@
         <img class="brand-mark" src="/icon.svg" alt="" aria-hidden="true">
         <span>VardKey</span>
       </a>
-      <div class="topbar-actions">
-        <a class="back-link" href="/settings">Settings</a>
-      </div>
+      <!-- The navigation menu is built by session.js, so every page carries the
+           same top bar without repeating the markup (section 32.7 point 1). -->
     </header>
 
     <main class="page-shell">
@@ -31,28 +31,17 @@
                as soon as the setup is loaded (section 32.2 point 3). -->
           <p class="intro" id="setup-shape">Bitcoin Health Monitor for a Multisig Setup.</p>
         </div>
-        <a class="primary-button active-button" href="/health-check">Start annual health check</a>
-      </section>
-
-      <section class="section-block" aria-labelledby="keys-title">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Configured setup</p>
-            <h2 id="keys-title">Your keys</h2>
-          </div>
-          <span class="muted-label" id="key-count">Loading keys…</span>
-        </div>
+        <!-- The keys stand under the heading, with no section of their own
+             (section 32.7 point 2). -->
         <div class="key-grid" id="key-list" aria-live="polite">
           <p class="empty-state">Loading key profiles…</p>
         </div>
       </section>
 
+      <!-- The Attention card stands alone and spans the content width. The
+           earliest due date reads inside it now that the Next check card is gone
+           (section 32.7 point 3). -->
       <div class="overview-grid">
-        <section class="info-card" aria-labelledby="next-check-title">
-          <p class="eyebrow">Next check</p>
-          <h2 id="next-check-title">Not scheduled</h2>
-          <p id="next-check-detail">Each key keeps its own next check date. The earliest one is shown here.</p>
-        </section>
         <section class="info-card" aria-labelledby="overdue-title">
           <p class="eyebrow">Attention</p>
           <h2 id="overdue-title">Nothing overdue</h2>
@@ -70,17 +59,6 @@
         </div>
         <div id="alerts-list" aria-live="polite">
           <p class="empty-state">Loading alerts…</p>
-        </div>
-      </section>
-
-      <section class="history-card" aria-labelledby="history-title">
-        <div>
-          <p class="eyebrow">Previous checks</p>
-          <h2 id="history-title">History</h2>
-        </div>
-        <div class="card-actions">
-          <a class="secondary-button" href="/history">Open history</a>
-          <a class="secondary-button" href="/api/export">Download CSV</a>
         </div>
       </section>
 
