@@ -9,8 +9,8 @@
 //   state-changing POST;
 // - it sends the browser to the login page when a call answers 401, so an
 //   expired session does not leave a half-loaded page behind;
-// - it adds the navigation menu to the top bar, so the three pages and the
-//   logout endpoint are reachable from every page (section 32.7 point 1).
+// - it adds the navigation menu to the top bar, so the pages and the logout
+//   endpoint are reachable from every page (section 32.7 point 1).
 
 (function () {
   const CSRF_COOKIE = "vardkey_csrf";
@@ -60,9 +60,12 @@
 
   // The menu replaced the lone Sign out button, so the top bar is the same on
   // every page and the dashboard keeps no navigation link of its own
-  // (section 32.7 point 1). The order is the one the round asks for: the check
-  // form, the settings and the history, then a separator, then Sign out.
+  // (section 32.7 point 1). The order is the dashboard first, then the check
+  // form, the settings and the history, then a separator, then Sign out. The
+  // page the user is already on is marked and greyed out instead of being a
+  // link (section 32.7 follow-up point 2).
   const MENU_ITEMS = [
+    { label: "Dashboard", href: "/" },
     { label: "Start health check", href: "/health-check" },
     { label: "Settings", href: "/settings" },
     { label: "History", href: "/history" },
@@ -77,6 +80,32 @@
     }
     panel.hidden = !open;
     button.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  function currentPath() {
+    // "/health-check/" and "/health-check" are the same page, and the root stays
+    // "/", so the menu compares normalised paths alone.
+    const path = window.location.pathname.replace(/\/+$/, "");
+    return path === "" ? "/" : path;
+  }
+
+  function createMenuItem(menu, item) {
+    if (currentPath() === item.href) {
+      // The page the user is already on is not a link at all: a span cannot be
+      // followed, so the menu never reloads the page it is showing, and
+      // aria-current tells a screen reader where the user is.
+      const current = document.createElement("span");
+      current.className = "menu-item menu-item-current";
+      current.textContent = item.label;
+      current.setAttribute("aria-current", "page");
+      return current;
+    }
+    const link = document.createElement("a");
+    link.className = "menu-item";
+    link.href = item.href;
+    link.textContent = item.label;
+    link.addEventListener("click", () => setMenuOpen(menu, false));
+    return link;
   }
 
   function createMenu() {
@@ -99,12 +128,7 @@
     panel.hidden = true;
 
     for (const item of MENU_ITEMS) {
-      const link = document.createElement("a");
-      link.className = "menu-item";
-      link.href = item.href;
-      link.textContent = item.label;
-      link.addEventListener("click", () => setMenuOpen(menu, false));
-      panel.append(link);
+      panel.append(createMenuItem(menu, item));
     }
 
     const separator = document.createElement("div");
