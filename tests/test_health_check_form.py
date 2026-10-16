@@ -433,6 +433,142 @@ class HealthCheckFormTests(unittest.TestCase):
         self.assertNotIn("setupDescription", script)
         self.assertNotIn("renderSetupShape", script)
 
+    def test_the_dashboard_has_no_setup_block_and_no_key_count(self):
+        # The key cards stand under the dashboard heading now, with no section of
+        # their own, and the counter that stood beside the section heading is
+        # gone with it (section 32.7 point 2).
+        html = read_static("index.html")
+        script = read_static("app.js")
+
+        self.assertIn('id="key-list"', html)
+        self.assertIn('aria-live="polite"', html)
+        # The grid sits inside the page heading, right after the setup line.
+        self.assertLess(html.index('id="setup-shape"'), html.index('id="key-list"'))
+        for gone in ("Configured setup", "Your keys", 'id="key-count"', 'aria-labelledby="keys-title"'):
+            self.assertNotIn(gone, html, gone)
+        # No script points at an element that no longer exists.
+        self.assertNotIn("keyCount", script)
+        self.assertNotIn("#key-count", script)
+
+    def test_the_dashboard_has_no_next_check_card_and_no_history_block(self):
+        # The earliest due date reads inside the Attention card, and the history
+        # and the export live on their own page (section 32.7 points 3 and 5).
+        html = read_static("index.html")
+        script = read_static("app.js")
+
+        self.assertIn('id="overdue-title"', html)
+        self.assertIn('id="overdue-detail"', html)
+        for gone in (
+            'id="next-check-title"',
+            'id="next-check-detail"',
+            "Next check",
+            "history-card",
+            "Previous checks",
+            "Open history",
+            "Download CSV",
+        ):
+            self.assertNotIn(gone, html, gone)
+        for gone in ("nextCheckTitle", "nextCheckDetail", "#next-check-title", "#next-check-detail"):
+            self.assertNotIn(gone, script, gone)
+
+    def test_the_summary_reports_the_earliest_next_check(self):
+        # The Attention card lists the overdue keys when something is overdue,
+        # and otherwise names the earliest due date, because the Next check card
+        # is gone (section 32.7 point 3).
+        script = read_static("app.js")
+
+        self.assertIn('"Nothing overdue"', script)
+        self.assertIn('"1 key overdue"', script)
+        self.assertIn(
+            '`Key ${entry.key_number}: ${entry.name} (due ${entry.next_check_due})`',
+            script,
+        )
+        self.assertIn(
+            '`Earliest next check ${earliest.next_check_due}, for Key ${earliest.key_number}: ${earliest.name}.`',
+            script,
+        )
+        self.assertIn(
+            '"No key has a next check date yet. Save a health check to schedule one."',
+            script,
+        )
+        # The two lines that stood there before are gone.
+        self.assertNotIn("No key has passed its next check date.", script)
+        self.assertNotIn("Earliest next check, for key", script)
+
+    def test_an_empty_alert_list_carries_no_placeholder(self):
+        # The count beside the heading is what says there is nothing to follow
+        # up, so an empty list renders no text of its own (section 32.7 point 4).
+        script = read_static("app.js")
+        html = read_static("index.html")
+
+        self.assertIn("alertsList.replaceChildren();", script)
+        self.assertIn('alertCount.textContent = "No alerts";', script)
+        self.assertNotIn("No alerts. No saved check has a result that needs follow-up.", script)
+        # The placeholder in the markup and the failure branch stay, so a page
+        # that is still loading and one that failed still say so.
+        self.assertIn("Loading alerts…", html)
+        self.assertIn('"Alerts could not be loaded. Please reload the page."', script)
+        self.assertIn('addEventListener("offline"', script)
+
+    def test_the_top_bar_menu_offers_the_three_pages_and_sign_out(self):
+        # The menu replaced the lone Sign out button on every application page,
+        # in the order the round asks for, and the dashboard keeps no navigation
+        # link of its own (section 32.7 point 1).
+        script = read_static("session.js")
+        html = read_static("index.html")
+
+        for item in (
+            '{ label: "Start health check", href: "/health-check" },',
+            '{ label: "Settings", href: "/settings" },',
+            '{ label: "History", href: "/history" },',
+        ):
+            self.assertIn(item, script)
+        # The three pages are links and Sign out is a button, after a separator.
+        self.assertIn('separator.className = "menu-separator";', script)
+        self.assertIn('signOutButton.type = "button";', script)
+        self.assertIn('signOutButton.textContent = "Sign out";', script)
+        self.assertIn('window.fetch("/api/logout"', script)
+        # The panel is hidden until it is opened, and it is wired to the button.
+        self.assertIn("panel.hidden = true;", script)
+        self.assertIn('button.setAttribute("aria-haspopup", "true");', script)
+        self.assertIn('button.setAttribute("aria-expanded", "false");', script)
+        self.assertIn('button.setAttribute("aria-controls", MENU_PANEL_ID);', script)
+        # It closes on Escape, on a click outside it, and after a choice.
+        self.assertIn('event.key === "Escape"', script)
+        self.assertIn("menu.contains(event.target)", script)
+        self.assertIn("setMenuOpen(menu, false)", script)
+        # The dashboard markup carries no navigation link of its own, and the
+        # wrapper the script fills is built by the script.
+        self.assertNotIn("topbar-actions", html)
+        for gone in ("Start annual health check", 'href="/settings"', 'href="/history"', 'href="/health-check"'):
+            self.assertNotIn(gone, html, gone)
+
+    def test_stylesheet_covers_the_menu(self):
+        styles = read_static("styles.css")
+
+        for rule in (".menu {", ".menu-button", ".menu-panel", ".menu-item", ".menu-separator"):
+            self.assertIn(rule, styles)
+        # The panel is hidden by the hidden attribute, not by an inline style, so
+        # the CSP needs no exception (section 32.7 point 1).
+        self.assertIn(".menu-panel[hidden] { display: none; }", styles)
+
+    def test_every_page_refuses_to_be_indexed(self):
+        # No page is meant to be found by a crawler, so each of the six carries
+        # the robots meta (section 32.7 point 6).
+        for name in (
+            "index.html",
+            "setup.html",
+            "settings.html",
+            "health-check.html",
+            "history.html",
+            "login.html",
+        ):
+            self.assertIn(
+                '<meta name="robots" content="noindex, nofollow">',
+                read_static(name),
+                name,
+            )
+
     def test_health_check_page_sends_to_the_key_setup_when_it_is_missing(self):
         script = read_static("health-check.js")
         self.assertIn('window.location.assign("/setup")', script)
@@ -636,6 +772,16 @@ class HealthCheckFormTests(unittest.TestCase):
 
         self.assertNotIn("Start annual health check", html)
         self.assertIn("Saved health checks", html)
+
+    def test_the_history_page_offers_the_export(self):
+        # The export link moved from the dashboard to the history page
+        # (section 32.7 point 5).
+        html = read_static("history.html")
+
+        self.assertIn(
+            '<a class="secondary-button" href="/api/export">Download CSV</a>',
+            html,
+        )
 
     def test_stylesheet_makes_the_hidden_attribute_work_on_grid_containers(self):
         styles = read_static("styles.css")
