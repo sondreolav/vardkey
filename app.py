@@ -86,6 +86,7 @@ STATIC_FILES = {
     "/icon.svg": ("icon.svg", "image/svg+xml"),
     "/icon-192.png": ("icon-192.png", "image/png"),
     "/icon-512.png": ("icon-512.png", "image/png"),
+    "/robots.txt": ("robots.txt", "text/plain; charset=utf-8"),
 }
 # The five application pages are served only to a signed-in user, and every API
 # endpoint answers 401 without one. ``GET /health``, the login page, the two
@@ -1074,6 +1075,10 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; frame-ancestors 'none'")
         self.send_header("Referrer-Policy", "no-referrer")
+        # Every answer is asked not to be indexed or followed: the pages, the
+        # JSON, a redirect, the CSV and the static files all go through here, so
+        # one header covers them all (section 32.7 point 6).
+        self.send_header("X-Robots-Tag", "noindex, nofollow")
 
 
 def main():
