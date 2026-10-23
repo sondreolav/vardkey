@@ -36,8 +36,15 @@ body { margin: 0; min-width: 320px; display: flex; flex-direction: column; min-h
 main { flex: 1 1 auto; }
 a { color: var(--title); }
 
-/* The window chrome: a navy title bar, the way the desktop showed one. */
+/* The window chrome: a navy title bar, the way the desktop showed one. The bar
+   stays in view while the page scrolls, because it is a flex child of `body`
+   and `body` sets no `overflow`, so `position: sticky` works here. It is kept
+   over the page content and under the menu panel, which is `position:
+   absolute` inside the bar and keeps a higher z-index (section 32.8 point 4). */
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   min-height: 32px;
   padding: 4px max(8px, calc((100% - 1120px) / 2));
   display: flex;
