@@ -2,7 +2,9 @@
 
 One submission records one selected key only, as decided in section 19 of the
 requirements. The next check date is derived on the server and never taken from
-the client.
+the client. The check date itself may be today or earlier: a date in the future
+is refused, because a check that has not happened yet cannot be recorded
+(section 32.8 point 3).
 
 The stored status values are English (sections 19 and 21). ``NOT_ASSESSED``
 survives only as the derived ``software_compatibility_status`` of a key that
@@ -733,12 +735,22 @@ def _key_check(entry, key, available, address_path, mismatch):
 
 
 def _date(value, field):
+    """Return an ISO date that is not in the future.
+
+    ``checked_at`` is the check date, so it may be today or earlier: a date after
+    the server's own day is refused with a clear message, because a check that
+    has not happened yet cannot be recorded (section 32.8 point 3). The day the
+    app compares against is its own local day, and ``next_check_due`` is still
+    derived from the recorded date, so nothing else changes.
+    """
     if not isinstance(value, str):
         raise ValidationError(f"{field} must be an ISO date")
     try:
         parsed = date.fromisoformat(value)
     except ValueError as error:
         raise ValidationError(f"{field} must be an ISO date") from error
+    if parsed > date.today():
+        raise ValidationError(f"{field} cannot be in the future")
     return parsed.isoformat()
 
 
