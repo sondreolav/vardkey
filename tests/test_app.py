@@ -8,9 +8,14 @@ stored key setup; ``KeySetupApiTests`` starts from a new, empty database, and
 Section 31 point 1 puts every route except ``GET /health`` behind a session, so
 ``ServerTestCase`` keeps the session and CSRF cookies a sign-in returns and
 sends them with every later request, exactly as the browser does.
+
+A recorded check date may be today or earlier, and five failed sign-ins in a row
+lock the login for fifteen minutes (section 32.8 points 3 and 2), so the checks
+here are dated in the past and the lockout is exercised where it belongs.
 """
 
 import csv
+from datetime import date, timedelta
 from http.cookies import SimpleCookie
 from http.server import ThreadingHTTPServer
 import io
@@ -65,7 +70,8 @@ def sample_payload(key, wallet_software=None, address_path=None):
     """Return a valid single-key payload for the given key profile.
 
     The recorded address path matches the stored one unless a test asks for
-    another one (section 25.1).
+    another one (section 25.1). The check date is in the past, because a date
+    after the server's own day is refused (section 32.8 point 3).
     """
     if wallet_software is None:
         wallet_software = key["name"] if key["type"] == "cloud" else "Sparrow Wallet"
@@ -415,7 +421,7 @@ class AppHandlerTests(ServerTestCase):
 
     def test_key_status_api_lists_each_key_with_its_newest_check(self):
         payload = sample_payload(self.key_profiles()[0])
-        payload["checked_at"] = "2027-03-01"
+        payload["checked_at"] = "2026-03-01"
         self.post_health_check(payload)
 
         status = self.get_key_status()
@@ -423,8 +429,8 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual([entry["key_number"] for entry in status], [1, 2, 3])
         self.assertEqual([entry["type"] for entry in status], ["hardware", "hardware", "cloud"])
         self.assertEqual(status[0]["name"], "SeedSigner")
-        self.assertEqual(status[0]["last_checked_at"], "2027-03-01")
-        self.assertEqual(status[0]["next_check_due"], "2028-03-01")
+        self.assertEqual(status[0]["last_checked_at"], "2026-03-01")
+        self.assertEqual(status[0]["next_check_due"], "2027-03-01")
         self.assertIsNone(status[1]["last_checked_at"])
         self.assertIsNone(status[2]["last_checked_at"])
 
@@ -438,7 +444,7 @@ class AppHandlerTests(ServerTestCase):
     def test_previous_values_api_reports_the_last_saved_values(self):
         key = self.key_profiles()[0]
         payload = sample_payload(key)
-        payload["checked_at"] = "2027-06-01"
+        payload["checked_at"] = "2026-06-01"
         payload["software_version"] = "1.8.5"
         payload["key_check"]["firmware_version"] = "1.2.3"
         self.post_health_check(payload)
@@ -453,7 +459,7 @@ class AppHandlerTests(ServerTestCase):
 
     def test_export_api_returns_a_csv_download(self):
         payload = sample_payload(self.key_profiles()[0])
-        payload["checked_at"] = "2027-04-01"
+        payload["checked_at"] = "2026-04-01"
         saved_id = self.post_health_check(payload)
 
         with self.get("/api/export") as response:
@@ -471,8 +477,8 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual(rows[1][0], str(saved_id))
 
         values = dict(zip(HEADERS, rows[1]))
-        self.assertEqual(values["Check date"], "2027-04-01")
-        self.assertEqual(values["Next check due"], "2028-04-01")
+        self.assertEqual(values["Check date"], "2026-04-01")
+        self.assertEqual(values["Next check due"], "2027-04-01")
         self.assertEqual(values["Key number"], "1")
         self.assertEqual(values["Key name"], "SeedSigner")
         self.assertEqual(values["Available"], "Yes")
@@ -736,7 +742,7 @@ class AppHandlerTests(ServerTestCase):
         older_id = self.post_health_check(older)
 
         newer = sample_payload(self.key_profiles()[0])
-        newer["checked_at"] = "2027-01-01"
+        newer["checked_at"] = "2026-10-02"
         self.post_health_check(newer)
 
         alerts = self.get_alerts()
@@ -764,7 +770,7 @@ class AppHandlerTests(ServerTestCase):
             self.assertEqual(response.status, 201)
 
         newer = sample_payload(key)
-        newer["checked_at"] = "2027-01-01"
+        newer["checked_at"] = "2026-10-02"
         newer["contact_info_verified"] = "Needs external update"
         newer_id = self.post_health_check(newer)
 
@@ -774,7 +780,7 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual(len(alerts), 1)
         self.assertEqual(alerts[0]["code"], "contact_info_unconfirmed")
         self.assertEqual(alerts[0]["check_id"], newer_id)
-        self.assertEqual(alerts[0]["checked_at"], "2027-01-01")
+        self.assertEqual(alerts[0]["checked_at"], "2026-10-02")
 
     def test_alerts_api_lists_critical_alerts_before_informational_ones(self):
         older = sample_payload(self.key_profiles()[1])
@@ -783,7 +789,7 @@ class AppHandlerTests(ServerTestCase):
         self.post_health_check(older)
 
         newer = sample_payload(self.key_profiles()[0])
-        newer["checked_at"] = "2027-01-01"
+        newer["checked_at"] = "2026-10-02"
         newer["contact_info_verified"] = "Needs external update"
         self.post_health_check(newer)
 
@@ -1026,6 +1032,28 @@ class AppHandlerTests(ServerTestCase):
         payload["checked_at"] = "not-a-date"
 
         self.assert_rejected(payload)
+
+    def test_a_check_date_in_the_future_is_rejected(self):
+        # A check that has not happened yet cannot be recorded, so the check date
+        # may be today or earlier, while the next check date stays one calendar
+        # year after the recorded one (section 32.8 point 3).
+        key = self.key_profiles()[0]
+        today = date.today()
+
+        rejected = sample_payload(key)
+        rejected["checked_at"] = (today + timedelta(days=1)).isoformat()
+        self.assert_rejected(rejected)
+
+        for value in (today.isoformat(), (today - timedelta(days=1)).isoformat()):
+            payload = sample_payload(key)
+            payload["checked_at"] = value
+            saved_id = self.post_health_check(payload)
+            record = self.get_record(saved_id)
+            self.assertEqual(record["checked_at"], value)
+            self.assertEqual(
+                record["next_check_due"],
+                f"{int(value[:4]) + 1}{value[4:]}",
+            )
 
     def test_the_old_status_values_are_rejected(self):
         payload = sample_payload(self.key_profiles()[0])
@@ -1361,6 +1389,53 @@ class AuthApiTests(ServerTestCase):
             method="POST",
             payload={"username": "admin", "password": "long-enough"},
         )
+
+    def test_five_failed_attempts_lock_the_login_for_fifteen_minutes(self):
+        # Five failures in a row lock the login, and the answer says how long it
+        # stays locked. A correct password is refused during that window as well,
+        # so the answer never says whether the password was right
+        # (section 32.8 point 2).
+        self.store_admin()
+        wrong = {"username": self.admin_username, "password": "wrong"}
+
+        for _ in range(4):
+            self.assert_status("/api/login", 401, method="POST", payload=wrong)
+        # The fifth failure trips the lock, so it is answered with 429.
+        self.assert_status("/api/login", 429, method="POST", payload=wrong)
+
+        self.assert_status("/api/login", 429, method="POST", payload={
+            "username": self.admin_username,
+            "password": self.admin_password,
+        })
+        # Nothing was signed in, so the API is still closed.
+        self.assert_status("/api/keys", 401)
+
+    def test_a_successful_sign_in_clears_the_failed_attempts(self):
+        # The counter starts over on a successful sign-in, so four failures
+        # afterwards still answer 401 and do not lock the login
+        # (section 32.8 point 2).
+        self.store_admin()
+        wrong = {"username": self.admin_username, "password": "wrong"}
+
+        for _ in range(4):
+            self.assert_status("/api/login", 401, method="POST", payload=wrong)
+
+        self.sign_in()
+
+        for _ in range(4):
+            self.assert_status("/api/login", 401, method="POST", payload=wrong)
+
+    def test_creating_the_admin_is_not_rate_limited(self):
+        # The local bootstrap has no credential to guess yet, so it is
+        # deliberately not limited (section 32.8 point 2).
+        for _ in range(6):
+            self.assert_status("/api/admin", 400, method="POST", payload={
+                "username": "",
+                "password": "long-enough",
+            })
+
+        # The account can still be created afterwards.
+        self.create_admin_via_api()
 
     def test_a_state_changing_post_needs_the_csrf_token(self):
         self.authenticate()
@@ -1935,13 +2010,13 @@ class AcknowledgementApiTests(ServerTestCase):
         self.assertEqual(self.get_alerts(), [])
 
         newer = sample_payload(key)
-        newer["checked_at"] = "2027-10-01"
+        newer["checked_at"] = "2026-10-02"
         newer["contact_info_verified"] = "Needs external update"
         self.post_health_check(newer)
 
         alerts = self.get_alerts()
         self.assertEqual([alert["code"] for alert in alerts], ["contact_info_unconfirmed"])
-        self.assertEqual(alerts[0]["checked_at"], "2027-10-01")
+        self.assertEqual(alerts[0]["checked_at"], "2026-10-02")
 
     def test_an_unknown_alert_is_rejected(self):
         self.post_health_check(unavailable_payload(self.key_profiles()[1]))
