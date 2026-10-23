@@ -508,7 +508,12 @@ function updateDuePreview() {
 
 function setCheckDate() {
   const checkedAt = document.querySelector("#checked-at");
-  checkedAt.value = formatLocalDate(new Date());
+  const today = formatLocalDate(new Date());
+  checkedAt.value = today;
+  // The server refuses a check date in the future, because a check that has not
+  // happened yet cannot be recorded, so the date picker is bounded to today as
+  // well (section 32.8 point 3).
+  checkedAt.max = today;
   updateDuePreview();
   checkedAt.addEventListener("change", updateDuePreview);
 }
