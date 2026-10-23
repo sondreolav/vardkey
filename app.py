@@ -1,6 +1,6 @@
 """Minimal HTTP server for the VardKey dashboard."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -33,6 +33,7 @@ from auth import (
     verify_session_token,
 )
 from database import (
+    get_app_settings,
     get_health_check,
     get_multisig_settings,
     initialize_database,
@@ -45,6 +46,7 @@ from database import (
     list_previous_values,
     list_wallet_software,
     save_alert_acknowledgement,
+    save_app_settings,
     save_health_check,
     save_key_settings,
     save_key_setup,
@@ -108,6 +110,16 @@ STORAGE_ERRORS = (OSError, sqlite3.Error, ValueError, RuntimeError)
 # settings closes the alerts that software raised (sections 26.3 and 26.7).
 ROTATION_REASON = ROTATE
 REMOVAL_REASON = REMOVE_SOFTWARE
+# The login lockout of section 32.8 point 2: five failed attempts in a row lock
+# the login for fifteen minutes. The count and the moment the lock ends live in
+# ``app_settings``, so they survive a restart, and they are keyed on nothing but
+# the app itself: StartOS proxies every request, and the app deliberately does
+# not read ``X-Forwarded-*``. ``POST /api/admin``, the local bootstrap, is not
+# limited.
+FAILED_LOGIN_COUNT_SETTING = "failed_login_count"
+FAILED_LOGIN_UNTIL_SETTING = "failed_login_until"
+MAX_FAILED_LOGINS = 5
+LOGIN_LOCKOUT_SECONDS = 15 * 60
 
 
 def _cookie_header(name, value, max_age=None, http_only=True):
@@ -212,6 +224,80 @@ def blocking_alert(alerts, key_id):
         if alert.get("key_id") == key_id:
             return alert
     return None
+
+
+def _setting_int(settings, name):
+    """Return one ``app_settings`` value as a whole number, or 0.
+
+    A missing or malformed value reads as 0, so a broken row can never lock the
+    user out for good (section 32.8 point 2).
+    """
+    try:
+        return int(settings.get(name) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def failed_login_state(settings):
+    """Return the failed-attempt count and the moment the lockout ends.
+
+    Both live in ``app_settings``, so they survive a restart, and both are
+    seconds or a count since the epoch (section 32.8 point 2).
+    """
+    return (
+        _setting_int(settings, FAILED_LOGIN_COUNT_SETTING),
+        _setting_int(settings, FAILED_LOGIN_UNTIL_SETTING),
+    )
+
+
+def lockout_seconds_left(settings, now=None):
+    """Return the seconds the login stays locked, or None while it is open.
+
+    The lock is stored as the moment it ends, and the clock is read here rather
+    than kept in memory, so a restart does not clear it (section 32.8 point 2).
+    """
+    _, until = failed_login_state(settings)
+    remaining = until - int((now or datetime.now(timezone.utc)).timestamp())
+    return remaining if remaining > 0 else None
+
+
+def register_failed_login(settings, database_path, now=None):
+    """Count one failed attempt and lock the login when it reaches the limit.
+
+    The answer is the number of seconds the login stays locked, or 0 while it is
+    still open. A run of attempts that begins after an earlier lockout has run
+    out starts from zero, so the five attempts are always five fresh ones
+    (section 32.8 point 2).
+    """
+    count, until = failed_login_state(settings)
+    moment = int((now or datetime.now(timezone.utc)).timestamp())
+    if until and until <= moment:
+        count = 0
+    count += 1
+    values = {FAILED_LOGIN_COUNT_SETTING: str(count)}
+    locked = 0
+    if count >= MAX_FAILED_LOGINS:
+        locked = LOGIN_LOCKOUT_SECONDS
+        values[FAILED_LOGIN_UNTIL_SETTING] = str(moment + locked)
+    save_app_settings(values, database_path)
+    return locked
+
+
+def clear_failed_logins(settings, database_path):
+    """Clear the failed-attempt counter after a successful sign-in."""
+    if not failed_login_state(settings)[0]:
+        return
+    save_app_settings(
+        {FAILED_LOGIN_COUNT_SETTING: "0", FAILED_LOGIN_UNTIL_SETTING: "0"},
+        database_path,
+    )
+
+
+def lockout_message(remaining_seconds):
+    """Return the ``429`` message, which says how long the login stays locked."""
+    minutes = (remaining_seconds + 59) // 60
+    unit = "minute" if minutes == 1 else "minutes"
+    return f"Too many failed sign-in attempts. Try again in {minutes} {unit}."
 
 
 class AppHandler(BaseHTTPRequestHandler):
@@ -399,7 +485,9 @@ class AppHandler(BaseHTTPRequestHandler):
 
         The first run has no admin, so the app shows the create-admin step
         instead of the login form, and the step cannot be skipped because every
-        other route needs a session (section 31 point 1).
+        other route needs a session (section 31 point 1). This is the local
+        bootstrap, so it is deliberately not rate limited (section 32.8
+        point 2).
         """
         try:
             payload = self._read_json_body()
@@ -435,7 +523,16 @@ class AppHandler(BaseHTTPRequestHandler):
         )
 
     def _login(self):
-        """Sign in with the stored admin credential and start a session."""
+        """Sign in with the stored admin credential and start a session.
+
+        Five failed attempts in a row lock the login for fifteen minutes, and the
+        lockout is answered with ``429`` and the time that is left. A correct
+        password during that window is refused the same way, so the answer never
+        says whether the password was right, and a successful sign-in clears the
+        counter. The count and the lock live in ``app_settings``, so they survive
+        a restart, and they are keyed on nothing but the app itself, because
+        StartOS proxies every request (section 32.8 point 2).
+        """
         try:
             payload = self._read_json_body()
         except ValueError as error:
@@ -443,19 +540,32 @@ class AppHandler(BaseHTTPRequestHandler):
             return
 
         database_path = get_database_path()
+        locked = 0
         try:
+            settings = get_app_settings(database_path)
+            remaining = lockout_seconds_left(settings)
+            if remaining is not None:
+                self._send_json(429, {"error": lockout_message(remaining)})
+                return
             if not admin_configured(database_path):
                 self._send_json(409, {"error": "No admin is configured yet"})
                 return
             username = payload.get("username") if isinstance(payload, dict) else None
             password = payload.get("password") if isinstance(payload, dict) else None
             signed_in = authenticate(username, password, database_path)
+            if signed_in:
+                clear_failed_logins(settings, database_path)
+            else:
+                locked = register_failed_login(settings, database_path)
         except STORAGE_ERRORS:
             self._send_json(500, {"error": "The login could not be checked"})
             return
 
         if not signed_in:
-            self._send_json(401, {"error": "Invalid username or password"})
+            if locked:
+                self._send_json(429, {"error": lockout_message(locked)})
+            else:
+                self._send_json(401, {"error": "Invalid username or password"})
             return
 
         self._send_json(
