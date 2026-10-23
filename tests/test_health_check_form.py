@@ -932,6 +932,32 @@ class HealthCheckFormTests(unittest.TestCase):
         for radius in radii:
             self.assertEqual(radius.strip(), "0", radius)
 
+    def test_stylesheet_sticks_the_top_bar_to_the_top(self):
+        styles = read_static("styles.css")
+        # The bar stays in view while the page scrolls, because the page is a
+        # flex column with no overflow, so `position: sticky` works. It is kept
+        # over the page content and under the menu panel, and the depth still
+        # comes from the bevels alone (section 32.8 point 4).
+        block = re.search(r"\.topbar \{[^}]*\}", styles).group(0)
+        self.assertIn("position: sticky;", block)
+        self.assertIn("top: 0;", block)
+        self.assertIn("z-index: 5;", block)
+        # No inline style is involved, so the CSP needs no exception, and the
+        # panel it must not cover keeps its higher z-index.
+        self.assertIn(".menu-panel { position: absolute; right: 0; z-index: 10;", styles)
+        self.assertNotIn("box-shadow:", styles)
+        self.assertNotIn("linear-gradient(", styles)
+
+    def test_the_form_bounds_the_check_date_to_today(self):
+        script = read_static("health-check.js")
+        # The server refuses a check date in the future, because a check that has
+        # not happened yet cannot be recorded, so the date picker is bounded to
+        # today as well (section 32.8 point 3). The due preview is unchanged.
+        self.assertIn("const today = formatLocalDate(new Date());", script)
+        self.assertIn("checkedAt.value = today;", script)
+        self.assertIn("checkedAt.max = today;", script)
+        self.assertIn("nextCheckDate", script)
+
 
 if __name__ == "__main__":
     unittest.main()
