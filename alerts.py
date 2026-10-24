@@ -24,11 +24,13 @@ the software, so the message itself does not repeat that name; the one exception
 is the cloud-key form of ``software_incompatible``, whose source is the key while
 the message has to name the software.
 
-The source of a security alert follows the same rule. When the provider is the
-key's own configured name, the key is the source and the alert carries
-``Key N: <name>`` like every other key alert; otherwise the provider is the
-software the key runs with, and the source is the software name alone
-(section 32.1).
+The source of a security alert is decided by the row itself. A security row
+carries the checked key when its provider is that key's own configured name, so
+the key is the source and the alert carries ``Key N: <name>`` like every other
+key alert; otherwise the provider is the software the key runs with, and the
+source is the software name alone. The provider is never compared with the names
+that are configured now, so a rename or a rotation cannot turn a key alert into a
+software one (section 32.8 point 6).
 
 Two alerts belong to the checked key although they are not about the key itself
 (section 27). The contact alert is one of them, so it blocks the key until the
@@ -164,27 +166,24 @@ def build_alerts(record, cloud_names=()):
     names of the cloud keys, because such a name is also a wallet software choice
     and can never be removed from the settings (section 27).
 
-    The key checks are read once into two lookups. ``key_ids`` answers which key a
-    provider belongs to, and ``key_sources`` gives that key the same
-    ``Key N: <name>`` source every other key alert carries, so a security alert
-    whose provider is the key's own name is labelled like the rest
-    (section 32.1).
+    The key checks are read once into a lookup by key id, so a security row can
+    name the key it belongs to. The key is never looked up by the provider name,
+    which is what keeps the source of a security alert from flipping when the key
+    is renamed or rotated (section 32.8 point 6).
     """
     key_checks = record.get("key_checks") or ()
-    key_ids = {}
-    key_sources = {}
-    for key_check in key_checks:
-        name = key_check.get("name")
-        if name is not None:
-            key_ids.setdefault(name, key_check.get("key_id"))
-            key_sources.setdefault(name, _key_source(key_check))
+    key_checks_by_id = {
+        key_check.get("key_id"): key_check
+        for key_check in key_checks
+        if key_check.get("key_id") is not None
+    }
 
     alerts = []
     for key_check in key_checks:
         alerts.extend(_key_alerts(key_check))
     alerts.extend(_software_alerts(record, cloud_names))
     for security_check in record.get("ai_security_checks") or ():
-        alerts.extend(_security_alerts(security_check, key_ids, key_sources))
+        alerts.extend(_security_alerts(security_check, key_checks_by_id))
     alerts.extend(_contact_alerts(record))
     alerts.sort(key=lambda alert: _SEVERITY_ORDER[alert["severity"]])
     return alerts
@@ -451,29 +450,30 @@ def _software_alerts(record, cloud_names):
     )]
 
 
-def _security_alerts(security_check, key_ids, key_sources):
+def _security_alerts(security_check, key_checks_by_id):
     """Return the alerts for one external security status.
 
-    The provider is the label the status was recorded under. When it is the key's
-    own configured name, the key is the source and the alert belongs to it, so it
-    carries the same ``Key N: <name>`` source as every other key alert and a
-    rotation closes it; otherwise the provider is the software the key runs with,
-    so the source is the software name alone and the alert is closed by removing
-    it from the settings (sections 25.3, 26.4, 26.7 and 32.1). A compromised key
-    or software can never be ignored: the key must be replaced, and the software
-    must be removed.
+    The row carries the checked key when its provider is that key's own
+    configured name, and NULL otherwise, so the source of the alert is decided by
+    the row itself and not by the names that are configured now: a row that
+    carries a key belongs to that key, keeps the same ``Key N: <name>`` source
+    every other key alert uses, and is closed by a rotation, while every other row
+    is the software the key runs with, keeps the software name alone as its
+    source, and is closed by removing it from the settings (sections 25.3, 26.4,
+    26.7 and 32.8 point 6). A compromised key or software can never be ignored:
+    the key must be replaced, and the software must be removed.
     """
     provider = security_check.get("provider")
     status = security_check.get("status")
-    key_id = key_ids.get(provider)
-    if key_id is not None:
-        # The provider is the key's own name, so the source names the key the
-        # same way every other key alert does (section 32.1).
-        source = key_sources.get(provider, provider)
+    key_check = key_checks_by_id.get(security_check.get("key_id"))
+    if key_check is not None:
+        source = _key_source(key_check)
+        key_id = key_check.get("key_id")
         software = None
     else:
         # A software source stays the plain provider name (section 32.1).
         source = provider
+        key_id = None
         software = provider
 
     if status == "VULNERABLE":
