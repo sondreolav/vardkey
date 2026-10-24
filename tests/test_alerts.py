@@ -25,6 +25,11 @@ def clean_record(key_number=1, name="SeedSigner", key_type="hardware"):
     The provider list is fixed, so a test that needs another provider has to
     replace one of the entries itself. The software the check recorded is
     "Sparrow Wallet", so a software alert can name it (section 26.7).
+
+    The row whose provider is the key's own configured name carries the key,
+    because that is what the storage writes: the key of a security row is decided
+    when the row is saved, not when the alert is built, so a rename or a rotation
+    cannot flip the source of the alert (section 32.8 point 6).
     """
     entry = {
         "key_id": key_number,
@@ -46,9 +51,9 @@ def clean_record(key_number=1, name="SeedSigner", key_type="hardware"):
         "contact_info_verified": "Confirmed current",
         "key_checks": [entry],
         "ai_security_checks": [
-            {"provider": "SeedSigner", "status": "SECURE"},
-            {"provider": "Sparrow Wallet", "status": "SECURE"},
-            {"provider": "Nunchuk", "status": "SECURE"},
+            {"provider": name, "key_id": key_number, "status": "SECURE"},
+            {"provider": "Sparrow Wallet", "key_id": None, "status": "SECURE"},
+            {"provider": "Nunchuk", "key_id": None, "status": "SECURE"},
         ],
     }
 
@@ -373,10 +378,11 @@ class AlertTests(unittest.TestCase):
 
         self.assertEqual(alerts[0]["key_id"], 2)
 
-    def test_a_security_alert_names_the_key_only_when_the_key_is_the_source(self):
+    def test_a_security_alert_names_the_key_when_its_row_carries_it(self):
         record = clean_record()
-        # The provider "SeedSigner" is the key's own name, while "Sparrow Wallet"
-        # is the software the key runs with (section 25.3).
+        # The row of the key's own configured name carries the key, while the row
+        # of the software the key runs with does not, so the two are told apart by
+        # the row itself (section 32.8 point 6).
         record["ai_security_checks"][0]["status"] = "COMPROMISED"
         record["ai_security_checks"][1]["status"] = "VULNERABLE"
 
@@ -392,13 +398,16 @@ class AlertTests(unittest.TestCase):
         self.assertIsNone(alerts["Sparrow Wallet"]["key_id"])
         self.assertEqual(alerts["Sparrow Wallet"]["software"], "Sparrow Wallet")
 
-    def test_a_key_named_security_alert_carries_the_key_source(self):
-        # A security alert whose provider is the key's own name belongs to the
-        # key, so its source is the "Key N: <name>" label every key alert
-        # carries, and it is closed by a rotation (section 32.1).
+    def test_a_security_row_carries_the_key_it_belongs_to(self):
+        # The key of a security alert is decided by the row and not by the name
+        # that is configured now, so the row keeps the "Key N: <name>" source
+        # every key alert uses, and it is closed by a rotation
+        # (sections 27 and 32.8 point 6).
         record = clean_record(key_number=2, name="Blockstream Jade")
-        record["ai_security_checks"][0]["provider"] = "Blockstream Jade"
-        record["ai_security_checks"][0]["status"] = "VULNERABLE"
+        record["ai_security_checks"][0].update({
+            "provider": "Blockstream Jade",
+            "status": "VULNERABLE",
+        })
 
         alerts = {alert["source"]: alert for alert in build_alerts(record)}
 
@@ -418,6 +427,45 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(alerts[0]["source"], "Sparrow Wallet")
         self.assertIsNone(alerts[0]["key_id"])
         self.assertEqual(alerts[0]["software"], "Sparrow Wallet")
+
+    def test_a_cloud_key_security_alert_does_not_flip_to_a_software_one(self):
+        # A cloud key with COMPROMISED raises a key alert, and a rotation closes
+        # it. Before section 32.8 the source was matched against the configured
+        # cloud names, so a renamed or rotated key lost the match and raised a
+        # second, software-sourced alert that the key-based closure could not
+        # hide. The row carries the key now, so the source cannot flip
+        # (section 32.8 point 6).
+        record = dated_record(
+            1, "2026-10-01", key_number=3, name="Nunchuk", key_type="cloud"
+        )
+        record["ai_security_checks"] = [
+            {"provider": "Nunchuk", "key_id": 3, "status": "COMPROMISED"},
+        ]
+        closed = [acknowledgement("security_compromised", "Key 3: Nunchuk", 3, 1)]
+
+        # The rotation closes the alert against the key, so the closure hides it.
+        self.assertEqual(
+            rotation_alert_targets([record], key_profile(3, "Nunchuk")),
+            [("security_compromised", "Key 3: Nunchuk")],
+        )
+        self.assertEqual(collect_alerts([record], closed, ()), [])
+
+        # A rename leaves the source alone, and the names that are configured now
+        # do not decide it: an empty cloud-name list answers exactly like the one
+        # that still holds the old name.
+        for cloud_names in ((), ("Nunchuk",)):
+            alerts = build_alerts(record, cloud_names)
+
+            self.assertEqual(
+                [alert["source"] for alert in alerts], ["Key 3: Nunchuk"]
+            )
+            self.assertEqual(alerts[0]["key_id"], 3)
+            self.assertIsNone(alerts[0]["software"])
+            self.assertEqual(alerts[0]["actions"], [ROTATE])
+
+        # The alert stays closed after the rename as well, because the closure
+        # carries the key rather than the name the key has now (section 27).
+        self.assertEqual(collect_alerts([record], closed, ()), [])
 
 
 class AlertActionTests(unittest.TestCase):
@@ -670,12 +718,16 @@ class CollectAlertsTests(unittest.TestCase):
         self.assertEqual(alerts[0]["checked_at"], "2026-10-01")
 
     def test_alerts_with_the_same_code_but_another_source_are_kept(self):
-        # The source of a security alert whose provider is the key's own name is
-        # the key, so the two keys keep their own alert (section 32.1).
+        # The source of a security alert whose row carries the key is the key, so
+        # the two keys keep their own alert (section 32.8 point 6).
         first = dated_record(1, "2025-10-01")
         first["ai_security_checks"][0]["status"] = "VULNERABLE"
         second = dated_record(2, "2026-10-01", key_number=2, name="Blockstream Jade")
-        second["ai_security_checks"][0] = {"provider": "Blockstream Jade", "status": "VULNERABLE"}
+        second["ai_security_checks"][0] = {
+            "provider": "Blockstream Jade",
+            "key_id": 2,
+            "status": "VULNERABLE",
+        }
 
         alerts = collect_alerts([second, first])
 
@@ -860,9 +912,9 @@ class RotationAlertTargetsTests(unittest.TestCase):
 
         self.assertEqual(rotation_alert_targets([record], key_profile()), [])
 
-    def test_a_rotation_closes_a_key_named_security_alert(self):
-        # The key form carries the key source, so the rotation closes it
-        # (sections 25.3, 26.4 and 32.1).
+    def test_a_rotation_closes_a_key_security_alert(self):
+        # The row carries the key, so the alert is a key alert and the rotation
+        # closes it (sections 25.3, 26.4 and 32.8 point 6).
         record = dated_record(1, "2026-10-01")
         record["ai_security_checks"][0]["status"] = "COMPROMISED"
 
