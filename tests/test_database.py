@@ -20,6 +20,7 @@ from database import (
     list_keys,
     list_previous_values,
     list_wallet_software,
+    rotate_key,
     save_alert_acknowledgement,
     save_health_check,
     save_key_settings,
@@ -598,6 +599,98 @@ SCHEMA_VERSION_11 = """
     PRAGMA user_version = 11;
 """
 
+# The schema version 12 layout, which is the current one before section 32.8:
+# ``key_number`` is still UNIQUE, there is no active flag and no rotated_at,
+# key_checks carries no snapshot of the key it belongs to, and
+# ai_security_checks carries no key_id. The migration rebuilds keys to drop the
+# UNIQUE and add the two columns, adds the snapshot columns and the security key
+# id, and backfills the snapshot from the linked key (section 32.8 points 5
+# and 6).
+SCHEMA_VERSION_12 = """
+    CREATE TABLE keys (
+        id INTEGER PRIMARY KEY,
+        key_number INTEGER NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('hardware', 'cloud')),
+        address_path TEXT NOT NULL DEFAULT '',
+        model TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE health_checks (
+        id INTEGER PRIMARY KEY,
+        checked_at TEXT NOT NULL,
+        next_check_due TEXT NOT NULL,
+        wallet_software TEXT,
+        software_version TEXT,
+        software_compatibility_status TEXT NOT NULL DEFAULT 'NOT_ASSESSED'
+            CHECK (software_compatibility_status IN ('OK', 'PROBLEM', 'NOT_ASSESSED')),
+        sparrow_version TEXT,
+        nunchuk_version TEXT,
+        software_comments TEXT,
+        contact_info_verified TEXT
+            CHECK (contact_info_verified IN ('Confirmed current', 'Needs external update')),
+        comments TEXT
+    );
+    CREATE TABLE key_checks (
+        id INTEGER PRIMARY KEY,
+        health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
+        key_id INTEGER NOT NULL REFERENCES keys(id) ON DELETE RESTRICT,
+        available INTEGER CHECK (available IN (0, 1)),
+        hardware_works INTEGER CHECK (hardware_works IN (0, 1)),
+        firmware_version TEXT,
+        seed_backup_verified TEXT CHECK (seed_backup_verified IN ('OK', 'PROBLEM')),
+        address_path_verified TEXT CHECK (address_path_verified IN ('OK', 'PROBLEM')),
+        address_path TEXT,
+        comments TEXT,
+        UNIQUE (health_check_id, key_id)
+    );
+    CREATE TABLE ai_security_checks (
+        id INTEGER PRIMARY KEY,
+        health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('SECURE', 'PATCHED', 'VULNERABLE', 'COMPROMISED')),
+        comments TEXT,
+        UNIQUE (health_check_id, provider)
+    );
+    CREATE TABLE wallet_software (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE alert_acknowledgements (
+        id INTEGER PRIMARY KEY,
+        code TEXT NOT NULL,
+        source TEXT NOT NULL,
+        key_id INTEGER,
+        check_id INTEGER,
+        reason TEXT NOT NULL,
+        acknowledged_at TEXT NOT NULL
+    );
+    CREATE TABLE app_settings (
+        name TEXT PRIMARY KEY,
+        value TEXT
+    );
+    INSERT INTO keys (id, key_number, name, type, address_path, model) VALUES
+        (1, 1, 'SeedSigner', 'hardware', 'm/48''/0''/0''/2''', 'ColdCard Q'),
+        (2, 2, 'Blockstream Jade', 'hardware', 'm/48''/1''/0''/2''', NULL),
+        (3, 3, 'Nunchuk', 'cloud', 'm/48''/2''/0''/2''', 'Casa');
+    INSERT INTO health_checks (
+        id, checked_at, next_check_due, wallet_software, software_version,
+        software_compatibility_status, contact_info_verified, comments
+    ) VALUES (1, '2026-01-01', '2027-01-01', 'Sparrow Wallet', '1.8.0', 'OK', 'Confirmed current', 'Annual review');
+    INSERT INTO key_checks (
+        health_check_id, key_id, available, hardware_works, firmware_version,
+        seed_backup_verified, address_path_verified, address_path
+    ) VALUES (1, 1, 1, 1, '1.0.0', 'OK', 'OK', 'm/48''/0''/0''/2''');
+    INSERT INTO ai_security_checks (health_check_id, provider, status) VALUES
+        (1, 'SeedSigner', 'SECURE'),
+        (1, 'Sparrow Wallet', 'SECURE');
+    INSERT INTO wallet_software (name) VALUES ('Sparrow Wallet');
+    INSERT INTO alert_acknowledgements (code, source, key_id, check_id, reason, acknowledged_at) VALUES
+        ('key_unavailable', 'Key 1: SeedSigner', 1, 1, 'rotate', '2026-02-01T09:00:00');
+    PRAGMA user_version = 12;
+"""
+
 
 class DatabaseInitializationTests(unittest.TestCase):
     def setUp(self):
@@ -653,6 +746,25 @@ class DatabaseInitializationTests(unittest.TestCase):
         with self.connect() as connection:
             return {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
 
+    def table_sql(self, table):
+        """Return the stored CREATE statement of one table, or an empty string."""
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+                (table,),
+            ).fetchone()
+        return row[0] if row else ""
+
+    def index_names(self):
+        """Return the index names of the migrated database."""
+        with self.connect() as connection:
+            return {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'index'"
+                )
+            }
+
     def test_initialization_creates_versioned_schema_and_is_idempotent(self):
         initialize_database(self.database_path)
         initialize_database(self.database_path)
@@ -667,7 +779,7 @@ class DatabaseInitializationTests(unittest.TestCase):
             }
 
         self.assertEqual(version, SCHEMA_VERSION)
-        self.assertEqual(version, 12)
+        self.assertEqual(version, 13)
         self.assertTrue(
             {
                 "keys",
@@ -861,6 +973,11 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(record["key_checks"][0]["address_path"], "m/48'/0'/0'/2'/0/0")
         self.assertEqual(record["key_checks"][1]["seed_backup_verified"], "PROBLEM")
         self.assertEqual([entry["status"] for entry in record["ai_security_checks"]], ["SECURE", "VULNERABLE"])
+        # The snapshot of a migrated check comes from the key it belongs to, so
+        # the history keeps the name it had at the migration (section 32.8
+        # point 5).
+        self.assertEqual(record["key_checks"][0]["name"], "SeedSigner")
+        self.assertEqual(record["key_checks"][0]["type"], "hardware")
 
         # The existing installation keeps its keys, and can record new checks.
         keys = list_keys(self.database_path)
@@ -932,7 +1049,7 @@ class DatabaseInitializationTests(unittest.TestCase):
             ).fetchall()
 
         self.assertEqual(version, SCHEMA_VERSION)
-        self.assertEqual(version, 12)
+        self.assertEqual(version, 13)
         self.assertIn("wallet_software", self.table_names())
         self.assertIn("alert_acknowledgements", self.table_names())
         # The two derived cloud results are gone, and the rest of the history is
@@ -965,7 +1082,7 @@ class DatabaseInitializationTests(unittest.TestCase):
             ).fetchall()
 
         self.assertEqual(version, SCHEMA_VERSION)
-        self.assertEqual(version, 12)
+        self.assertEqual(version, 13)
         self.assertIn("key_id", self.columns_of("alert_acknowledgements"))
         # The older acknowledgement survives, with an empty key id, because it
         # predates the column (section 27).
@@ -998,7 +1115,7 @@ class DatabaseInitializationTests(unittest.TestCase):
             violations = connection.execute("PRAGMA foreign_key_check").fetchall()
 
         self.assertEqual(version, SCHEMA_VERSION)
-        self.assertEqual(version, 12)
+        self.assertEqual(version, 13)
         self.assertIn("app_settings", self.table_names())
         self.assertIn("model", self.columns_of("keys"))
         # The rebuilt table kept the rows and did not break a foreign key.
@@ -1035,6 +1152,204 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual([key["key_number"] for key in keys], [1, 2, 3])
         new_id = save_health_check(validate(sample_payload(keys[0]), keys), self.database_path)
         self.assertEqual(get_health_check(new_id, self.database_path)["checked_at"], "2026-10-01")
+
+    def test_a_version_12_database_gains_the_active_flag_and_the_frozen_history(self):
+        self.write_schema(SCHEMA_VERSION_12)
+        # The old table really refuses a second row for one slot before the
+        # migration drops the UNIQUE (section 32.8 point 5).
+        with self.connect() as connection:
+            with self.assertRaises(sqlite3.IntegrityError):
+                connection.execute(
+                    "INSERT INTO keys (key_number, name, type, address_path) "
+                    "VALUES (1, 'Duplicate', 'hardware', 'm/48''/9''/0''/2''')"
+                )
+
+        initialize_database(self.database_path)
+
+        with self.connect() as connection:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            keys = connection.execute(
+                "SELECT key_number, name, active, rotated_at FROM keys ORDER BY key_number"
+            ).fetchall()
+            snapshot = connection.execute(
+                "SELECT key_name, key_type, key_model FROM key_checks WHERE id = 1"
+            ).fetchone()
+            security = connection.execute(
+                "SELECT provider, key_id FROM ai_security_checks ORDER BY provider"
+            ).fetchall()
+            violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+
+        self.assertEqual(version, SCHEMA_VERSION)
+        self.assertEqual(version, 13)
+        self.assertEqual(violations, [])
+        # The UNIQUE is gone, and the one-active-row-per-slot rule is a partial
+        # unique index now.
+        self.assertNotIn("UNIQUE", self.table_sql("keys"))
+        self.assertIn("idx_keys_active_key_number", self.index_names())
+        self.assertIn("active", self.columns_of("keys"))
+        self.assertIn("rotated_at", self.columns_of("keys"))
+        for name in ("key_name", "key_type", "key_model"):
+            self.assertIn(name, self.columns_of("key_checks"))
+        self.assertIn("key_id", self.columns_of("ai_security_checks"))
+        # Every row of a database that predates the flag is active, because it
+        # was written before a rotation could add a second row for the slot.
+        self.assertEqual(
+            keys,
+            [
+                (1, "SeedSigner", 1, None),
+                (2, "Blockstream Jade", 1, None),
+                (3, "Nunchuk", 1, None),
+            ],
+        )
+        # The snapshot is backfilled from the key the check belongs to, so an
+        # older record keeps the name, the type, and the model it had at the
+        # migration (section 32.8 point 5).
+        self.assertEqual(snapshot, ("SeedSigner", "hardware", "ColdCard Q"))
+        # A security row written before the column exists keeps a NULL key, so
+        # the source of its alert is unchanged by the migration (section 32.8
+        # point 6).
+        self.assertEqual(security, [("SeedSigner", None), ("Sparrow Wallet", None)])
+
+        # The migrated database still records new checks, and the new row
+        # carries its own snapshot and the key of its own provider.
+        keys = list_keys(self.database_path)
+        new_id = save_health_check(validate(sample_payload(keys[0]), keys), self.database_path)
+        new_record = get_health_check(new_id, self.database_path)
+        self.assertEqual(new_record["key_checks"][0]["name"], "SeedSigner")
+        self.assertEqual(new_record["key_checks"][0]["model"], "ColdCard Q")
+        self.assertEqual(
+            [(entry["provider"], entry["key_id"]) for entry in new_record["ai_security_checks"]],
+            [("SeedSigner", keys[0]["id"]), ("Sparrow Wallet", None)],
+        )
+
+    def test_only_one_active_key_row_may_use_a_slot(self):
+        self.prepare()
+
+        with self.connect() as connection:
+            # A second active row for the same multisig slot is refused by the
+            # partial unique index (section 32.8 point 5).
+            with self.assertRaises(sqlite3.IntegrityError):
+                connection.execute(
+                    "INSERT INTO keys (key_number, name, type) "
+                    "VALUES (1, 'Duplicate', 'hardware')"
+                )
+            # A retired row may share the slot, because the index is partial.
+            connection.execute(
+                "INSERT INTO keys (key_number, name, type, active) "
+                "VALUES (1, 'Retired', 'hardware', 0)"
+            )
+            retired = connection.execute(
+                "SELECT COUNT(*) FROM keys WHERE key_number = 1 AND active = 0"
+            ).fetchone()[0]
+
+        self.assertEqual(retired, 1)
+        # The retired row is invisible to the setup and to the dashboard.
+        self.assertEqual([key["name"] for key in list_keys(self.database_path)],
+                         ["SeedSigner", "Blockstream Jade", "Nunchuk"])
+        self.assertEqual(
+            [entry["key_number"] for entry in list_key_status(self.database_path)],
+            [1, 2, 3],
+        )
+
+    def test_a_rotation_inserts_a_new_active_row_and_retires_the_old_one(self):
+        keys = self.prepare()
+        first = keys[0]
+        saved_id = save_health_check(
+            validate(sample_payload(first), keys), self.database_path
+        )
+
+        new_id = rotate_key(
+            first["id"], "ColdCard", "m/48'/7'/0'/2'", self.database_path
+        )
+
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT id, key_number, name, active, rotated_at FROM keys "
+                "WHERE key_number = 1 ORDER BY id"
+            ).fetchall()
+
+        self.assertNotEqual(new_id, first["id"])
+        # The multisig slot stays, the old row is retired, and the new one is
+        # the active row (section 32.8 point 5).
+        self.assertEqual(
+            [(row[0], row[1], row[2], row[3]) for row in rows],
+            [(first["id"], 1, "SeedSigner", 0), (new_id, 1, "ColdCard", 1)],
+        )
+        self.assertTrue(rows[0][4])
+
+        # The setup, the settings, and the dashboard read the active row only.
+        active = list_keys(self.database_path)
+        self.assertEqual([key["key_number"] for key in active], [1, 2, 3])
+        self.assertEqual(active[0]["name"], "ColdCard")
+        self.assertEqual(active[0]["address_path"], "m/48'/7'/0'/2'")
+        self.assertEqual(active[0]["type"], "hardware")
+        # The replacement is a new key with an empty history, so its path is not
+        # locked yet.
+        self.assertFalse(key_has_check(new_id, self.database_path))
+
+        # The older check keeps the snapshot it was recorded with, so a rotation
+        # cannot rewrite the history.
+        record = get_health_check(saved_id, self.database_path)
+        self.assertEqual(record["key_checks"][0]["key_number"], 1)
+        self.assertEqual(record["key_checks"][0]["name"], "SeedSigner")
+        self.assertEqual(record["key_checks"][0]["type"], "hardware")
+        rows = list_export_rows(self.database_path)
+        self.assertEqual(rows[0]["key_name"], "SeedSigner")
+
+    def test_a_rename_does_not_change_an_older_check(self):
+        keys = self.prepare()
+        first = keys[0]
+        saved_id = save_health_check(
+            validate(sample_payload(first), keys), self.database_path
+        )
+
+        save_key_settings(
+            first["id"],
+            "ColdCard",
+            first["address_path"],
+            self.database_path,
+            model="ColdCard Mk4",
+        )
+
+        # The live key carries the new label, while the saved check keeps the
+        # snapshot it was recorded with (section 32.8 point 5).
+        self.assertEqual(list_keys(self.database_path)[0]["name"], "ColdCard")
+        record = get_health_check(saved_id, self.database_path)
+        self.assertEqual(record["key_checks"][0]["name"], "SeedSigner")
+        self.assertIsNone(record["key_checks"][0]["model"])
+        self.assertEqual(list_export_rows(self.database_path)[0]["key_name"], "SeedSigner")
+
+    def test_a_security_row_of_the_checked_key_carries_its_key(self):
+        keys = self.prepare()
+
+        saved_id = save_health_check(
+            validate(sample_payload(keys[0]), keys), self.database_path
+        )
+        cloud_id = save_health_check(
+            validate(sample_payload(keys[2]), keys), self.database_path
+        )
+
+        with self.connect() as connection:
+            hardware = connection.execute(
+                "SELECT provider, key_id FROM ai_security_checks "
+                "WHERE health_check_id = ? ORDER BY provider",
+                (saved_id,),
+            ).fetchall()
+            cloud = connection.execute(
+                "SELECT provider, key_id FROM ai_security_checks "
+                "WHERE health_check_id = ?",
+                (cloud_id,),
+            ).fetchall()
+
+        # The key's own configured name carries the checked key, so its alert
+        # belongs to that key; the selected wallet software does not, so its
+        # alert belongs to the settings list (section 32.8 point 6).
+        self.assertEqual(
+            hardware, [("SeedSigner", keys[0]["id"]), ("Sparrow Wallet", None)]
+        )
+        # A cloud key records its own name as its software, so the single row is
+        # the key itself.
+        self.assertEqual(cloud, [("Nunchuk", keys[2]["id"])])
 
     def test_status_values_migrate_to_english(self):
         self.write_schema(SCHEMA_VERSION_5)
@@ -1257,6 +1572,12 @@ class DatabaseInitializationTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             save_key_settings(999, "ColdCard", DEFAULT_ADDRESS_PATH, self.database_path)
+
+    def test_rotating_an_unknown_key_is_an_error(self):
+        self.prepare()
+
+        with self.assertRaises(ValueError):
+            rotate_key(999, "ColdCard", "m/48'/7'/0'/2'", self.database_path)
 
     def test_an_acknowledgement_is_stored_with_the_check_and_the_key_it_closed(self):
         keys = self.prepare()
@@ -1505,6 +1826,8 @@ class DatabaseInitializationTests(unittest.TestCase):
             connection.execute(
                 "INSERT INTO keys (key_number, name, type) VALUES (1, 'ColdCard', 'hardware')"
             )
+            # A second active row for the same slot is refused by the partial
+            # unique index (section 32.8 point 5).
             with self.assertRaises(sqlite3.IntegrityError):
                 connection.execute(
                     "INSERT INTO keys (key_number, name, type) VALUES (1, 'Duplicate', 'hardware')"
