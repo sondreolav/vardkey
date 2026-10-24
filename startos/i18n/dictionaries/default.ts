@@ -32,6 +32,9 @@ const dict = {
   // A single word needs no quotes, and prettier removes them.
   Username: 21,
   Password: 22,
+
+  // init/requireAdmin.ts
+  'Set the admin password before VardKey can be used.': 23,
 } as const
 
 /**
