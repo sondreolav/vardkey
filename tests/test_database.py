@@ -1789,7 +1789,7 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertEqual(cloud["wallet_software"], "Nunchuk")
         self.assertEqual(cloud["security_status"], "Nunchuk: SECURE")
 
-    def test_export_rows_include_the_closures_that_belong_to_a_key(self):
+    def test_export_rows_include_every_closure_of_the_check(self):
         keys = self.prepare()
         saved_id = save_health_check(
             validate(sample_payload(keys[0]), keys), self.database_path
@@ -1798,8 +1798,9 @@ class DatabaseInitializationTests(unittest.TestCase):
             "key_unavailable", "Key 1: SeedSigner", keys[0]["id"], saved_id,
             "rotate", self.database_path,
         )
-        # A closure of a software alert belongs to no key, so it is left out
-        # (section 27).
+        # A closure of a software alert belongs to no key, but it hangs on the
+        # same check through its check_id, so it is listed as well
+        # (sections 27 and 32.8 point 6).
         save_alert_acknowledgement(
             "software_incompatible", "Sparrow Wallet", None, saved_id,
             "remove_software", self.database_path,
@@ -1808,11 +1809,15 @@ class DatabaseInitializationTests(unittest.TestCase):
         rows = list_export_rows(self.database_path)
 
         self.assertEqual(len(rows), 1)
+        closed = rows[0]["closed_alerts"]
+        # Both closures are listed, in the order they were written, with the code,
+        # the action and the date.
         self.assertRegex(
-            rows[0]["closed_alerts"],
-            r"^key_unavailable: rotate \(\d{4}-\d{2}-\d{2}\)$",
+            closed, r"^key_unavailable: rotate \(\d{4}-\d{2}-\d{2}\)"
         )
-        self.assertNotIn("software_incompatible", rows[0]["closed_alerts"])
+        self.assertRegex(
+            closed, r"software_incompatible: remove_software \(\d{4}-\d{2}-\d{2}\)$"
+        )
 
     def test_invalid_status_and_duplicate_key_numbers_are_rejected(self):
         initialize_database(self.database_path)
