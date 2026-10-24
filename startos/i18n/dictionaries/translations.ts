@@ -29,6 +29,7 @@ export default {
     20: 'Inicia sesión en VardKey con estas credenciales. La contraseña se muestra una sola vez, así que guárdala en un lugar seguro.',
     21: 'Nombre de usuario',
     22: 'Contraseña',
+    23: 'Establece la contraseña de administrador antes de poder usar VardKey.',
   },
   de_DE: {
     0: 'Starte VardKey',
@@ -54,6 +55,7 @@ export default {
     20: 'Melde dich mit diesen Anmeldedaten bei VardKey an. Das Passwort wird nur einmal angezeigt, also bewahre es sicher auf.',
     21: 'Benutzername',
     22: 'Passwort',
+    23: 'Lege das Admin-Passwort fest, bevor VardKey verwendet werden kann.',
   },
   pl_PL: {
     0: 'Uruchamianie VardKey',
@@ -79,6 +81,7 @@ export default {
     20: 'Zaloguj się do VardKey przy użyciu tych danych. Hasło jest wyświetlane jednorazowo, więc zachowaj je w bezpiecznym miejscu.',
     21: 'Nazwa użytkownika',
     22: 'Hasło',
+    23: 'Ustaw hasło administratora, zanim będzie można korzystać z VardKey.',
   },
   fr_FR: {
     0: 'Démarrage de VardKey',
@@ -104,5 +107,6 @@ export default {
     20: "Connectez-vous à VardKey avec ces identifiants. Le mot de passe n'est affiché qu'une seule fois, conservez-le en lieu sûr.",
     21: "Nom d'utilisateur",
     22: 'Mot de passe',
+    23: 'Définissez le mot de passe administrateur avant de pouvoir utiliser VardKey.',
   },
 } satisfies Record<string, LangDict>
