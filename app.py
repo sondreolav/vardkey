@@ -45,6 +45,7 @@ from database import (
     list_keys,
     list_previous_values,
     list_wallet_software,
+    rotate_key,
     save_alert_acknowledgement,
     save_app_settings,
     save_health_check,
@@ -171,12 +172,13 @@ def cloud_key_names(keys):
 
 
 def closed_alerts(acknowledgements):
-    """Return the closures that belong to a key, ready for the history view.
+    """Return the closures of one check, ready for the history view.
 
-    A closure is shown when it carries a key id: a rotation, a replaced hardware,
-    an updated contact, and an ignored alert whose source is a key. A closure of
-    a software alert is left out, because it belongs to the settings list rather
-    than to the checked key (section 27).
+    Every closure is shown, whether it belongs to a key or to a software entry in
+    the settings list: a closure hangs on the check it closed through its
+    ``check_id``, so a rotation, a replaced hardware, an updated contact, an
+    ignored key alert, and a software alert closed by removing it are all listed
+    with the action and the date (sections 27 and 32.8 point 6).
     """
     return [
         {
@@ -186,7 +188,6 @@ def closed_alerts(acknowledgements):
             "acknowledged_at": entry["acknowledged_at"],
         }
         for entry in acknowledgements
-        if entry.get("key_id") is not None
     ]
 
 
@@ -694,7 +695,8 @@ class AppHandler(BaseHTTPRequestHandler):
         key's identity, so it may only be changed while the key has no saved
         check, and it may never belong to another key (sections 25.1, 25.2, 26.2
         and 31.5). The type is never part of the payload, because only a rotation
-        replaces the key (section 28).
+        replaces the key (section 28). This writes the active row in place, so it
+        is a rename; a rotation inserts a new row instead (section 32.8 point 5).
         """
         try:
             payload = self._read_json_body()
@@ -804,12 +806,16 @@ class AppHandler(BaseHTTPRequestHandler):
 
         The rotation replaces the key, so it requires a new, unique address path:
         the old path is refused, and no earlier check is changed (sections 26.2
-        and 26.3). The replacement may also carry the other type, because a
-        rotation is what replaces the key, and the type is part of its identity
-        (section 28). The model is a label, so it is written when the payload
-        carries one and the stored value is kept otherwise (section 31 point 5).
-        The acknowledgement carries the key, so a rotation that changes the name
-        still keeps the closed alerts closed (section 27).
+        and 26.3). The replacement is a **new row** for the same multisig slot
+        and the old row is retired, so the checks that were recorded for the old
+        key keep the snapshot they carry and the history is frozen
+        (section 32.8 point 5). The replacement may also carry the other type,
+        because a rotation is what replaces the key, and the type is part of its
+        identity (section 28). The model is a label, so it is written when the
+        payload carries one and the stored value is kept otherwise (section 31
+        point 5). The acknowledgements are written against the **old** key id,
+        the row the alerts and the checks they came from belong to, so a rotation
+        that changes the name still keeps the closed alerts closed (section 27).
         """
         try:
             payload = self._read_json_body()
@@ -840,7 +846,9 @@ class AppHandler(BaseHTTPRequestHandler):
             # The model is only a label, so a rotation that does not mention it
             # keeps the stored one (section 31 point 5).
             model = rotation["model"] if "model" in payload else key.get("model")
-            save_key_settings(
+            # The rotation inserts a new active row and retires the old one, so
+            # the key the user sees gets a new id (section 32.8 point 5).
+            rotate_key(
                 key["id"],
                 rotation["name"] or key["name"],
                 rotation["address_path"],
@@ -849,6 +857,8 @@ class AppHandler(BaseHTTPRequestHandler):
                 model=model,
             )
             for code, source in targets:
+                # The closure belongs to the row the alert came from, which is
+                # the retired one, so it is written against the old key id.
                 save_alert_acknowledgement(
                     code,
                     source,
@@ -1024,25 +1034,30 @@ class AppHandler(BaseHTTPRequestHandler):
         """Return every saved check, newest first, with what needs follow-up.
 
         Each summary keeps the fields ``list_health_checks`` returns and adds two
-        of its own (section 32.2 point 14). ``key_names`` is the name each key of
-        the check has now, in the same order as ``key_numbers``, so the history
-        card can name the key. ``needs_follow_up`` says whether that check raised
-        anything to follow up, read from the same alert rules the dashboard uses;
-        it is a property of the saved check itself, so it does not change when
-        the user closes an alert later. Both fields are additive, so the existing
-        names and types are unchanged.
+        of its own (section 32.2 point 14). ``key_names`` is the name each key was
+        recorded with on that check, in the same order as ``key_numbers``: the
+        name is read from the snapshot the check carries, so a rotation or a
+        rename cannot rewrite an older summary (section 32.8 point 5).
+        ``needs_follow_up`` says whether that check raised anything to follow up,
+        read from the same alert rules the dashboard uses; it is a property of the
+        saved check itself, so it does not change when the user closes an alert
+        later. Both fields are additive, so the existing names and types are
+        unchanged.
         """
         database_path = get_database_path()
         try:
             keys = list_keys(database_path)
-            names = {key["key_number"]: key["name"] for key in keys}
             cloud_names = cloud_key_names(keys)
             summaries = list_health_checks(database_path)
             for summary in summaries:
+                record = get_health_check(summary["id"], database_path)
+                names = {
+                    entry["key_number"]: entry["name"]
+                    for entry in (record.get("key_checks") if record else None) or ()
+                }
                 summary["key_names"] = [
                     names.get(number, "") for number in summary.get("key_numbers", [])
                 ]
-                record = get_health_check(summary["id"], database_path)
                 summary["needs_follow_up"] = bool(record) and bool(
                     build_alerts(record, cloud_names)
                 )
@@ -1109,9 +1124,11 @@ class AppHandler(BaseHTTPRequestHandler):
     def _send_health_check(self, health_check_id):
         """Return one saved check with its related rows and the closures it has.
 
-        A closure that belongs to a key is shown in the history, so the user can
-        see what was closed on this check, with the action and the date
-        (section 27).
+        Every closure of the check is shown in the history, so the user can see
+        what was closed on it, with the action and the date. A closure that
+        belongs to a software entry in the settings list is listed as well, since
+        it hangs on the same check through its ``check_id``
+        (sections 27 and 32.8 point 6).
         """
         database_path = get_database_path()
         try:
