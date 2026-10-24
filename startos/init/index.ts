@@ -4,12 +4,14 @@ import { setInterfaces } from '../interfaces'
 import { versionGraph } from '../versions'
 import { actions } from '../actions'
 import { restoreInit } from '../backups'
+import { requireAdmin } from './requireAdmin'
 
 export const init = sdk.setupInit(
   restoreInit,
   versionGraph,
   setInterfaces,
   actions,
+  requireAdmin,
   dependencies,
 )
 
