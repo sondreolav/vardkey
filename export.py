@@ -4,8 +4,10 @@ One row per key check. A submission records one key, so a new export has one row
 per submission; records saved before section 19 can have up to three rows that
 share a ``check_id``. The security statuses have more than one value per
 submission, so they are joined into a single cell as ``Label: value; Label:
-value``. The closures that belong to a key are joined the same way, into the
-last column (section 27).
+value``. The closures of the check are joined the same way, into the last
+column: a closure hangs on the check it closed through its ``check_id``, so a
+software alert closed by removing it from the settings is listed next to a
+rotation (sections 27 and 32.8 point 6).
 
 Status values are written exactly as stored. The contact confirmation is one of
 the stored statuses (section 23.1), so it is written as text like every other
