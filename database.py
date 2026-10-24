@@ -928,8 +928,10 @@ def rotate_key(key_id, name, address_path, database_path="data/vardkey.sqlite3",
     type are part of the key's identity, so both are written as given;
     ``key_type`` keeps the stored type when it is left out, and ``model`` keeps
     the stored model when the argument is left out and clears it when it is
-    empty. The id of the new row is returned, so the caller can close the alerts
-    of the slot against it.
+    empty. The id of the new row is returned, so the caller can use the row a
+    later check belongs to. The alerts of the slot are not closed against it: an
+    acknowledgement belongs to the row the alert and its check came from, which
+    is the retired one, so it is written against the old id.
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.execute("PRAGMA foreign_keys = ON")
@@ -1360,15 +1362,17 @@ def _grouped_values(connection, table, label_column, value_column):
 def _grouped_closures(connection):
     """Return {check_id: "code: action (date); ..."} for the closures per check.
 
-    Only the closures that belong to a key are listed, so a rotation, a replaced
-    hardware, an updated contact, and an ignored key alert are shown, while a
-    software alert that was removed or ignored is left out (section 27).
+    Every closure of a check is listed, whether it belongs to a key or to a
+    software entry in the settings list: a closure hangs on the check it closed
+    through its ``check_id``, so a rotation, a replaced hardware, an updated
+    contact, an ignored key alert, and a software alert closed by removing it
+    are all shown (sections 27 and 32.8 point 6).
     """
     rows = connection.execute(
         """
         SELECT check_id, code, reason, acknowledged_at
         FROM alert_acknowledgements
-        WHERE key_id IS NOT NULL AND check_id IS NOT NULL
+        WHERE check_id IS NOT NULL
         ORDER BY id
         """
     ).fetchall()
