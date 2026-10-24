@@ -11,7 +11,14 @@ import sqlite3
 # that holds the multisig threshold and key count (section 31 point 7) and later
 # the admin credentials (section 31 point 1), and it loosens the ``key_number``
 # CHECK so the number of key slots is configurable, not fixed at three.
-SCHEMA_VERSION = 12
+# Version 13 freezes the history: a rotation inserts a new ``keys`` row for the
+# same ``key_number`` and retires the old one, so ``keys`` carries an ``active``
+# flag and a ``rotated_at``, the ``UNIQUE`` on ``key_number`` becomes a partial
+# unique index over the active row, every ``key_checks`` row carries a snapshot of
+# the name, the type, and the model it was recorded with, and
+# ``ai_security_checks`` carries the checked key so the source of a security alert
+# cannot flip on a rename (section 32.8 points 5 and 6).
+SCHEMA_VERSION = 13
 # The number of key slots a database without a stored multisig setting falls back
 # to. A new database starts at the 2-of-3 default the app was built for, and the
 # stored ``multisig_key_count`` decides the real number from then on
@@ -38,19 +45,24 @@ _UNSET = object()
 # Table definitions use a {table} placeholder, so a migration can create the same
 # table under a temporary name while it rebuilds it.
 #
-# ``key_number`` is only UNIQUE now, not bounded by a CHECK: the number of key
-# slots is read from ``app_settings`` and bounded by ``validation.py`` instead, so
-# a CHECK would have to be rebuilt for every setup shape (section 31 point 7).
-# ``model`` is the optional model or service label of a key, and it is only
-# documentation, never part of the key's identity (section 31 point 5).
+# ``key_number`` is the multisig slot, and it is no longer UNIQUE on the table: a
+# rotation inserts a new row for the same slot and retires the old one, so the
+# one-active-row-per-slot rule is enforced by the partial unique index in
+# ``INDEX_STATEMENTS`` instead, and any number of retired rows may share a slot
+# (section 32.8 point 5). ``active`` marks the row the app reads as "the key",
+# ``rotated_at`` records when a row was retired, and ``model`` is the optional
+# model or service label, which is only documentation and never part of the key's
+# identity (section 31 point 5).
 KEYS_TABLE = """
     CREATE TABLE IF NOT EXISTS {table} (
         id INTEGER PRIMARY KEY,
-        key_number INTEGER NOT NULL UNIQUE,
+        key_number INTEGER NOT NULL,
         name TEXT NOT NULL,
         type TEXT NOT NULL CHECK (type IN ('hardware', 'cloud')),
         address_path TEXT NOT NULL DEFAULT '',
         model TEXT,
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+        rotated_at TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
     """
@@ -72,12 +84,17 @@ HEALTH_CHECKS_TABLE = """
     )
     """
 # The two derived cloud results are gone: a cloud key records only its
-# availability (section 25.6).
+# availability (section 25.6). The name, the type, and the model of the checked
+# key are snapshotted per row, so neither a rotation nor a rename can change what
+# an older check says (section 32.8 point 5).
 KEY_CHECKS_TABLE = """
     CREATE TABLE IF NOT EXISTS {table} (
         id INTEGER PRIMARY KEY,
         health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
         key_id INTEGER NOT NULL REFERENCES keys(id) ON DELETE RESTRICT,
+        key_name TEXT,
+        key_type TEXT,
+        key_model TEXT,
         available INTEGER CHECK (available IN (0, 1)),
         hardware_works INTEGER CHECK (hardware_works IN (0, 1)),
         firmware_version TEXT,
@@ -89,12 +106,16 @@ KEY_CHECKS_TABLE = """
     )
     """
 # The provider is the key's configured name and the selected wallet software, so
-# the column holds free text (section 23.3).
+# the column holds free text (section 23.3). ``key_id`` is the checked key when
+# the provider is that key's own configured name, and NULL otherwise, so the
+# source of a security alert is decided by the row itself and cannot flip when
+# the key is renamed or rotated (section 32.8 point 6).
 AI_SECURITY_CHECKS_TABLE = """
     CREATE TABLE IF NOT EXISTS {table} (
         id INTEGER PRIMARY KEY,
         health_check_id INTEGER NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE,
         provider TEXT NOT NULL,
+        key_id INTEGER,
         status TEXT NOT NULL CHECK (status IN ('SECURE', 'PATCHED', 'VULNERABLE', 'COMPROMISED')),
         comments TEXT,
         UNIQUE (health_check_id, provider)
@@ -144,8 +165,14 @@ TABLES = (
 )
 # The address path is part of the key's identity and is written by the setup
 # step (section 25.1). It is added to a database that predates version 10, the
-# key of an acknowledgement to one that predates version 11 (section 27), and the
-# key model to one that predates version 12 (section 31 point 5).
+# key of an acknowledgement to one that predates version 11 (section 27), the
+# key model to one that predates version 12 (section 31 point 5), and the
+# snapshot of a check and the key of a security row to one that predates
+# version 13 (section 32.8 points 5 and 6).
+#
+# ``active`` and ``rotated_at`` on ``keys`` are deliberately not listed here: the
+# ``UNIQUE`` on ``key_number`` has to go at the same time, so that table is
+# rebuilt by ``_migrate_keys`` instead.
 OPTIONAL_COLUMNS = (
     ("keys", "address_path", "TEXT NOT NULL DEFAULT ''"),
     ("keys", "model", "TEXT"),
@@ -153,12 +180,25 @@ OPTIONAL_COLUMNS = (
     ("health_checks", "wallet_software", "TEXT"),
     ("health_checks", "software_version", "TEXT"),
     ("alert_acknowledgements", "key_id", "INTEGER"),
+    ("key_checks", "key_name", "TEXT"),
+    ("key_checks", "key_type", "TEXT"),
+    ("key_checks", "key_model", "TEXT"),
+    ("ai_security_checks", "key_id", "INTEGER"),
 )
 INDEX_STATEMENTS = (
     (
         "health_checks",
         "checked_at",
         "CREATE INDEX IF NOT EXISTS idx_health_checks_checked_at ON health_checks(checked_at DESC)",
+    ),
+    (
+        # One active row per multisig slot, while the retired rows keep their
+        # number (section 32.8 point 5). The index is partial, so any number of
+        # retired rows may share a slot.
+        "keys",
+        "active",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_keys_active_key_number "
+        "ON keys(key_number) WHERE active = 1",
     ),
 )
 # Columns that only exist in the pre-section-19 key_checks layout.
@@ -231,6 +271,10 @@ def initialize_database(database_path="data/vardkey.sqlite3"):
             _migrate_ai_security_checks(connection)
             _migrate_status_values(connection)
             _drop_tool_checks(connection)
+            # After every rebuild, so a check that lost its snapshot to one of
+            # them gets it back from the key it belongs to (section 32.8
+            # point 5).
+            _backfill_key_check_snapshots(connection)
             _seed_default_wallet_software(connection)
             for table, column, statement in INDEX_STATEMENTS:
                 _ensure_index(connection, table, column, statement)
@@ -380,32 +424,45 @@ def _seed_default_wallet_software(connection):
 
 
 def _migrate_keys(connection):
-    """Rebuild keys when it carries the removed device column or a fixed bound.
+    """Rebuild keys when it has the removed device column, a fixed bound, or no flag.
 
     The configured name is the product label everywhere, so the fixed device
-    value is gone (section 23.2). SQLite cannot drop a column from a table with
-    a CHECK constraint, so the table is rebuilt once. The same rebuild loosens
-    the ``key_number`` CHECK, because the number of key slots is configurable now
-    and is bounded by ``validation.py`` instead (section 31 point 7). The address
+    value is gone (section 23.2). SQLite can neither drop a column from a table
+    with a CHECK constraint nor drop the ``UNIQUE`` on ``key_number``, so the
+    table is rebuilt once. The same rebuild loosens the ``key_number`` CHECK,
+    because the number of key slots is configurable now and is bounded by
+    ``validation.py`` instead (section 31 point 7), and it adds the ``active``
+    flag and ``rotated_at`` a rotation needs (section 32.8 point 5). The address
     path and the model are part of the current definition and are copied along,
     taking their default for a row that predates them (sections 25.1 and 31.5).
+
+    Every row of a database without the flag is active, because it was written
+    before a rotation could insert a second row for the same slot.
     """
     columns = _table_columns(connection, "keys")
     if not columns:
         return
     sql = _table_sql(connection, "keys") or ""
-    if "device" not in columns and LEGACY_KEY_NUMBER_CHECK not in sql:
+    if (
+        "device" not in columns
+        and "active" in columns
+        and LEGACY_KEY_NUMBER_CHECK not in sql
+    ):
         return
 
     temporary = _create_replacement(connection, "keys", KEYS_TABLE)
     connection.execute(f"""
-        INSERT INTO {temporary} (id, key_number, name, type, address_path, model, created_at)
+        INSERT INTO {temporary} (
+            id, key_number, name, type, address_path, model, active, rotated_at, created_at
+        )
         SELECT {_column_or_null(columns, "id")},
                key_number,
                name,
                type,
                {_column_or_null(columns, "address_path")},
                {_column_or_null(columns, "model")},
+               COALESCE({_column_or_null(columns, "active")}, 1),
+               {_column_or_null(columns, "rotated_at")},
                {_column_or_null(columns, "created_at")}
         FROM keys
     """)
@@ -467,7 +524,9 @@ def _migrate_ai_security_checks(connection):
 
     Two changes need the same rebuild: the Norwegian status values became
     English (section 21), and the fixed provider list was dropped because the
-    key's configured name is the provider label (section 23.3).
+    key's configured name is the provider label (section 23.3). The ``key_id``
+    column is added by ``OPTIONAL_COLUMNS`` and is carried along when the table
+    is rebuilt for one of those two reasons.
     """
     sql = _table_sql(connection, "ai_security_checks")
     if sql is None:
@@ -475,19 +534,46 @@ def _migrate_ai_security_checks(connection):
     if "SECURE" in sql and LEGACY_PROVIDER_CHECK not in sql:
         return
 
+    columns = _table_columns(connection, "ai_security_checks")
     connection.execute("ALTER TABLE ai_security_checks RENAME TO ai_security_checks_legacy")
     _create_table(connection, "ai_security_checks", AI_SECURITY_CHECKS_TABLE)
     cases = " ".join(
         f"WHEN '{old}' THEN '{new}'" for old, new in SECURITY_STATUS_MIGRATION
     )
     connection.execute(f"""
-        INSERT INTO ai_security_checks (id, health_check_id, provider, status, comments)
+        INSERT INTO ai_security_checks (id, health_check_id, provider, key_id, status, comments)
         SELECT id, health_check_id, provider,
+               {_column_or_null(columns, "key_id")},
                CASE status {cases} ELSE status END,
                comments
         FROM ai_security_checks_legacy
     """)
     connection.execute("DROP TABLE ai_security_checks_legacy")
+
+
+def _backfill_key_check_snapshots(connection):
+    """Copy the name, the type, and the model of the key onto every older check.
+
+    Before version 13 the three values were read through ``keys``, so a check
+    that predates the snapshot keeps the values its key has at the moment of the
+    migration. From then on the row carries its own copy, and a rotation or a
+    rename cannot change it (section 32.8 point 5). A check that already carries
+    a snapshot is left alone, so the migration may run more than once without
+    rewriting a frozen record.
+    """
+    connection.execute("""
+        UPDATE key_checks
+        SET key_name = COALESCE(
+                key_name, (SELECT k.name FROM keys AS k WHERE k.id = key_checks.key_id)
+            ),
+            key_type = COALESCE(
+                key_type, (SELECT k.type FROM keys AS k WHERE k.id = key_checks.key_id)
+            ),
+            key_model = COALESCE(
+                key_model, (SELECT k.model FROM keys AS k WHERE k.id = key_checks.key_id)
+            )
+        WHERE key_name IS NULL OR key_type IS NULL
+    """)
 
 
 def _migrate_status_values(connection):
@@ -590,16 +676,24 @@ def _rebuild_key_checks(connection):
 
     The pre-section-21 ``IKKJE_VURDERT`` value is gone from the definition, and
     the two derived cloud results are dropped because a cloud key records only
-    its availability (sections 21 and 25.6). Every surviving column is copied.
+    its availability (sections 21 and 25.6). Every surviving column is copied;
+    a snapshot column that this rebuild cannot carry over is refilled by
+    ``_backfill_key_check_snapshots`` afterwards (section 32.8 point 5).
     """
+    columns = _table_columns(connection, "key_checks")
     temporary = _create_replacement(connection, "key_checks", KEY_CHECKS_TABLE)
     connection.execute(f"""
         INSERT INTO {temporary} (
-            id, health_check_id, key_id, available, hardware_works, firmware_version,
-            seed_backup_verified, address_path_verified, address_path, comments
+            id, health_check_id, key_id, key_name, key_type, key_model,
+            available, hardware_works, firmware_version, seed_backup_verified,
+            address_path_verified, address_path, comments
         )
-        SELECT id, health_check_id, key_id, available, hardware_works, firmware_version,
-               seed_backup_verified, address_path_verified, address_path, comments
+        SELECT id, health_check_id, key_id,
+               {_column_or_null(columns, "key_name")},
+               {_column_or_null(columns, "key_type")},
+               {_column_or_null(columns, "key_model")},
+               available, hardware_works, firmware_version, seed_backup_verified,
+               address_path_verified, address_path, comments
         FROM key_checks
     """)
     _replace_table(connection, "key_checks", temporary)
@@ -682,16 +776,19 @@ def save_multisig_settings(threshold, key_count, database_path="data/vardkey.sql
 
 
 def list_keys(database_path="data/vardkey.sqlite3"):
-    """Return the stored key profiles in key order.
+    """Return the active key profiles in key order.
 
-    An empty list means a new database, which the app answers with the first-run
-    setup step. A database that holds only part of the setup raises an error, so
-    an unreadable database is never treated as a new installation
-    (section 23.2). The expected number of keys comes from the stored multisig
-    setting, so a setup with another key count is read back correctly
-    (section 31 point 7). The address path is part of the key's identity and is
-    compared with every submitted path (section 25.1), and the model is the
-    optional documentation label of the key (section 31 point 5).
+    Only the active row of each multisig slot is returned, so a retired row left
+    behind by a rotation is invisible to the setup, the settings, the form, and
+    the dashboard (section 32.8 point 5). An empty list means a new database,
+    which the app answers with the first-run setup step. A database that holds
+    only part of the setup raises an error, so an unreadable database is never
+    treated as a new installation (section 23.2). The expected number of keys
+    comes from the stored multisig setting, so a setup with another key count is
+    read back correctly (section 31 point 7). The address path is part of the
+    key's identity and is compared with every submitted path (section 25.1), and
+    the model is the optional documentation label of the key (section 31
+    point 5).
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
@@ -700,6 +797,7 @@ def list_keys(database_path="data/vardkey.sqlite3"):
             """
             SELECT id, key_number, name, type, address_path, model, created_at
             FROM keys
+            WHERE active = 1
             ORDER BY key_number
             """
         ).fetchall()
@@ -725,6 +823,8 @@ def save_key_setup(entries, database_path="data/vardkey.sqlite3", *, threshold=N
     (section 31 point 7). ``threshold`` and ``key_count`` fall back to the
     2-of-3 default when they are left out, so a caller that only passes the keys
     keeps working. The model is the optional label of a key (section 31 point 5).
+    Every row is written as the active row of its slot, which is the default of
+    the column (section 32.8 point 5).
     """
     if list_keys(database_path):
         raise RuntimeError("The key setup is already stored")
@@ -786,28 +886,80 @@ def save_key_settings(key_id, name, address_path, database_path="data/vardkey.sq
     left out. ``model`` is written as given, including an empty value that
     clears it; when the argument is left out, the stored model is kept, so a
     caller that does not manage it never drops it.
+
+    This writes the row in place, so it is the settings that use it. A rotation
+    goes through ``rotate_key`` instead, which inserts a new row and retires this
+    one (section 32.8 point 5).
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.execute("PRAGMA foreign_keys = ON")
     try:
         with connection:
-            # COALESCE keeps the stored type when no new one is passed, so the
-            # settings and a rotation can share this one statement.
+            # COALESCE keeps the stored type when no new one is passed.
             if model is _UNSET:
                 statement = (
                     "UPDATE keys SET name = ?, address_path = ?, "
-                    "type = COALESCE(?, type) WHERE id = ?"
+                    "type = COALESCE(?, type) WHERE id = ? AND active = 1"
                 )
                 parameters = (name, address_path, key_type, key_id)
             else:
                 statement = (
                     "UPDATE keys SET name = ?, address_path = ?, "
-                    "type = COALESCE(?, type), model = ? WHERE id = ?"
+                    "type = COALESCE(?, type), model = ? WHERE id = ? AND active = 1"
                 )
                 parameters = (name, address_path, key_type, model, key_id)
             cursor = connection.execute(statement, parameters)
             if cursor.rowcount != 1:
                 raise ValueError(f"Key {key_id} does not exist")
+    finally:
+        connection.close()
+
+
+def rotate_key(key_id, name, address_path, database_path="data/vardkey.sqlite3", *, key_type=None, model=_UNSET):
+    """Replace a key with a new active row and retire the old one.
+
+    A rotation is a new key: the multisig slot stays, so the new row carries the
+    same ``key_number``, while the old row is marked inactive and stamped with
+    ``rotated_at``. The older checks keep pointing at the old row and carry their
+    own snapshot, so the history is frozen (section 32.8 point 5).
+
+    The old row is retired before the new one is inserted, because the partial
+    unique index allows only one active row per slot. The address path and the
+    type are part of the key's identity, so both are written as given;
+    ``key_type`` keeps the stored type when it is left out, and ``model`` keeps
+    the stored model when the argument is left out and clears it when it is
+    empty. The id of the new row is returned, so the caller can close the alerts
+    of the slot against it.
+    """
+    connection = sqlite3.connect(database_path, timeout=5)
+    connection.execute("PRAGMA foreign_keys = ON")
+    try:
+        with connection:
+            row = connection.execute(
+                "SELECT key_number, type, model FROM keys WHERE id = ? AND active = 1",
+                (key_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"Key {key_id} does not exist")
+            key_number, stored_type, stored_model = row
+            connection.execute(
+                "UPDATE keys SET active = 0, rotated_at = ? WHERE id = ?",
+                (datetime.now().isoformat(timespec="seconds"), key_id),
+            )
+            cursor = connection.execute(
+                """
+                INSERT INTO keys (key_number, name, type, address_path, model, active)
+                VALUES (?, ?, ?, ?, ?, 1)
+                """,
+                (
+                    key_number,
+                    name,
+                    stored_type if key_type is None else key_type,
+                    address_path,
+                    stored_model if model is _UNSET else model,
+                ),
+            )
+        return cursor.lastrowid
     finally:
         connection.close()
 
@@ -918,7 +1070,8 @@ def delete_all_data(database_path="data/vardkey.sqlite3"):
     RESTRICT``, so the checks have to go before the keys. The child rows of a
     check (``key_checks`` and ``ai_security_checks``) go with it through ``ON
     DELETE CASCADE``, while ``alert_acknowledgements`` has no foreign key and is
-    deleted explicitly.
+    deleted explicitly. Every key row goes, active and retired alike
+    (section 32.8 point 5).
 
     The number of deleted checks is returned, so the caller can report it.
     """
@@ -951,11 +1104,27 @@ def delete_all_data(database_path="data/vardkey.sqlite3"):
 
 
 def save_health_check(data, database_path="data/vardkey.sqlite3"):
-    """Store one validated health check for a single key together with its rows."""
+    """Store one validated health check for a single key together with its rows.
+
+    The name, the type, and the model of the key are copied onto the check as a
+    snapshot, so neither a rotation nor a rename can change what an older record
+    says (section 32.8 point 5). A security row carries the checked key when its
+    provider is that key's own configured name, and NULL otherwise, so the source
+    of a security alert is decided by the row itself (section 32.8 point 6).
+    """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.execute("PRAGMA foreign_keys = ON")
     try:
         with connection:
+            key_check = data["key_check"]
+            key = connection.execute(
+                "SELECT name, type, model FROM keys WHERE id = ?",
+                (key_check["key_id"],),
+            ).fetchone()
+            if key is None:
+                raise ValueError(f"Key {key_check['key_id']} does not exist")
+            key_name, key_type, key_model = key
+
             cursor = connection.execute(
                 """
                 INSERT INTO health_checks (
@@ -976,17 +1145,20 @@ def save_health_check(data, database_path="data/vardkey.sqlite3"):
                 ),
             )
             health_check_id = cursor.lastrowid
-            key_check = data["key_check"]
             connection.execute(
                 """
                 INSERT INTO key_checks (
-                    health_check_id, key_id, available, hardware_works, firmware_version,
+                    health_check_id, key_id, key_name, key_type, key_model,
+                    available, hardware_works, firmware_version,
                     seed_backup_verified, address_path_verified, address_path, comments
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     health_check_id,
                     key_check["key_id"],
+                    key_name,
+                    key_type,
+                    key_model,
                     key_check["available"],
                     key_check["hardware_works"],
                     key_check["firmware_version"],
@@ -998,11 +1170,17 @@ def save_health_check(data, database_path="data/vardkey.sqlite3"):
             )
             connection.executemany(
                 """
-                INSERT INTO ai_security_checks (health_check_id, provider, status, comments)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO ai_security_checks (health_check_id, provider, key_id, status, comments)
+                VALUES (?, ?, ?, ?, ?)
                 """,
                 [
-                    (health_check_id, entry["provider"], entry["status"], entry["comments"])
+                    (
+                        health_check_id,
+                        entry["provider"],
+                        key_check["key_id"] if entry["provider"] == key_name else None,
+                        entry["status"],
+                        entry["comments"],
+                    )
                     for entry in data["ai_security_checks"]
                 ],
             )
@@ -1015,7 +1193,8 @@ def list_health_checks(database_path="data/vardkey.sqlite3"):
     """Return saved health check summaries, newest first.
 
     Each summary carries the key numbers of the check, so the history can show
-    which key a submission belongs to.
+    which key a submission belongs to. The number is the multisig slot, which a
+    rotation never changes, so it is read from ``keys`` (section 32.8 point 5).
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
@@ -1052,13 +1231,15 @@ def list_health_checks(database_path="data/vardkey.sqlite3"):
 
 
 def list_key_status(database_path="data/vardkey.sqlite3"):
-    """Return each key with the dates of its newest saved check.
+    """Return each active key with the dates of its newest saved check.
 
-    A key that has never been checked has no dates. Whether a date is overdue is
-    left to the caller, so this function stays independent of the current date.
-    The address path and the model are carried as well, so the dashboard card can
-    show them (sections 31.4 and 31.5). An empty address path, which a migrated
-    key can have, is passed through as it stands and left out by the card.
+    A retired row left behind by a rotation is left out, so the dashboard shows
+    one card per multisig slot (section 32.8 point 5). A key that has never been
+    checked has no dates. Whether a date is overdue is left to the caller, so
+    this function stays independent of the current date. The address path and the
+    model are carried as well, so the dashboard card can show them
+    (sections 31.4 and 31.5). An empty address path, which a migrated key can
+    have, is passed through as it stands and left out by the card.
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
@@ -1070,6 +1251,7 @@ def list_key_status(database_path="data/vardkey.sqlite3"):
                    ({_LATEST_CHECK_QUERY.format(expression="hc.checked_at")}) AS last_checked_at,
                    ({_LATEST_CHECK_QUERY.format(expression="hc.next_check_due")}) AS next_check_due
             FROM keys AS k
+            WHERE k.active = 1
             ORDER BY k.key_number
             """
         ).fetchall()
@@ -1081,10 +1263,11 @@ def list_key_status(database_path="data/vardkey.sqlite3"):
 def list_previous_values(database_path="data/vardkey.sqlite3"):
     """Return the most recently saved values, for pre-filling the form.
 
-    ``keys`` carries the last recorded firmware version, address path, wallet
-    software, and software version for each key. ``security`` carries the last
-    recorded security status for each provider, whatever key recorded it. Both
-    are used to pre-fill the form.
+    Only the active row of each slot is read, so a retired row is invisible to
+    the form (section 32.8 point 5). ``keys`` carries the last recorded firmware
+    version, address path, wallet software, and software version for each key.
+    ``security`` carries the last recorded security status for each provider,
+    whatever key recorded it. Both are used to pre-fill the form.
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
@@ -1099,6 +1282,7 @@ def list_previous_values(database_path="data/vardkey.sqlite3"):
                        ({_LATEST_CHECK_QUERY.format(expression="hc.wallet_software")}) AS wallet_software,
                        ({_LATEST_CHECK_QUERY.format(expression="hc.software_version")}) AS software_version
                 FROM keys AS k
+                WHERE k.active = 1
                 ORDER BY k.key_number
                 """
             ).fetchall()
@@ -1123,9 +1307,12 @@ def list_export_rows(database_path="data/vardkey.sqlite3"):
 
     Every row is one key check. ``check_id`` identifies the submission it belongs
     to, so rows saved before section 19 (up to three keys in one submission) stay
-    grouped. The per-provider security results are joined into a single text
-    cell, because they have more than one value per submission, and so are the
-    closures that belong to a key (section 27).
+    grouped. The key name and the key type come from the snapshot on the check,
+    so a rotation or a rename cannot rewrite an older row (section 32.8 point 5);
+    the key number is the multisig slot, which never changes. The per-provider
+    security results are joined into a single text cell, because they have more
+    than one value per submission, and so are the closures that belong to a key
+    (section 27).
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
@@ -1136,7 +1323,8 @@ def list_export_rows(database_path="data/vardkey.sqlite3"):
                    hc.wallet_software, hc.software_version,
                    hc.software_compatibility_status, hc.software_comments,
                    hc.contact_info_verified, hc.comments,
-                   kc.key_id, k.key_number, k.name AS key_name, k.type AS key_type,
+                   kc.key_id, k.key_number,
+                   kc.key_name AS key_name, kc.key_type AS key_type,
                    kc.available, kc.hardware_works, kc.firmware_version,
                    kc.seed_backup_verified, kc.address_path_verified,
                    kc.address_path, kc.comments AS key_comments
@@ -1199,10 +1387,10 @@ def _short_date(value):
 def get_health_check(health_check_id, database_path="data/vardkey.sqlite3"):
     """Return one saved health check with its related rows, or None.
 
-    The key rows are read through ``keys``, so the history, the alerts and the
-    export show the name a key has now, which the settings may change
-    (section 25.2). The model of the key is carried as well, so the history can
-    name the hardware and the firmware on one line; it is an added field and the
+    The name, the type, and the model of the checked key are read from the
+    snapshot on the row, so a rotation or a rename cannot change what an older
+    record says (section 32.8 point 5). The key number is the multisig slot, read
+    through ``keys``, which never changes. The model is an added field and the
     existing ones keep their names (section 32.1).
     """
     connection = sqlite3.connect(database_path, timeout=5)
@@ -1225,7 +1413,8 @@ def get_health_check(health_check_id, database_path="data/vardkey.sqlite3"):
             dict(row)
             for row in connection.execute(
                 """
-                SELECT kc.id, kc.key_id, k.key_number, k.name, k.type, k.model,
+                SELECT kc.id, kc.key_id, k.key_number,
+                       kc.key_name AS name, kc.key_type AS type, kc.key_model AS model,
                        kc.available, kc.hardware_works, kc.firmware_version,
                        kc.seed_backup_verified, kc.address_path_verified,
                        kc.address_path, kc.comments
@@ -1241,7 +1430,7 @@ def get_health_check(health_check_id, database_path="data/vardkey.sqlite3"):
             dict(row)
             for row in connection.execute(
                 """
-                SELECT id, provider, status, comments
+                SELECT id, provider, key_id, status, comments
                 FROM ai_security_checks WHERE health_check_id = ?
                 ORDER BY id
                 """,
