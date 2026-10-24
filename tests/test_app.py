@@ -12,6 +12,10 @@ sends them with every later request, exactly as the browser does.
 A recorded check date may be today or earlier, and five failed sign-ins in a row
 lock the login for fifteen minutes (section 32.8 points 3 and 2), so the checks
 here are dated in the past and the lockout is exercised where it belongs.
+
+A rotation inserts a new ``keys`` row for the same multisig slot and retires the
+old one (section 32.8 point 5), so a test that rotates and then records a check
+uses the id of the new row, which ``rotate()`` hands back.
 """
 
 import csv
@@ -21,6 +25,7 @@ from http.server import ThreadingHTTPServer
 import io
 import json
 import os
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -137,6 +142,24 @@ def mismatch_payload(key, address_path="m/48'/9'/0'/2'"):
             "comments": "Path read from the device",
         },
     }
+
+
+def key_rows(database_path):
+    """Return every row of the ``keys`` table, active and retired alike.
+
+    A rotation inserts a new row and retires the old one, so a test that reads
+    the storage has to read the table itself: the active key profiles hide the
+    retired row on purpose (section 32.8 point 5).
+    """
+    connection = sqlite3.connect(database_path)
+    connection.row_factory = sqlite3.Row
+    try:
+        return [
+            dict(row)
+            for row in connection.execute("SELECT * FROM keys ORDER BY id")
+        ]
+    finally:
+        connection.close()
 
 
 class ServerTestCase(unittest.TestCase):
@@ -354,7 +377,14 @@ class ServerTestCase(unittest.TestCase):
         return ROTATION_PATHS[key_id]
 
     def rotate(self, key_id, keep_name=True, name="", address_path=None, **extra):
-        """Rotate one key and return the stored settings the server answers."""
+        """Rotate one key and return the answer, with the new row's id added.
+
+        The server answers the stored settings and the closed alerts, and the id
+        of the new row is added under ``key_id``: a rotation inserts a new row and
+        retires the old one, so a test that records a check afterwards has to use
+        the new id (section 32.8 point 5). The address path of a rotation is new
+        and unique, so it identifies the row the rotation stored (section 26.2).
+        """
         payload = {
             "replaced": True,
             "keep_name": keep_name,
@@ -364,7 +394,13 @@ class ServerTestCase(unittest.TestCase):
         payload.update(extra)
         with self.post_rotation(key_id, payload) as response:
             self.assertEqual(response.status, 200)
-            return json.load(response)
+            body = json.load(response)
+        body["key_id"] = next(
+            entry["id"]
+            for entry in body["settings"]["keys"]
+            if entry["address_path"] == payload["address_path"]
+        )
+        return body
 
 
 class AppHandlerTests(ServerTestCase):
@@ -490,8 +526,8 @@ class AppHandlerTests(ServerTestCase):
         # The contact confirmation is a status, not a yes/no flag (section 23.1).
         self.assertEqual(values["Contact details confirmed"], "Confirmed current")
         self.assertIn("SeedSigner: SECURE", values["Security status"])
-        # The new closure column is last, and an open check leaves it empty
-        # (section 27).
+        # The closure column is last, and an open check leaves it empty
+        # (sections 27 and 32.8 point 6).
         self.assertEqual(HEADERS[-1], "Follow-up closed")
         self.assertEqual(values["Follow-up closed"], "")
         # The two derived cloud columns are gone (section 25.6).
@@ -511,7 +547,7 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual(values["Software compatibility"], "NOT_ASSESSED")
         self.assertEqual(values["Security status"], "")
 
-    def test_the_export_lists_the_closures_that_belong_to_a_key(self):
+    def test_the_export_lists_the_closures_of_a_check(self):
         key = self.key_profiles()[1]
         saved_id = self.post_health_check(unavailable_payload(key))
         self.rotate(key["id"])
@@ -521,7 +557,7 @@ class AppHandlerTests(ServerTestCase):
 
         self.assertEqual(values["Check id"], str(saved_id))
         # A closure is written as the code, the action and the date, in the last
-        # column (section 27).
+        # column (sections 27 and 32.8 point 6).
         self.assertRegex(
             values["Follow-up closed"],
             r"^key_unavailable: rotate \(\d{4}-\d{2}-\d{2}\)$",
@@ -703,7 +739,7 @@ class AppHandlerTests(ServerTestCase):
         # Closing the alert with the action that belongs to it frees the key again.
         self.rotate(keys[1]["id"])
         self.assertEqual(self.get_alerts(), [])
-        self.post_health_check(unavailable_payload(keys[1]))
+        self.post_health_check(unavailable_payload(self.key_profiles()[1]))
 
         self.assertEqual(len(self.get_health_checks()), 3)
 
@@ -879,8 +915,9 @@ class AppHandlerTests(ServerTestCase):
 
     def test_the_history_list_reports_the_key_and_the_follow_up_status(self):
         # Every summary keeps the fields it already carried and adds two of its
-        # own: the name each key of the check has now, and whether the check
-        # raised anything to follow up (section 32.2 point 14).
+        # own: the name each key was recorded with on the check, and whether the
+        # check raised anything to follow up (sections 32.2 point 14 and 32.8
+        # point 5).
         key = self.key_profiles()[0]
         saved_id = self.post_health_check(sample_payload(key))
 
@@ -904,16 +941,23 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual(summary["key_names"], ["Blockstream Jade"])
         self.assertTrue(summary["needs_follow_up"])
 
-        # The name is the one the key has now, and the status belongs to the saved
-        # check itself: closing the alert and renaming the key change neither.
+        # The name in the summary is the one recorded on the check, and the
+        # status belongs to the saved check itself: neither a rotation nor a
+        # rename changes them (sections 32.2 point 14 and 32.8 point 5).
         self.rotate(key["id"], keep_name=False, name="Replacement")
 
         summary = self.get_health_checks()[0]
-        self.assertEqual(summary["key_names"], ["Replacement"])
+        self.assertEqual(summary["key_names"], ["Blockstream Jade"])
         self.assertTrue(summary["needs_follow_up"])
         self.assertEqual(self.get_alerts(), [])
+        # The active key carries the new name.
+        self.assertEqual(self.key_profiles()[1]["name"], "Replacement")
 
-    def test_the_history_detail_shows_a_key_closure_and_leaves_out_a_software_one(self):
+    def test_the_history_detail_lists_every_closure_of_the_check(self):
+        # A closure hangs on the check it closed through its check_id, and a
+        # software closure is listed as well: removing a failing software closes
+        # its alert just like a rotation closes a key alert (sections 27 and
+        # 32.8 point 6).
         key = self.key_profiles()[0]
         with self.post_wallet_software(["Sparrow Wallet", "BlueWallet"]) as response:
             self.assertEqual(response.status, 200)
@@ -933,12 +977,15 @@ class AppHandlerTests(ServerTestCase):
             self.assertEqual(response.status, 200)
         self.rotate(key["id"])
 
-        closed = self.get_record(saved_id)["closed_alerts"]
+        closed = {entry["code"]: entry for entry in self.get_record(saved_id)["closed_alerts"]}
 
-        self.assertEqual([entry["action"] for entry in closed], ["rotate"])
-        self.assertEqual(closed[0]["code"], "hardware_failure")
-        self.assertEqual(closed[0]["source"], "Key 1: SeedSigner")
-        self.assertTrue(closed[0]["acknowledged_at"])
+        self.assertEqual(sorted(closed), ["hardware_failure", "software_incompatible"])
+        self.assertEqual(closed["hardware_failure"]["action"], "rotate")
+        self.assertEqual(closed["hardware_failure"]["source"], "Key 1: SeedSigner")
+        self.assertEqual(closed["software_incompatible"]["action"], "remove_software")
+        self.assertEqual(closed["software_incompatible"]["source"], "BlueWallet")
+        for entry in closed.values():
+            self.assertTrue(entry["acknowledged_at"])
 
     def test_each_key_can_be_posted_and_read_back(self):
         for key in self.key_profiles():
@@ -1572,6 +1619,46 @@ class SettingsApiTests(ServerTestCase):
         # it, and the settings keep the stored one (sections 25.2 and 28).
         self.assertEqual(self.key_profiles()[0]["type"], "hardware")
 
+    def test_a_rename_writes_the_active_row_in_place(self):
+        # A rename is not a rotation: the same row keeps its id and stays active,
+        # so no new row is inserted (section 32.8 point 5).
+        key = self.key_profiles()[0]
+
+        with self.post_key_settings({
+            "key_id": key["id"],
+            "name": "ColdCard",
+            "address_path": ADDRESS_PATH,
+        }) as response:
+            self.assertEqual(response.status, 200)
+
+        rows = key_rows(self.database_path)
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(self.key_profiles()[0]["id"], key["id"])
+
+    def test_a_rename_does_not_change_an_earlier_check(self):
+        # The name and the type of a check come from the snapshot on the row, so a
+        # rename cannot rewrite the history (section 32.8 point 5).
+        key = self.key_profiles()[0]
+        saved_id = self.post_health_check(sample_payload(key))
+
+        with self.post_key_settings({
+            "key_id": key["id"],
+            "name": "ColdCard",
+            "address_path": ADDRESS_PATH,
+        }) as response:
+            self.assertEqual(response.status, 200)
+
+        record = self.get_record(saved_id)
+        self.assertEqual(record["key_checks"][0]["name"], "SeedSigner")
+        self.assertEqual(record["key_checks"][0]["type"], "hardware")
+        # The summary names the key the check was recorded for as well.
+        summary = next(
+            entry for entry in self.get_health_checks() if entry["id"] == saved_id
+        )
+        self.assertEqual(summary["key_names"], ["SeedSigner"])
+        # The live key carries the new label.
+        self.assertEqual(self.key_profiles()[0]["name"], "ColdCard")
+
     def test_the_address_path_can_be_changed_until_the_key_has_a_check(self):
         key = self.key_profiles()[0]
 
@@ -1781,6 +1868,55 @@ class RotationApiTests(ServerTestCase):
         self.assertEqual(stored["type"], key["type"])
         self.assertEqual(stored["address_path"], self.rotation_path(key["id"]))
 
+    def test_a_rotation_inserts_a_new_row_and_retires_the_old_one(self):
+        # A rotation is a new key: the multisig slot stays, the old row is
+        # retired, and the new row is the one the app reads (section 32.8
+        # point 5).
+        key = self.key_profiles()[0]
+
+        body = self.rotate(key["id"], keep_name=False, name="Replacement")
+
+        self.assertNotEqual(body["key_id"], key["id"])
+        stored = self.key_profiles()[0]
+        self.assertEqual(stored["id"], body["key_id"])
+        self.assertEqual(stored["key_number"], key["key_number"])
+        self.assertEqual(stored["name"], "Replacement")
+        self.assertEqual(stored["address_path"], self.rotation_path(key["id"]))
+
+        rows = {row["id"]: row for row in key_rows(self.database_path)}
+        self.assertEqual(len(rows), 4)
+        retired = rows[key["id"]]
+        self.assertEqual(retired["active"], 0)
+        self.assertTrue(retired["rotated_at"])
+        self.assertEqual(retired["key_number"], key["key_number"])
+        self.assertEqual(retired["name"], key["name"])
+        self.assertEqual(retired["address_path"], ADDRESS_PATH)
+        replacement = rows[body["key_id"]]
+        self.assertEqual(replacement["active"], 1)
+        self.assertIsNone(replacement["rotated_at"])
+
+    def test_a_check_can_be_recorded_on_the_new_row(self):
+        # The replacement is the row a new check belongs to, and the retired row
+        # is invisible to the form and the dashboard (section 32.8 point 5).
+        key = self.key_profiles()[0]
+
+        body = self.rotate(key["id"])
+        replacement = next(
+            entry for entry in self.key_profiles() if entry["id"] == body["key_id"]
+        )
+
+        saved_id = self.post_health_check(sample_payload(replacement))
+
+        record = self.get_record(saved_id)
+        self.assertEqual(record["key_checks"][0]["key_id"], body["key_id"])
+        self.assertEqual(record["key_checks"][0]["key_number"], key["key_number"])
+        self.assertEqual(record["key_checks"][0]["name"], key["name"])
+        self.assertEqual(
+            record["key_checks"][0]["address_path"], replacement["address_path"]
+        )
+        self.assertEqual(len(self.get_key_status()), 3)
+        self.assertEqual(len(self.get_previous_values()["keys"]), 3)
+
     def test_a_rotation_changes_the_name(self):
         key = self.key_profiles()[1]
 
@@ -1808,7 +1944,7 @@ class RotationApiTests(ServerTestCase):
         # The new type is the identity of the key now, so the dashboard and the
         # check form read it (section 23.3).
         status = {entry["key_id"]: entry for entry in self.get_key_status()}
-        self.assertEqual(status[key["id"]]["type"], "cloud")
+        self.assertEqual(status[body["key_id"]]["type"], "cloud")
 
         # The other direction works as well, and the name stops being a wallet
         # software choice.
@@ -1882,7 +2018,7 @@ class RotationApiTests(ServerTestCase):
 
         # The new path is the identity of the key now, so it may not be recorded
         # as the next rotation either.
-        self.assert_rejected_at(f"/api/keys/{key['id']}/rotate", {
+        self.assert_rejected_at(f"/api/keys/{self.key_profiles()[0]['id']}/rotate", {
             "replaced": True,
             "keep_name": True,
             "address_path": "m/48'/5'/0'/2'",
@@ -1922,7 +2058,7 @@ class RotationApiTests(ServerTestCase):
             [{"code": "key_unavailable", "source": "Key 2: Blockstream Jade"}],
         )
         self.assertEqual(self.get_alerts(), [])
-        # The key is free again, so a new check can be recorded for it.
+        # The key is free again, so a new check can be recorded for the new row.
         self.post_health_check(unavailable_payload(self.key_profiles()[1]))
 
     def test_a_rotation_leaves_the_other_keys_alone(self):
@@ -1948,6 +2084,9 @@ class RotationApiTests(ServerTestCase):
         self.assertEqual([alert["code"] for alert in self.get_alerts()], ["software_incompatible"])
 
     def test_a_rotation_does_not_change_an_earlier_check(self):
+        # A rotation retires the key row and inserts a new one for the same slot,
+        # so an older check keeps the snapshot it was recorded with: the name, the
+        # type and the model (section 32.8 point 5).
         key = self.key_profiles()[1]
         saved_id = self.post_health_check(unavailable_payload(key))
         before = self.get_record(saved_id)
@@ -1959,8 +2098,8 @@ class RotationApiTests(ServerTestCase):
         self.assertEqual(after["key_checks"][0]["available"], before["key_checks"][0]["available"])
         self.assertEqual(after["key_checks"][0]["comments"], before["key_checks"][0]["comments"])
         self.assertEqual(after["key_checks"][0]["key_number"], 2)
-        # The name shown is the name the key has now (section 25.2).
-        self.assertEqual(after["key_checks"][0]["name"], "Replacement")
+        self.assertEqual(after["key_checks"][0]["name"], "Blockstream Jade")
+        self.assertEqual(after["key_checks"][0]["type"], "hardware")
 
 
 class AcknowledgementApiTests(ServerTestCase):
