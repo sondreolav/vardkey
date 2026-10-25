@@ -556,11 +556,13 @@ class AppHandlerTests(ServerTestCase):
         values = dict(zip(HEADERS, rows[1]))
 
         self.assertEqual(values["Check id"], str(saved_id))
-        # A closure is written as the code, the action and the date, in the last
-        # column (sections 27 and 32.8 point 6).
+        # A closure is written as the source of the alert, the code, the action
+        # and the date, in the last column (sections 27, 32.8 point 6 and 32.9
+        # point 1).
         self.assertRegex(
             values["Follow-up closed"],
-            r"^key_unavailable: rotate \(\d{4}-\d{2}-\d{2}\)$",
+            r"^Key 2: Blockstream Jade — key_unavailable: rotate "
+            r"\(\d{4}-\d{2}-\d{2}\)$",
         )
 
     def test_health_check_form_is_served_in_english(self):
@@ -914,10 +916,10 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual(record["closed_alerts"], [])
 
     def test_the_history_list_reports_the_key_and_the_follow_up_status(self):
-        # Every summary keeps the fields it already carried and adds two of its
-        # own: the name each key was recorded with on the check, and whether the
-        # check raised anything to follow up (sections 32.2 point 14 and 32.8
-        # point 5).
+        # Every summary keeps the fields it already carried and adds three of its
+        # own: the name each key was recorded with on the check, whether the check
+        # raised anything to follow up, and whether it still has something open
+        # (sections 32.2 point 14, 32.8 point 5 and 32.9 point 2).
         key = self.key_profiles()[0]
         saved_id = self.post_health_check(sample_payload(key))
 
@@ -926,6 +928,8 @@ class AppHandlerTests(ServerTestCase):
         self.assertEqual(summary["key_numbers"], [1])
         self.assertEqual(summary["key_names"], ["SeedSigner"])
         self.assertFalse(summary["needs_follow_up"])
+        # A check that raised nothing has nothing open either.
+        self.assertFalse(summary["follow_up_open"])
         # The fields the summary already had are unchanged.
         self.assertEqual(summary["checked_at"], "2026-10-01")
         self.assertEqual(summary["next_check_due"], "2027-10-01")
@@ -940,24 +944,68 @@ class AppHandlerTests(ServerTestCase):
         summary = self.get_health_checks()[0]
         self.assertEqual(summary["key_names"], ["Blockstream Jade"])
         self.assertTrue(summary["needs_follow_up"])
+        self.assertTrue(summary["follow_up_open"])
 
-        # The name in the summary is the one recorded on the check, and the
-        # status belongs to the saved check itself: neither a rotation nor a
-        # rename changes them (sections 32.2 point 14 and 32.8 point 5).
+        # The name in the summary is the one recorded on the check, and
+        # needs_follow_up belongs to the saved check itself: neither a rotation
+        # nor a rename changes them (sections 32.2 point 14 and 32.8 point 5).
+        # follow_up_open follows the alert the dashboard shows, so the rotation
+        # closes it (section 32.9 point 2).
         self.rotate(key["id"], keep_name=False, name="Replacement")
 
         summary = self.get_health_checks()[0]
         self.assertEqual(summary["key_names"], ["Blockstream Jade"])
         self.assertTrue(summary["needs_follow_up"])
+        self.assertFalse(summary["follow_up_open"])
         self.assertEqual(self.get_alerts(), [])
         # The active key carries the new name.
         self.assertEqual(self.key_profiles()[1]["name"], "Replacement")
+
+    def test_the_history_list_attributes_a_re_raised_alert_to_the_newer_check(self):
+        # An alert a newer check re-raises belongs to the newer check (section 7),
+        # so the older summary reads as closed while the newer one is the open one
+        # (section 32.9 point 2). needs_follow_up stays frozen on both.
+        key = self.key_profiles()[0]
+        older = sample_payload(key)
+        older["checked_at"] = "2026-01-01"
+        older["contact_info_verified"] = "Needs external update"
+        older_id = self.post_health_check(older)
+        alert = self.get_alerts()[0]
+        self.assertEqual(alert["code"], "contact_info_unconfirmed")
+
+        # Closing it frees the key, so a newer check can be recorded.
+        with self.post_acknowledgement({
+            "code": alert["code"],
+            "source": alert["source"],
+            "action": "contact_updated",
+        }) as response:
+            self.assertEqual(response.status, 201)
+
+        newer = sample_payload(key)
+        newer["checked_at"] = "2026-10-02"
+        newer["contact_info_verified"] = "Needs external update"
+        newer_id = self.post_health_check(newer)
+
+        summaries = {entry["id"]: entry for entry in self.get_health_checks()}
+
+        self.assertNotEqual(older_id, newer_id)
+        self.assertTrue(summaries[older_id]["needs_follow_up"])
+        self.assertTrue(summaries[newer_id]["needs_follow_up"])
+        self.assertFalse(summaries[older_id]["follow_up_open"])
+        self.assertTrue(summaries[newer_id]["follow_up_open"])
+        # The merged alert is the newer check's, which is the one the dashboard
+        # shows and the one that keeps the key blocked.
+        self.assertEqual(
+            [entry["check_id"] for entry in self.get_alerts()], [newer_id]
+        )
 
     def test_the_history_detail_lists_every_closure_of_the_check(self):
         # A closure hangs on the check it closed through its check_id, and a
         # software closure is listed as well: removing a failing software closes
         # its alert just like a rotation closes a key alert (sections 27 and
-        # 32.8 point 6).
+        # 32.8 point 6). Each closure carries the source of the alert, so the key
+        # form and the software form of one code are told apart
+        # (section 32.9 point 1).
         key = self.key_profiles()[0]
         with self.post_wallet_software(["Sparrow Wallet", "BlueWallet"]) as response:
             self.assertEqual(response.status, 200)
