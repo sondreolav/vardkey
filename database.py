@@ -1313,8 +1313,9 @@ def list_export_rows(database_path="data/vardkey.sqlite3"):
     so a rotation or a rename cannot rewrite an older row (section 32.8 point 5);
     the key number is the multisig slot, which never changes. The per-provider
     security results are joined into a single text cell, because they have more
-    than one value per submission, and so are the closures that belong to a key
-    (section 27).
+    than one value per submission, and so is every closure of the check, whether
+    it belongs to a key or to a software entry in the settings list
+    (sections 27 and 32.8 point 6).
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
