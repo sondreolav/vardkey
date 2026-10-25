@@ -72,7 +72,11 @@ export const requireAdmin = sdk.setupOnInit(async (effects) => {
       },
     )
   } catch (error) {
-    console.warn(`The admin probe did not run, so it was ignored: ${error}`)
+    // A caught value is `unknown`, so it is normalised before it is used, the
+    // same way the two actions normalise stdout and stderr.
+    console.warn(
+      `The admin probe did not run, so it was ignored: ${String(error)}`,
+    )
   }
 
   if (configured) {
