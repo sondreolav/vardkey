@@ -1810,13 +1810,17 @@ class DatabaseInitializationTests(unittest.TestCase):
 
         self.assertEqual(len(rows), 1)
         closed = rows[0]["closed_alerts"]
-        # Both closures are listed, in the order they were written, with the code,
-        # the action and the date.
+        # Both closures are listed, in the order they were written, with the
+        # source of the alert, the code, the action and the date. The source is
+        # what tells the key form and the software form of one code apart
+        # (sections 27, 32.8 point 6 and 32.9 point 1).
         self.assertRegex(
-            closed, r"^key_unavailable: rotate \(\d{4}-\d{2}-\d{2}\)"
+            closed,
+            r"^Key 1: SeedSigner — key_unavailable: rotate \(\d{4}-\d{2}-\d{2}\)",
         )
         self.assertRegex(
-            closed, r"software_incompatible: remove_software \(\d{4}-\d{2}-\d{2}\)$"
+            closed,
+            r"Sparrow Wallet — software_incompatible: remove_software \(\d{4}-\d{2}-\d{2}\)$",
         )
 
     def test_invalid_status_and_duplicate_key_numbers_are_rejected(self):
