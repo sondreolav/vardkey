@@ -1,6 +1,7 @@
 export const short = {
   en_US: 'Record the annual check of a multisig setup, 2-of-3 by default',
-  es_ES: 'Registra la revisión anual de una configuración multifirma, 2 de 3 por defecto',
+  es_ES:
+    'Registra la revisión anual de una configuración multifirma, 2 de 3 por defecto',
   de_DE: 'Jährliche Prüfung eines Multisig-Setups, standardmäßig 2 von 3',
   pl_PL: 'Zapisuj coroczny przegląd konfiguracji multisig, domyślnie 2 z 3',
   fr_FR:
