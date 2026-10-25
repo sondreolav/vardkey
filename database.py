@@ -1315,7 +1315,9 @@ def list_export_rows(database_path="data/vardkey.sqlite3"):
     security results are joined into a single text cell, because they have more
     than one value per submission, and so is every closure of the check, whether
     it belongs to a key or to a software entry in the settings list
-    (sections 27 and 32.8 point 6).
+    (sections 27 and 32.8 point 6). Each closure carries the source it belonged
+    to, so the key form and the software form of one code are told apart
+    (section 32.9 point 1).
     """
     connection = sqlite3.connect(database_path, timeout=5)
     connection.row_factory = sqlite3.Row
@@ -1361,17 +1363,19 @@ def _grouped_values(connection, table, label_column, value_column):
 
 
 def _grouped_closures(connection):
-    """Return {check_id: "code: action (date); ..."} for the closures per check.
+    """Return {check_id: "source — code: action (date); ..."} for one check.
 
     Every closure of a check is listed, whether it belongs to a key or to a
     software entry in the settings list: a closure hangs on the check it closed
     through its ``check_id``, so a rotation, a replaced hardware, an updated
     contact, an ignored key alert, and a software alert closed by removing it
-    are all shown (sections 27 and 32.8 point 6).
+    are all shown (sections 27 and 32.8 point 6). The source is written in front
+    of the code, so the key form and the software form of one code can be told
+    apart (section 32.9 point 1).
     """
     rows = connection.execute(
         """
-        SELECT check_id, code, reason, acknowledged_at
+        SELECT check_id, code, source, reason, acknowledged_at
         FROM alert_acknowledgements
         WHERE check_id IS NOT NULL
         ORDER BY id
@@ -1379,7 +1383,10 @@ def _grouped_closures(connection):
     ).fetchall()
     grouped = {}
     for row in rows:
-        entry = f"{row['code']}: {row['reason']} ({_short_date(row['acknowledged_at'])})"
+        entry = (
+            f"{row['source']} — {row['code']}: {row['reason']} "
+            f"({_short_date(row['acknowledged_at'])})"
+        )
         grouped.setdefault(row["check_id"], []).append(entry)
     return {check_id: "; ".join(values) for check_id, values in grouped.items()}
 
