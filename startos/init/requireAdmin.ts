@@ -43,6 +43,11 @@ except Exception:
  * existing `Set Admin Password` action, so the password is still generated
  * inside the container and shown once.
  *
+ * The severity is the strictest the SDK offers. The box test of section 32.8
+ * point 7 showed that 'important' only lists the task as *recommended*, so the
+ * user could still start the app without an admin, which is not the task
+ * point 1 asks for.
+ *
  * The probe fails open. If it cannot run, no task is raised rather than a task
  * being raised on a guess, because a task that is raised wrongly would hold the
  * service back for a user who already has an admin account.
@@ -83,7 +88,7 @@ export const requireAdmin = sdk.setupOnInit(async (effects) => {
     return sdk.action.clearTask(effects, ADMIN_TASK_REPLAY_ID)
   }
 
-  await sdk.action.createOwnTask(effects, setAdminPassword, 'important', {
+  await sdk.action.createOwnTask(effects, setAdminPassword, 'critical', {
     reason: i18n('Set the admin password before VardKey can be used.'),
     replayId: ADMIN_TASK_REPLAY_ID,
   })
