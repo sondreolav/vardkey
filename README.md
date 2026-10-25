@@ -9,7 +9,7 @@
 > the application's own documentation is accurate and fully applicable — see the
 > Documentation section of `instructions.md`.
 
-VardKey records the annual health check of a fixed 2-of-3 Bitcoin multisig setup: the three keys,
+VardKey records the annual health check of a Bitcoin multisig setup, 2-of-3 by default: the keys,
 the yearly checklist, the follow-up alerts, and the full history, in a local SQLite database. It
 does not sign transactions, perform wallet operations, or store wallet secrets. The application
 source is this repository: <https://gitea.sondreolav.com/ai-bot/helsesjekk>.
@@ -50,10 +50,14 @@ daemon runs as the image default.
 One subcontainer runs, named `vardkey-sub`, hosting a single daemon named `primary`. The daemon
 runs `python3 app.py`. There is no sidecar, no oneshot, and no second container.
 
-The `COPY` lines matter: `app.py`, `database.py`, `alerts.py`, `export.py`, and `validation.py` are
-copied to `/app`, and `static/` is copied to `/app/static`. `app.py` answers `/health` from code,
-but every page and asset is read from `./static`, so an image built without it reports a healthy
-service whose entire UI answers `404`.
+The `COPY` lines matter: `app.py`, `database.py`, `alerts.py`, `export.py`, `validation.py`,
+`auth.py`, `maintenance.py`, and `secret_guard.py` are copied to `/app`, and `static/` is copied to
+`/app/static`. `app.py` answers `/health` from code, but every page and asset is read from
+`./static`, so an image built without it reports a healthy service whose entire UI answers `404`.
+
+The package artwork is the `icon.svg` at the repository root, which the build reads from the root.
+It is the same retro drawing as the icon the application serves, and the two must stay in step; it
+must stay under 40 KiB.
 
 ## Volume and Data Layout
 
@@ -67,7 +71,7 @@ The database file is `/data/vardkey.sqlite3`. The application's own default is
 `/data`.
 
 Because the whole database is a single file on the volume, restoring the volume restores the entire
-installation: the three key profiles, every saved check, the wallet software list, and the alert
+installation: the key profiles, every saved check, the wallet software list, and the alert
 acknowledgements.
 
 ## File Models
@@ -86,8 +90,9 @@ Both are set by the package on every start; a user has no reason to change eithe
 action that does.
 
 The application does keep configuration of its own, but it lives in the database rather than in a
-file: the key setup, the wallet software list, and the settings are all rows. A hand edit of the
-database file is therefore the only way to change them out of band, and it is not supported.
+file: the key setup, the wallet software list, the admin account, and the settings are all rows. A
+hand edit of the database file is therefore the only way to change them out of band, and it is not
+supported.
 
 ## Dependencies
 
@@ -112,22 +117,55 @@ enables. Nothing else in the application listens on a port.
 ## Installation and First-Run Flow
 
 Installing the package creates the `main` volume and starts the single daemon. There is no install
-action, no generated credential, and no bootstrapping step run through the application's own API.
+action and no generated credential: the whole first-run flow is the application's own, and the
+package adds no ordering constraint on top of it.
 
-On a fresh install the database is created empty, and the application answers the first-run setup
-step rather than the dashboard: the user gives each of the three key slots a name, a type, and an
-address path. That setup is the application's own flow at `/setup`, not a StartOS action or task.
-The package adds no ordering constraint on top of it.
+On a fresh install the database is created empty, and the application shows its **create-admin
+step** before anything else: the user picks a username and a password, and the session that answers
+is the one every later page and API call needs. The `Set Admin Password` action and the task below
+point at that same account, so a user who never reaches the web interface can set the password from
+StartOS instead. See [Actions](#actions) and [Tasks](#tasks).
+
+Once an admin exists, the application answers the **first-run setup step** rather than the
+dashboard: the user gives the multisig threshold, the number of key slots, and each key a name, a
+type, and an address path. That setup is the application's own flow at `/setup`, not a StartOS
+action or task.
 
 ## Actions
 
-None. The package declares no actions. Everything the user does — the key setup, the health check
-form, the history, the settings, and the CSV download — is done through the web interface.
+Two actions are registered through `Actions.of()` in `startos/actions/index.ts`, with their strings
+in `startos/i18n/dictionaries/`. Both appear under **Actions & Config** in StartOS.
+
+| id | name | what it does |
+| --- | --- | --- |
+| `delete-all-data` | **Delete all data** | Deletes the key setup, the saved checks, and the wallet software list, so the app is back at the first-run setup step. The admin account is kept, so the user stays signed in. |
+| `set-admin-password` | **Set Admin Password** | Generates a new admin password, shows it once, and replaces any existing one. An empty `Admin username` keeps the stored username, or creates the account when none exists. |
+
+Both run `maintenance.py` in a `withTemp` subcontainer mounted on the `main` volume, and neither is
+an HTTP endpoint. The generated password never travels from the host into the container, as an
+argument or on stdin: `maintenance.py` generates it inside the container and prints the credentials
+as one JSON object that the handler reads back. `delete-all-data` refuses to run without its
+confirmation box ticked, and the handler enforces that, because a toggle has no `required` flag.
 
 ## Tasks
 
-None. The package creates no tasks, so the service is never held on a prompt and its ordinary
-Start / Stop controls are always available.
+One task is raised, by the init script `startos/init/requireAdmin.ts`, which is registered in
+`sdk.setupInit()` after the actions. While the database holds no admin, it raises the task
+**Set the admin password before VardKey can be used.**, pointing at the `set-admin-password` action
+above; once an admin exists, it clears the task again.
+
+**The task does not hold the service back.** On the box it shows on Tasks as *recommended*, and the
+user can start the app without an admin. That is not a bug: this SDK release offers no
+`TaskCondition` for "the admin password is unset" — the only one is `input-not-matches`, which is
+about an action's form — so the init script raises and clears the task itself, with a replay id it
+writes once and reuses. What actually refuses everything until an admin exists is the application's
+own login gate: `/api/*` answers `401`, the pages redirect to `/login`, and `/login` shows the
+create-admin form.
+
+The probe that decides this cannot read the application's SQLite database from its own JavaScript
+context, so it runs a small `python3` command in a `withTemp` subcontainer that opens the database
+**readonly**. It **fails open**: if the probe cannot run, no task is raised rather than a task being
+raised on a guess, so a user who already has an admin is never held back by a wrong answer.
 
 ## Health Checks
 
@@ -162,8 +200,9 @@ everything in that one file and contacts nothing outside the container.
 2. **No wallet secrets, by design.** The application never asks for or stores a seed phrase, a
    private key, a wallet password, or a cloud credential. This is a standing prohibition, not an
    unfinished feature.
-3. **One setup only.** The application is built for exactly one 2-of-3 multisig setup with three
-   key slots. More than three keys, or another threshold, is not supported.
+3. **One setup only.** The application is built for exactly one multisig setup. Its threshold and
+   its number of key slots are configured at first run — `2 ≤ key_count ≤ 15` and
+   `1 ≤ threshold ≤ key_count`, with 2-of-3 as the default — but there is never a second setup.
 4. **No external services.** There is no AI integration, no Bitcoin node integration, and no cloud
    sync of application data.
 5. **A key with an open alert cannot be checked.** The server enforces this, so a direct API call
@@ -173,7 +212,14 @@ everything in that one file and contacts nothing outside the container.
    Excel compatibility.
 7. **The package id is `vardkey`, while the repository is `helsesjekk`.** The Gitea repository and
    the project id keep the older name; only the product and the package were renamed.
-8. **The icon is a placeholder.** It will be replaced when the package reaches its first release.
+8. **The database is not encrypted.** The SQLite file sits in plain form on the `main` volume, so
+   anyone who can read the volume or a backup can read every key profile and every saved check.
+   StartOS's own disk encryption and volume access controls are what protect it; the application
+   adds no encryption of its own.
+9. **Free text is screened locally, not comprehensively.** Every free-text field is checked by
+   `secret_guard.py` before it is stored, so the unmistakable wallet-secret shapes are refused with
+   `400`, but a bare 64-character hex string, a phrase in another language, or a secret split across
+   several fields is not caught. The check makes no network call.
 
 ## Quick Reference for AI Consumers
 
@@ -191,7 +237,7 @@ startos_managed_env_vars:
 dependencies: none
 interfaces:
   ui: { type: ui, port: 8080 }
-actions: []
-tasks: []
+actions: [delete-all-data, set-admin-password]
+tasks: [set-admin-password]
 health_checks: []
 ```
