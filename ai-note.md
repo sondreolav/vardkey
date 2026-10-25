@@ -11,37 +11,42 @@ Short working handover for the next model. Keep it short.
 
 ## Status
 
-- **Done and verified:** everything through §32.7, plus §32.8 stages A, B and C. Schema version **13**.
+- **Done and verified:** everything through §32.8, point 7 included. Schema version **13**.
   **532 green tests.** The StartOS package is built, sideloaded and running on a StartOS 0.4.0 box;
   the package version is still `0.1.0:0`.
-- **What is left, in this order:** **§32.8 point 7** (the user's manual end-to-end pass — see below),
-  then **§32.6** (the documentation drift), then **§32.5** (the raise to `1.0.0:0` with §18 step 12).
-  32.6 has to come after the rounds it documents, and 32.5 last.
+- **The required admin task is settled.** `startos/init/requireAdmin.ts` raises it with severity
+  `critical`, and the box test on a fresh volume shows it as *required* and holding the service back
+  until the admin password is set. With `important` it only showed as *recommended*, which was the
+  deviation §32.8 point 7 found. No deviation is left to document.
+- **What is left, in this order:** **§32.6** (the documentation drift), then **§32.5** (the raise to
+  `1.0.0:0` with §18 step 12). 32.6 has to come after the rounds it documents, and 32.5 last.
 - **A round stops when it is done.** Do not start the next item unless the user asks.
 - **Verified how:** the automated suite, the user's manual browser testing, and the install and test
   round on a StartOS 0.4.0 box. **The user runs the suite; the agent has no shell.**
 - **Tests:** `python3 -m unittest discover -s tests`. They run on a Windows copy at
   `C:\Users\<brukarnamn>\Downloads\helsesjekk`, so they must pass there as well as on Linux.
 
-## §32.8 point 7 — the one open item
+## §32.8 point 7 — done and confirmed by the user
 
-The user's manual end-to-end pass (BR-003). It covers: first setup and the mandatory admin step;
-login and logout; an expired or invalid session; a direct API call without a session; one full check
-and the CSV export; another threshold and key count; deleting all data with the confirmation;
-restart, backup and restore; PWA offline and online, also after logout; plus the six finished points
-(future date rejected, sticky top bar, the login lockout, the admin task, a rotation that does not
-change older history, and software closures in the history and the CSV).
+The user's manual end-to-end pass (BR-003) ran on the box and came out as expected: first setup and
+the mandatory admin step; login and logout; an expired or invalid session; a direct API call without
+a session; one full check and the CSV export; another threshold and key count; deleting all data with
+the confirmation; restart, backup and restore; the six finished points (future date rejected, sticky
+top bar, the login lockout, the admin task, a rotation that does not change older history, and
+software closures in the history and the CSV); the CSRF test; and the PWA offline and online, also
+after logout.
 
-**Run so far, on the box:** everything above is OK except three things.
-
-- **The required task does not hold the service back.** `Set Admin Password` shows on Tasks as
-  *recommended*, so the user can start the app without an admin. That is a deviation from §32.8
-  point 1, which asks for a task the user cannot skip. The decision is open: try a stricter severity
-  in `startos/init/requireAdmin.ts` and re-test on the box, or accept the deviation and document what
-  actually happens in §32.6. SDK 3.0.4 has no `TaskCondition` for "the admin password is unset".
-- **The CSRF test is not run yet:** a `POST` to `/api/settings/wallet-software` with the session
-  cookie but **without** the `X-CSRF-Token` header must answer `403`, and must not store anything.
-- **PWA offline and online after logout** is not confirmed yet.
+- **The CSRF test:** a `POST` to `/api/settings/wallet-software` with the session cookie but without
+  the `X-CSRF-Token` header answers `403` and stores nothing; with the token copied from the
+  `vardkey_csrf` cookie it answers `200`. **Do not hand out a plain `fetch` for this test:**
+  `static/session.js` replaces `window.fetch` and injects the header, so the call answers `200` and
+  looks like a bug that is not there. Use `XMLHttpRequest` from an application page instead —
+  `/login` cannot be used as the console context, because `login.js` loads no `session.js` but sends a
+  signed-in user straight back to `/`.
+- **The PWA:** offline the cached shell loads and the dashboard shows the "You are offline" state
+  instead of stale data, because `/api/*` is never cached; back online the page reloads itself and the
+  data returns; after signing out, `/` offline still serves the cached dashboard shell and not the
+  login page. `isCacheable()` is what guarantees the last one. No code change was needed.
 
 One expectation in the run was wrong, and the app is right: a key with a **software-sourced**
 `software_incompatible` is **not** blocked in the key select, because that alert carries no `key_id`.
@@ -325,8 +330,10 @@ volume, mounted at `/data`. No Postgres, no Redis, no external backend, no extra
   generates it there and prints it.
 - **The required task** from §32.8 point 1 lives in `startos/init/requireAdmin.ts` and keeps the same
   property: no password travels from the host into the container. It raises and clears the task itself,
-  because SDK 3.0.4 has no condition for "the admin password is unset". The probe fails open. Its
-  behaviour on the box is still open — see §32.8 point 7 above.
+  because SDK 3.0.4 has no condition for "the admin password is unset". The probe fails open. The
+  severity is `critical`, the strictest the SDK offers, and the box test on a fresh volume shows the
+  task as required and holding the service back until the admin password is set — with `important` it
+  only showed as *recommended*.
 - **Backups.** `startos/backups.ts` is `sdk.Backups.ofVolumes('main')`. StartOS stops the service for
   the duration of a backup, so the database file is quiescent while it is copied — no snapshot hook is
   needed.
@@ -480,6 +487,13 @@ volume, mounted at `/data`. No Postgres, no Redis, no external backend, no extra
   `database_path="data/vardkey.sqlite3"` as the default of every storage function (fifteen of them),
   and `app.py` carries it in `get_database_path()`. A missed one makes a single code path read or
   create the other file, silently.
+- **A browser test of a missing CSRF header must not use `fetch`.** `static/session.js` replaces
+  `window.fetch` and adds `X-CSRF-Token` to every same-origin call unless the header is already set, so
+  a `fetch(...)` in the console answers `200` and proves nothing. Use `XMLHttpRequest` from one of the
+  five application pages: it is not patched, it sends the cookies same-origin, and the server answers
+  `403` without the header. A header with a wrong value also answers `403`, because `session.js` never
+  overwrites a header that is already there. `/login` cannot host the test: `login.js` loads no
+  `session.js`, but it sends a signed-in user back to `/` from `/api/session`.
 
 ## Tooling — what the agent can and cannot do
 
