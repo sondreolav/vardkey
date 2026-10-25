@@ -129,8 +129,9 @@ class ExportTests(unittest.TestCase):
 
     def test_the_follow_up_closed_column_is_last_and_reads_back(self):
         # Every closure of a check is joined into the last column, like the
-        # security statuses (sections 27 and 32.8 point 6).
-        joined = "key_unavailable: rotate (2026-10-05); software_incompatible: remove_software (2026-10-06)"
+        # security statuses, and it carries the source of the alert it closed
+        # (sections 27, 32.8 point 6 and 32.9 point 1).
+        joined = "Key 2: Blockstream Jade — key_unavailable: rotate (2026-10-05)"
         rows = parse(build_csv([{"closed_alerts": joined}]))
         values = dict(zip(HEADERS, rows[1]))
 
@@ -205,7 +206,9 @@ class ExportHistoryTests(unittest.TestCase):
     def test_a_closed_software_alert_is_written_into_the_last_column(self):
         # A software alert raised by the settings list belongs to no key, but its
         # closure still hangs on the check it closed through its check_id, so it
-        # is listed as well (sections 10, 27 and 32.8 point 6).
+        # is listed as well (sections 10, 27 and 32.8 point 6). The closure
+        # carries the source of the alert, which is the software name here
+        # (section 32.9 point 1).
         key = self.keys()[0]
         saved_id = self.store_check(key)
         save_alert_acknowledgement(
@@ -223,8 +226,41 @@ class ExportHistoryTests(unittest.TestCase):
         self.assertEqual(HEADERS[-1], "Follow-up closed")
         self.assertRegex(
             rows[0]["Follow-up closed"],
-            r"^software_incompatible: remove_software \(\d{4}-\d{2}-\d{2}\)$",
+            r"^Sparrow Wallet — software_incompatible: remove_software "
+            r"\(\d{4}-\d{2}-\d{2}\)$",
         )
+
+    def test_the_two_forms_of_one_code_are_told_apart_by_the_source(self):
+        # security_vulnerable has a key form and a software form, and a closure
+        # carries the source it belonged to, so the two can be told apart in the
+        # last column (section 32.9 point 1). The column names and the column
+        # order are unchanged, and only the value grows.
+        key = self.keys()[0]
+        saved_id = self.store_check(key)
+        save_alert_acknowledgement(
+            "security_vulnerable",
+            "Key 1: SeedSigner",
+            key["id"],
+            saved_id,
+            "ignore",
+            self.database_path,
+        )
+        save_alert_acknowledgement(
+            "security_vulnerable",
+            "Sparrow Wallet",
+            None,
+            saved_id,
+            "remove_software",
+            self.database_path,
+        )
+
+        rows = self.export_rows()
+        cell = rows[0]["Follow-up closed"]
+
+        self.assertIn("Key 1: SeedSigner — security_vulnerable: ignore", cell)
+        self.assertIn("Sparrow Wallet — security_vulnerable: remove_software", cell)
+        self.assertEqual(dict(COLUMNS)["closed_alerts"], "Follow-up closed")
+        self.assertEqual(HEADERS[-1], "Follow-up closed")
 
     def test_an_older_row_keeps_the_name_and_the_type_of_its_snapshot(self):
         # A rotation retires the key row and inserts a new one for the same
