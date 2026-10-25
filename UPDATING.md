@@ -7,12 +7,14 @@ version to track, and no upstream artifact to verify before a bump.
 ## Determining the upstream version
 
 There is no upstream. The application source (`app.py`, `database.py`, `alerts.py`, `export.py`,
-`validation.py`, and `static/`) lives at the repository root, and that is what the `Dockerfile`
-copies into the image. The application carries no version number of its own, so nothing outside
-this repository has to be checked before a release.
+`validation.py`, `auth.py`, `maintenance.py`, `secret_guard.py`, and `static/`) lives at the
+repository root, and that is what the `Dockerfile` copies into the image. The application carries no
+version number of its own, so nothing outside this repository has to be checked before a release.
 
-The application's database schema has its own version (currently 11), which is handled inside
-`database.py` and has nothing to do with the package version.
+The application's database schema has its own version (currently **13**), which is handled inside
+`database.py` and has nothing to do with the package version. The package needs no data migration of
+its own: the application migrates its schema itself on startup, so `startos/versions/` stays empty.
+A package change that did need one would put its `up`/`down` there, not in the application.
 
 ## Applying the bump
 
@@ -30,3 +32,10 @@ revision is what moves.
    the repository root. A change to the set of application files needs the matching `COPY` line.
 4. The git tag matches the version, with `:` replaced by `_` and a leading `v`: `0.1.0:1` becomes
    `v0.1.0_1`. Push the tag individually.
+
+## Downgrading
+
+A downgrade to an older package version is **not supported** once the application's schema has
+moved forward: the older build refuses to open a database that is newer than the schema it knows,
+rather than writing in it. Restore a backup taken with the older version, or reinstall and
+configure the setup again.
