@@ -178,7 +178,9 @@ def closed_alerts(acknowledgements):
     the settings list: a closure hangs on the check it closed through its
     ``check_id``, so a rotation, a replaced hardware, an updated contact, an
     ignored key alert, and a software alert closed by removing it are all listed
-    with the action and the date (sections 27 and 32.8 point 6).
+    with the action and the date (sections 27 and 32.8 point 6). The source the
+    alert carried is returned with it, so the key form and the software form of
+    one code can be told apart (section 32.9 point 1).
     """
     return [
         {
@@ -1033,15 +1035,20 @@ class AppHandler(BaseHTTPRequestHandler):
     def _send_health_check_list(self):
         """Return every saved check, newest first, with what needs follow-up.
 
-        Each summary keeps the fields ``list_health_checks`` returns and adds two
-        of its own (section 32.2 point 14). ``key_names`` is the name each key was
-        recorded with on that check, in the same order as ``key_numbers``: the
-        name is read from the snapshot the check carries, so a rotation or a
-        rename cannot rewrite an older summary (section 32.8 point 5).
-        ``needs_follow_up`` says whether that check raised anything to follow up,
-        read from the same alert rules the dashboard uses; it is a property of the
-        saved check itself, so it does not change when the user closes an alert
-        later. Both fields are additive, so the existing names and types are
+        Each summary keeps the fields ``list_health_checks`` returns and adds
+        three of its own (sections 32.2 point 14 and 32.9 point 2).
+        ``key_names`` is the name each key was recorded with on that check, in the
+        same order as ``key_numbers``: the name is read from the snapshot the
+        check carries, so a rotation or a rename cannot rewrite an older summary
+        (section 32.8 point 5). ``needs_follow_up`` says whether that check raised
+        anything to follow up, read from the same alert rules the dashboard uses;
+        it is a property of the saved check itself, so it does not change when the
+        user closes an alert later. ``follow_up_open`` says whether that check has
+        anything open **now**, read from the merged, unacknowledged alerts the
+        dashboard shows, so the history card can tell ``Needs follow-up`` from a
+        check whose follow-ups are all closed. An alert a newer check re-raises
+        belongs to the newer check (section 7), so it is the newer summary that
+        stays open. Every field is additive, so the existing names and types are
         unchanged.
         """
         database_path = get_database_path()
@@ -1049,8 +1056,11 @@ class AppHandler(BaseHTTPRequestHandler):
             keys = list_keys(database_path)
             cloud_names = cloud_key_names(keys)
             summaries = list_health_checks(database_path)
+            records = []
             for summary in summaries:
                 record = get_health_check(summary["id"], database_path)
+                if record is not None:
+                    records.append(record)
                 names = {
                     entry["key_number"]: entry["name"]
                     for entry in (record.get("key_checks") if record else None) or ()
@@ -1061,6 +1071,18 @@ class AppHandler(BaseHTTPRequestHandler):
                 summary["needs_follow_up"] = bool(record) and bool(
                     build_alerts(record, cloud_names)
                 )
+            # The alerts that are open now, by the check they belong to: the
+            # merge rule attributes a re-raised alert to the newest check, so an
+            # older summary whose alert a newer check took over reads as closed
+            # (sections 7 and 32.9 point 2).
+            open_check_ids = {
+                alert["check_id"]
+                for alert in collect_alerts(
+                    records, list_alert_acknowledgements(database_path), cloud_names
+                )
+            }
+            for summary in summaries:
+                summary["follow_up_open"] = summary["id"] in open_check_ids
             self._send_json(200, summaries)
         except STORAGE_ERRORS:
             self._send_json(500, {"error": "Saved health checks are unavailable"})
@@ -1128,7 +1150,9 @@ class AppHandler(BaseHTTPRequestHandler):
         what was closed on it, with the action and the date. A closure that
         belongs to a software entry in the settings list is listed as well, since
         it hangs on the same check through its ``check_id``
-        (sections 27 and 32.8 point 6).
+        (sections 27 and 32.8 point 6). Each closure carries the source of the
+        alert it closed, so the key form and the software form of one code are
+        told apart (section 32.9 point 1).
         """
         database_path = get_database_path()
         try:
