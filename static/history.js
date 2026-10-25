@@ -169,16 +169,18 @@ function securityTable(securityChecks) {
 }
 
 function closedAlertsTable(closedAlerts) {
-  // The closures that belong to a key are shown with the code, the action
-  // written out as a readable label, and the date (section 27). The source is
-  // not a column: the alert is already named by its code, and the closure
-  // belongs to a key (section 32.1).
+  // Every closure of the check is shown with the source of the alert it closed,
+  // the code, the action written out as a readable label, and the date
+  // (section 27). The source is what tells the key form and the software form
+  // of the same code apart, so it has a column of its own (section 32.9
+  // point 1).
   if (!closedAlerts.length) {
     return emptyNote("No follow-up was closed on this check.");
   }
   return dataTable(
-    ["Alert", "Action", "Closed"],
+    ["Source", "Alert", "Action", "Closed"],
     closedAlerts.map((entry) => [
+      entry.source,
       entry.code,
       ACTION_LABELS[entry.action] || entry.action,
       entry.acknowledged_at,
@@ -229,9 +231,15 @@ function keyNamesText(check) {
 }
 
 function followUpText(check) {
-  // The summary reports whether the check raised anything to follow up, so the
-  // card says so in one word (section 32.2 point 14).
-  return check.needs_follow_up ? "Needs follow-up" : "All OK";
+  // The card reports the state of the check as it stands now, in three steps:
+  // nothing was raised, something is still open, or everything that was raised
+  // is closed (section 32.9 point 2). needs_follow_up is frozen at save time,
+  // while follow_up_open follows the merged, unacknowledged alerts the
+  // dashboard shows, so an alert a newer check re-raised is the newer check's.
+  if (!check.needs_follow_up) {
+    return "All OK";
+  }
+  return check.follow_up_open ? "Needs follow-up" : "Follow-up closed";
 }
 
 function renderList(checks) {
