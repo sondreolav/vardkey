@@ -11,46 +11,44 @@ Short working handover for the next model. Keep it short.
 
 ## Status
 
-- **Done and verified:** everything through §32.8, point 7 included. Schema version **13**.
-  **532 green tests.** The StartOS package is built, sideloaded and running on a StartOS 0.4.0 box;
-  the package version is still `0.1.0:0`.
-- **The required admin task is settled.** `startos/init/requireAdmin.ts` raises it with severity
-  `critical`, and the box test on a fresh volume shows it as *required* and holding the service back
-  until the admin password is set. With `important` it only showed as *recommended*, which was the
-  deviation §32.8 point 7 found. No deviation is left to document.
-- **What is left, in this order:** **§32.6** (the documentation drift), then **§32.5** (the raise to
-  `1.0.0:0` with §18 step 12). 32.6 has to come after the rounds it documents, and 32.5 last.
+- **Done and verified:** everything through §32.8, including point 7 — the user's manual end-to-end
+  pass on the box. Schema version **13**. **532 green tests.** The StartOS package is built, sideloaded
+  and running on a StartOS 0.4.0 box; the package version is still `0.1.0:0`.
+- **What is left, in this order:** **§32.9** (the two fixes below), then **§32.6** (the documentation
+  drift), then **§32.5** (the raise to `1.0.0:0` with §18 step 12). 32.6 has to come after the rounds it
+  documents, and 32.5 last.
 - **A round stops when it is done.** Do not start the next item unless the user asks.
 - **Verified how:** the automated suite, the user's manual browser testing, and the install and test
   round on a StartOS 0.4.0 box. **The user runs the suite; the agent has no shell.**
 - **Tests:** `python3 -m unittest discover -s tests`. They run on a Windows copy at
   `C:\Users\<brukarnamn>\Downloads\helsesjekk`, so they must pass there as well as on Linux.
 
-## §32.8 point 7 — done and confirmed by the user
+## §32.9 — the two fixes before §32.6
 
-The user's manual end-to-end pass (BR-003) ran on the box and came out as expected: first setup and
-the mandatory admin step; login and logout; an expired or invalid session; a direct API call without
-a session; one full check and the CSV export; another threshold and key count; deleting all data with
-the confirmation; restart, backup and restore; the six finished points (future date rejected, sticky
-top bar, the login lockout, the admin task, a rotation that does not change older history, and
-software closures in the history and the CSV); the CSRF test; and the PWA offline and online, also
-after logout.
+Both came out of the manual pass in §32.8. Both are small, and both must land **before** §32.6, so the
+documents describe the final behaviour. Each fix gets regression tests in the same change, and no
+assertion is deleted without being replaced by one that pins the new behaviour.
 
-- **The CSRF test:** a `POST` to `/api/settings/wallet-software` with the session cookie but without
-  the `X-CSRF-Token` header answers `403` and stores nothing; with the token copied from the
-  `vardkey_csrf` cookie it answers `200`. **Do not hand out a plain `fetch` for this test:**
-  `static/session.js` replaces `window.fetch` and injects the header, so the call answers `200` and
-  looks like a bug that is not there. Use `XMLHttpRequest` from an application page instead —
-  `/login` cannot be used as the console context, because `login.js` loads no `session.js` but sends a
-  signed-in user straight back to `/`.
-- **The PWA:** offline the cached shell loads and the dashboard shows the "You are offline" state
-  instead of stale data, because `/api/*` is never cached; back online the page reloads itself and the
-  data returns; after signing out, `/` offline still serves the cached dashboard shell and not the
-  login page. `isCacheable()` is what guarantees the last one. No code change was needed.
-
-One expectation in the run was wrong, and the app is right: a key with a **software-sourced**
-`software_incompatible` is **not** blocked in the key select, because that alert carries no `key_id`.
-Do not "fix" that.
+- **The source is missing from a closure.** `security_vulnerable` and `security_compromised` each have
+  a key form (`Key N: <name>`) and a software form (the name from the settings list), and a closure is
+  written as `code: action (YYYY-MM-DD)` alone, so the two are indistinguishable in the history and in
+  the CSV. The closure must carry its source: the key form as `Key N: <name>`, the software form as the
+  software name. **Additive:** the CSV column names and column order are unchanged, only the value of
+  `Follow-up closed` grows, and the same source appears in the closure table on the check in the
+  history. `closed_alerts` in `GET /api/health-checks/<id>` keeps its field names and gains the source
+  only if it is not there already. §9 and §10 are updated in the same round. A test that pins the
+  **absence** of the source is turned around, not deleted.
+- **The history card says `Needs follow-up` after everything is closed.** The card shows `All OK` or
+  `Needs follow-up`, and the second comes from `needs_follow_up`, which is a **frozen** property of the
+  saved check — it does not change when the user closes the alert. So a check whose follow-ups have all
+  been closed still reads `Needs follow-up`. The card must show the **current** state in three steps:
+  `All OK` when the check raised nothing, `Needs follow-up` while something is open, and a third word
+  when everything is closed (e.g. `Follow-up closed`). That needs a **new additive** field in the
+  summary, computed from the same alert and acknowledgement rules that already exist in
+  `alerts.py`/`app.py` — not from a new rule. **`needs_follow_up` must not change:** it is the stored
+  fact, and rewriting it would rewrite history. Note that an alert a newer check re-raises belongs to
+  the newer check by the merge rule in §7; write down the choice you made and pin it with a test. §9
+  and §11 are updated in the same round.
 
 ## The wallet-secret guard (round 32-B)
 
@@ -128,8 +126,8 @@ The rules are in `TODO.md` §7; these are the traps that have already cost time.
   a replaced hardware, an updated contact, an ignored key alert, and a software alert closed by
   removing it are all shown. `GET /api/health-checks/<id>` returns them as `closed_alerts`, and the CSV
   has one last column, `Follow-up closed`, with `code: action (YYYY-MM-DD)`, hanging on the check it
-  closed through `check_id`. The history table shows `Alert`, `Action` and `Closed` only — the source
-  is not a column.
+  closed through `check_id`. The history table shows `Alert`, `Action` and `Closed` — and, from §32.9,
+  the source as well, because the two forms of a security code are otherwise indistinguishable.
 - **The key card shows the next due date with the alert note.** `createKeyCard()` in `static/app.js`
   always renders `Next check due` and adds the alert note on top. The note comes in addition to the
   date, never instead of it.
@@ -204,7 +202,7 @@ can never be closed. Neither is fixed.
   and carries the name the check was recorded with, read from the snapshot on the check;
   `needs_follow_up` is a property of the saved check, so it does not change when an alert is closed or
   a key is renamed. Do not "fix" it to follow `collect_alerts()`, which hides acknowledged alerts and
-  would rewrite history.
+  would rewrite history. §32.9 adds a third field for the current state; the frozen one stays.
 - **The prohibition lists** in sections 1 and 13 of `TODO.md` stay unticked. They are standing
   prohibitions, to be re-confirmed before release — with the one amendment for the installable PWA.
 - **Whether a date is overdue is decided in the browser**, so `/api/key-status` stays independent of
@@ -270,6 +268,9 @@ Pages: `/`, `/setup`, `/settings`, `/health-check`, `/history`, `/login`. Endpoi
 `GET /api/alerts`, `POST /api/alerts/acknowledge`, `GET /api/export`, `POST /api/health-checks`.
 Field details are in `docs/application.md` — which is behind the code, see §32.6.
 
+`GET /api/health-checks` carries `key_names` and `needs_follow_up` today, and gains the third field
+from §32.9. `GET /api/health-checks/<id>` carries `closed_alerts` and `model` on each key check.
+
 Maintenance commands, run inside the container by the StartOS actions and usable by hand:
 `maintenance.py delete-all-data` and `maintenance.py set-admin-password`. Neither is an HTTP endpoint.
 
@@ -300,9 +301,8 @@ Five things that are easy to break:
 
 The rotate payload is `replaced` + `keep_name` + `name` + `type` + `address_path`, and `type` is
 optional. A rotation inserts a new row and retires the old one, and the acknowledgements are written
-against the **old** key id. `GET /api/health-checks/<id>` also returns `closed_alerts`, and each of its
-`key_checks` rows carries `model` as well. The `#history-detail` anchor and the `?id=` query on
-`/history` are client-side only: they never reach the server, so no route changed for them.
+against the **old** key id. The `#history-detail` anchor and the `?id=` query on `/history` are
+client-side only: they never reach the server, so no route changed for them.
 
 ## The StartOS package — the parts that bite
 
@@ -328,12 +328,11 @@ volume, mounted at `/data`. No Postgres, no Redis, no external backend, no extra
   (`set-admin-password`). Both run `maintenance.py` in a `withTemp` subcontainer, behind a confirmation
   the handler enforces. The generated password never travels into the container: `maintenance.py`
   generates it there and prints it.
-- **The required task** from §32.8 point 1 lives in `startos/init/requireAdmin.ts` and keeps the same
-  property: no password travels from the host into the container. It raises and clears the task itself,
-  because SDK 3.0.4 has no condition for "the admin password is unset". The probe fails open. The
-  severity is `critical`, the strictest the SDK offers, and the box test on a fresh volume shows the
-  task as required and holding the service back until the admin password is set — with `important` it
-  only showed as *recommended*.
+- **The admin task** from §32.8 lives in `startos/init/requireAdmin.ts` and keeps the same property: no
+  password travels from the host into the container. It raises and clears the task itself, because SDK
+  3.0.4 has no condition for "the admin password is unset", and the probe fails open. **On the box the
+  task is raised and shows on Tasks as *recommended*, and it does not hold the service back** — the
+  user can start the app without an admin. That is the behaviour §32.6 has to document.
 - **Backups.** `startos/backups.ts` is `sdk.Backups.ofVolumes('main')`. StartOS stops the service for
   the duration of a backup, so the database file is quiescent while it is copied — no snapshot hook is
   needed.
@@ -487,13 +486,6 @@ volume, mounted at `/data`. No Postgres, no Redis, no external backend, no extra
   `database_path="data/vardkey.sqlite3"` as the default of every storage function (fifteen of them),
   and `app.py` carries it in `get_database_path()`. A missed one makes a single code path read or
   create the other file, silently.
-- **A browser test of a missing CSRF header must not use `fetch`.** `static/session.js` replaces
-  `window.fetch` and adds `X-CSRF-Token` to every same-origin call unless the header is already set, so
-  a `fetch(...)` in the console answers `200` and proves nothing. Use `XMLHttpRequest` from one of the
-  five application pages: it is not patched, it sends the cookies same-origin, and the server answers
-  `403` without the header. A header with a wrong value also answers `403`, because `session.js` never
-  overwrites a header that is already there. `/login` cannot host the test: `login.js` loads no
-  `session.js`, but it sends a signed-in user back to `/` from `/api/session`.
 
 ## Tooling — what the agent can and cannot do
 
