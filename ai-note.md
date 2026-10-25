@@ -11,44 +11,15 @@ Short working handover for the next model. Keep it short.
 
 ## Status
 
-- **Done and verified:** everything through §32.8, including point 7 — the user's manual end-to-end
-  pass on the box. Schema version **13**. **532 green tests.** The StartOS package is built, sideloaded
-  and running on a StartOS 0.4.0 box; the package version is still `0.1.0:0`.
-- **What is left, in this order:** **§32.9** (the two fixes below), then **§32.6** (the documentation
-  drift), then **§32.5** (the raise to `1.0.0:0` with §18 step 12). 32.6 has to come after the rounds it
-  documents, and 32.5 last.
+- **Done and verified:** everything through §32.9 and §32.6. Schema version **13**. **534 green
+  tests.** The StartOS package is built, sideloaded and running on a StartOS 0.4.0 box; the package
+  version is still `0.1.0:0`.
+- **What is left:** **§32.5** — the raise to `1.0.0:0` with §18 step 12, once the user says so.
 - **A round stops when it is done.** Do not start the next item unless the user asks.
 - **Verified how:** the automated suite, the user's manual browser testing, and the install and test
   round on a StartOS 0.4.0 box. **The user runs the suite; the agent has no shell.**
 - **Tests:** `python3 -m unittest discover -s tests`. They run on a Windows copy at
   `C:\Users\<brukarnamn>\Downloads\helsesjekk`, so they must pass there as well as on Linux.
-
-## §32.9 — the two fixes before §32.6
-
-Both came out of the manual pass in §32.8. Both are small, and both must land **before** §32.6, so the
-documents describe the final behaviour. Each fix gets regression tests in the same change, and no
-assertion is deleted without being replaced by one that pins the new behaviour.
-
-- **The source is missing from a closure.** `security_vulnerable` and `security_compromised` each have
-  a key form (`Key N: <name>`) and a software form (the name from the settings list), and a closure is
-  written as `code: action (YYYY-MM-DD)` alone, so the two are indistinguishable in the history and in
-  the CSV. The closure must carry its source: the key form as `Key N: <name>`, the software form as the
-  software name. **Additive:** the CSV column names and column order are unchanged, only the value of
-  `Follow-up closed` grows, and the same source appears in the closure table on the check in the
-  history. `closed_alerts` in `GET /api/health-checks/<id>` keeps its field names and gains the source
-  only if it is not there already. §9 and §10 are updated in the same round. A test that pins the
-  **absence** of the source is turned around, not deleted.
-- **The history card says `Needs follow-up` after everything is closed.** The card shows `All OK` or
-  `Needs follow-up`, and the second comes from `needs_follow_up`, which is a **frozen** property of the
-  saved check — it does not change when the user closes the alert. So a check whose follow-ups have all
-  been closed still reads `Needs follow-up`. The card must show the **current** state in three steps:
-  `All OK` when the check raised nothing, `Needs follow-up` while something is open, and a third word
-  when everything is closed (e.g. `Follow-up closed`). That needs a **new additive** field in the
-  summary, computed from the same alert and acknowledgement rules that already exist in
-  `alerts.py`/`app.py` — not from a new rule. **`needs_follow_up` must not change:** it is the stored
-  fact, and rewriting it would rewrite history. Note that an alert a newer check re-raises belongs to
-  the newer check by the merge rule in §7; write down the choice you made and pin it with a test. §9
-  and §11 are updated in the same round.
 
 ## The wallet-secret guard (round 32-B)
 
@@ -120,14 +91,17 @@ The rules are in `TODO.md` §7; these are the traps that have already cost time.
   `newest_alert_check_id()` does not get exactly the same names as `collect_alerts()`, the alert's
   `source` differs, the acknowledgement stores `check_id = None`, `_is_acknowledged()` refuses to hide
   an alert without a check id, and the alert can never be closed. Keep the default `()` on
-  `build_alerts()`. `_send_health_check_list()` passes the same tuple for its `needs_follow_up` field.
+  `build_alerts()`. `_send_health_check_list()` passes the same tuple for its `needs_follow_up` and
+  `follow_up_open` fields.
 - **Every closure of a check is shown, key-sourced or not.** `app.closed_alerts()` and
   `database._grouped_closures()` list every acknowledgement that carries a `check_id`, so a rotation,
   a replaced hardware, an updated contact, an ignored key alert, and a software alert closed by
   removing it are all shown. `GET /api/health-checks/<id>` returns them as `closed_alerts`, and the CSV
-  has one last column, `Follow-up closed`, with `code: action (YYYY-MM-DD)`, hanging on the check it
-  closed through `check_id`. The history table shows `Alert`, `Action` and `Closed` — and, from §32.9,
-  the source as well, because the two forms of a security code are otherwise indistinguishable.
+  has one last column, `Follow-up closed`, hanging on the check it closed through `check_id`. **A
+  closure carries its source**, because the two forms of a security code are otherwise
+  indistinguishable: the CSV writes `<source> — <code>: <action> (YYYY-MM-DD)` into that cell, and the
+  history table shows `Source`, `Alert`, `Action` and `Closed`. The CSV column names and the column
+  order are unchanged — only the value grew.
 - **The key card shows the next due date with the alert note.** `createKeyCard()` in `static/app.js`
   always renders `Next check due` and adds the alert note on top. The note comes in addition to the
   date, never instead of it.
@@ -198,11 +172,14 @@ can never be closed. Neither is fixed.
   something is overdue and the earliest due date otherwise; `.overview-grid` is one column at every
   width.
 - **An empty alert list renders nothing.** The count beside the heading says `No alerts`.
-- **The two summary fields are additive and mean what they say.** `key_names` follows `key_numbers`
-  and carries the name the check was recorded with, read from the snapshot on the check;
-  `needs_follow_up` is a property of the saved check, so it does not change when an alert is closed or
-  a key is renamed. Do not "fix" it to follow `collect_alerts()`, which hides acknowledged alerts and
-  would rewrite history. §32.9 adds a third field for the current state; the frozen one stays.
+- **The three summary fields are additive and mean what they say.** `key_names` follows `key_numbers`
+  and carries the name the check was recorded with, read from the snapshot on the check.
+  `needs_follow_up` is a property of the **saved** check, so it does not change when an alert is closed
+  or a key is renamed; do not "fix" it to follow `collect_alerts()`, which hides acknowledged alerts
+  and would rewrite history. `follow_up_open` is the **current** state, computed from the merged,
+  unacknowledged alerts the dashboard shows, so an alert that a newer check re-raises belongs to the
+  newer check and the older check reads as closed. The history card reads its three states (`All OK`,
+  `Needs follow-up`, `Follow-up closed`) from these two fields.
 - **The prohibition lists** in sections 1 and 13 of `TODO.md` stay unticked. They are standing
   prohibitions, to be re-confirmed before release — with the one amendment for the installable PWA.
 - **Whether a date is overdue is decided in the browser**, so `/api/key-status` stays independent of
@@ -266,10 +243,10 @@ Pages: `/`, `/setup`, `/settings`, `/health-check`, `/history`, `/login`. Endpoi
 `GET /api/settings`, `POST /api/settings/keys`, `POST /api/settings/wallet-software`,
 `POST /api/keys/<id>/rotate`, `GET /api/health-checks`, `GET /api/health-checks/<id>`,
 `GET /api/alerts`, `POST /api/alerts/acknowledge`, `GET /api/export`, `POST /api/health-checks`.
-Field details are in `docs/application.md` — which is behind the code, see §32.6.
+Field details are in `docs/application.md`, which is now in step with the code.
 
-`GET /api/health-checks` carries `key_names` and `needs_follow_up` today, and gains the third field
-from §32.9. `GET /api/health-checks/<id>` carries `closed_alerts` and `model` on each key check.
+`GET /api/health-checks` carries `key_names`, `needs_follow_up` and `follow_up_open`.
+`GET /api/health-checks/<id>` carries `closed_alerts` and `model` on each key check.
 
 Maintenance commands, run inside the container by the StartOS actions and usable by hand:
 `maintenance.py delete-all-data` and `maintenance.py set-admin-password`. Neither is an HTTP endpoint.
@@ -332,7 +309,7 @@ volume, mounted at `/data`. No Postgres, no Redis, no external backend, no extra
   password travels from the host into the container. It raises and clears the task itself, because SDK
   3.0.4 has no condition for "the admin password is unset", and the probe fails open. **On the box the
   task is raised and shows on Tasks as *recommended*, and it does not hold the service back** — the
-  user can start the app without an admin. That is the behaviour §32.6 has to document.
+  user can start the app without an admin. `README.md` documents that behaviour.
 - **Backups.** `startos/backups.ts` is `sdk.Backups.ofVolumes('main')`. StartOS stops the service for
   the duration of a backup, so the database file is quiescent while it is copied — no snapshot hook is
   needed.
@@ -347,7 +324,8 @@ volume, mounted at `/data`. No Postgres, no Redis, no external backend, no extra
 - **Documentation layout.** `README.md` is the StartOS package README, with the guide's fixed heading
   set. The application's own reference is `docs/application.md`, which `instructions.md` links to.
   `AGENTS.md` is the repo-specific agent context, and `CLAUDE.md` is the one-line `@AGENTS.md` import.
-  Both `README.md` and `docs/application.md` are behind the code — that is §32.6.
+  All of them, plus `UPDATING.md` and the package i18n strings, were brought in step with the code in
+  §32.6; keep them there.
 
 ## Traps that already cost time — do not repeat
 
@@ -433,6 +411,8 @@ volume, mounted at `/data`. No Postgres, no Redis, no external backend, no extra
   prettier's default, so `printWidth` is 80 and `quoteProps` is `"as-needed"`. Write it the way
   prettier would, or run
   `npx prettier --config node_modules/@start9labs/start-sdk/prettier.config.json --write startos`.
+  In `startos/manifest/i18n.ts` a value that does not fit the line breaks after the colon, and a
+  string with an apostrophe uses double quotes.
 - **The page heading uses `class="eyebrow"` too.** `tests/test_health_check_form.py` asserts the
   eyebrow lists of `health-check.html` and `settings.html` **exactly**, so a new eyebrow breaks it, and
   so does a removed one. The secret warnings deliberately use `class="secret-warning"`, not an eyebrow.
@@ -444,6 +424,10 @@ volume, mounted at `/data`. No Postgres, no Redis, no external backend, no extra
 - **Do not assert on the quoting style of the JavaScript.** `static/health-check.js` uses single quotes
   for constant selectors and template literals where a `${...}` substitution is needed, and
   `static/settings.js` uses double quotes. Assert on the selector text and on quote-free substrings.
+- **A test string that spans a line break needs the escape, not a literal backslash.** Two assertions
+  in `tests/test_health_check_form.py` once carried `\\n` where the script has a real newline, so they
+  looked for a backslash and a letter and failed. Prefer an assertion that names the two halves on
+  either side of the break, or normalise with `" ".join(script.split())`.
 - **`clean_record()` in `tests/test_alerts.py` has a fixed provider list and carries the key on the
   security rows.** Each `ai_security_checks` entry is a dict with `provider`, `key_id` and `status`: the
   entry whose provider is the key's own name carries the key number, and the others carry `None`. The
