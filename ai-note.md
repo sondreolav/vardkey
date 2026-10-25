@@ -412,7 +412,9 @@ volume, mounted at `/data`. No Postgres, no Redis, no external backend, no extra
   prettier would, or run
   `npx prettier --config node_modules/@start9labs/start-sdk/prettier.config.json --write startos`.
   In `startos/manifest/i18n.ts` a value that does not fit the line breaks after the colon, and a
-  string with an apostrophe uses double quotes.
+  string with an apostrophe uses double quotes. **A property is measured together with its trailing
+  comma**, so the limit is `printWidth − indent` — 78 columns for a top-level property, not 80.
+  `es_ES` at 79 columns must break; `en_US` at 74 and `pl_PL` at 76 stay inline.
 - **The page heading uses `class="eyebrow"` too.** `tests/test_health_check_form.py` asserts the
   eyebrow lists of `health-check.html` and `settings.html` **exactly**, so a new eyebrow breaks it, and
   so does a removed one. The secret warnings deliberately use `class="secret-warning"`, not an eyebrow.
