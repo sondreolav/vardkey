@@ -226,14 +226,14 @@ class HealthCheckFormTests(unittest.TestCase):
         script = read_static("health-check.js")
         self.assertIn("uncheckable ? null : data.get", script)
         self.assertIn("uncheckable ? [] : expectedLabels", script)
-        self.assertIn('uncheckable\n      ? "NOT_ASSESSED"', script)
+        self.assertIn('uncheckable\\n      ? "NOT_ASSESSED"', script)
 
     def test_form_records_the_address_path_and_warns_when_it_does_not_match(self):
         html = read_static("health-check.html")
         script = read_static("health-check.js")
         # The user records the path only, and the browser compares it with the
         # stored one before it submits (section 25.1).
-        self.assertIn('makeField(\n    "Address path"', script)
+        self.assertIn('makeField(\\n    "Address path"', script)
         self.assertIn('[name="address_path"]', script)
         self.assertIn("addressPathMismatch", script)
         self.assertIn("key.address_path", script)
@@ -269,7 +269,7 @@ class HealthCheckFormTests(unittest.TestCase):
         # compatibility result is hidden for a cloud key (section 25.5).
         self.assertIn('id="software-version"', html)
         self.assertIn("updateSoftwareVersionValue", script)
-        self.assertNotIn('key.type === "hardware"\n    && previous', script)
+        self.assertNotIn('key.type === "hardware"\\n    && previous', script)
         # The help next to the field is written by the script, because its wording
         # depends on the selected key (section 32.3).
         self.assertIn('id="software-help"', html)
@@ -736,16 +736,18 @@ class HealthCheckFormTests(unittest.TestCase):
 
     def test_history_shows_the_follow_up_that_was_closed(self):
         script = read_static("history.js")
-        # A closure that belongs to a key is shown as a card, with the code, the
-        # action written out, and the date (section 27). The source is not a
-        # column of its own (section 32.1).
+        # Every closure is shown as a card, with the source of the alert it
+        # closed, the code, the action written out, and the date (section 27).
+        # The source has a column of its own, because it is what tells the key
+        # form and the software form of the same code apart (section 32.9
+        # point 1).
         self.assertIn("Follow-up closed", script)
         self.assertIn("closed_alerts", script)
         self.assertIn("closedAlertsTable", script)
         self.assertIn("acknowledged_at", script)
         self.assertIn("No follow-up was closed on this check.", script)
-        self.assertIn('["Alert", "Action", "Closed"]', script)
-        self.assertNotIn('"Source"', script)
+        self.assertIn('["Source", "Alert", "Action", "Closed"]', script)
+        self.assertIn("entry.source", script)
         # The action labels are duplicated here, which is the existing pattern.
         self.assertIn("ACTION_LABELS", script)
         self.assertIn('rotate: "Rotate key"', script)
@@ -754,15 +756,21 @@ class HealthCheckFormTests(unittest.TestCase):
 
     def test_history_card_shows_the_key_and_a_short_status(self):
         script = read_static("history.js")
-        # The card shows the date, the key by its number and name, and whether the
-        # check left anything to follow up. The next due date and the software
-        # text are gone (section 32.2 point 14).
+        # The card shows the date, the key by its number and name, and the state
+        # of the check as it stands now, in three steps: nothing raised, something
+        # still open, or everything closed (sections 32.2 point 14 and 32.9
+        # point 2). The next due date and the software text are gone.
         self.assertIn("check.checked_at", script)
         self.assertIn("keyNamesText(check)", script)
         self.assertIn("check.key_names", script)
         self.assertIn("followUpText(check)", script)
         self.assertIn("check.needs_follow_up", script)
-        self.assertIn('"Needs follow-up" : "All OK"', script)
+        self.assertIn("check.follow_up_open", script)
+        self.assertIn('return "All OK";', script)
+        self.assertIn(
+            'return check.follow_up_open ? "Needs follow-up" : "Follow-up closed";',
+            script,
+        )
         self.assertNotIn("Next check due ${check.next_check_due}", script)
         self.assertNotIn("Software ${check.software_compatibility_status}", script)
         self.assertNotIn("keyNumbersText", script)
