@@ -226,14 +226,19 @@ class HealthCheckFormTests(unittest.TestCase):
         script = read_static("health-check.js")
         self.assertIn("uncheckable ? null : data.get", script)
         self.assertIn("uncheckable ? [] : expectedLabels", script)
-        self.assertIn('uncheckable\\n      ? "NOT_ASSESSED"', script)
+        # The payload records the derived compatibility status for a key that
+        # could not be checked (sections 22 and 25.1).
+        self.assertIn("software_compatibility_status: uncheckable", script)
+        self.assertIn('? "NOT_ASSESSED"', script)
 
     def test_form_records_the_address_path_and_warns_when_it_does_not_match(self):
         html = read_static("health-check.html")
         script = read_static("health-check.js")
         # The user records the path only, and the browser compares it with the
-        # stored one before it submits (section 25.1).
-        self.assertIn('makeField(\\n    "Address path"', script)
+        # stored one before it submits (section 25.1). The field starts on the
+        # path stored for the key, which is the one it is compared with.
+        self.assertIn('"Address path"', script)
+        self.assertIn('makeTextInput("address_path", 200, key.address_path || "")', script)
         self.assertIn('[name="address_path"]', script)
         self.assertIn("addressPathMismatch", script)
         self.assertIn("key.address_path", script)
@@ -269,7 +274,11 @@ class HealthCheckFormTests(unittest.TestCase):
         # compatibility result is hidden for a cloud key (section 25.5).
         self.assertIn('id="software-version"', html)
         self.assertIn("updateSoftwareVersionValue", script)
-        self.assertNotIn('key.type === "hardware"\\n    && previous', script)
+        # The version is reused for the same key and software, with no dependence
+        # on the key type any more (section 25.5).
+        self.assertNotIn(
+            'key.type === "hardware" && previous', " ".join(script.split())
+        )
         # The help next to the field is written by the script, because its wording
         # depends on the selected key (section 32.3).
         self.assertIn('id="software-help"', html)
