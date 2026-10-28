@@ -8,7 +8,7 @@ export const manifest = setupManifest({
   packageRepo: 'https://gitea.sondreolav.com/ai-bot/vardkey',
   upstreamRepo: 'https://gitea.sondreolav.com/ai-bot/vardkey',
   marketingUrl: 'https://sondreolav.com/vardkey',
-  donationUrl: null,
+  donationUrl: 'https://sondreolav.com/donations',
   description: { short, long },
   volumes: ['main'],
   images: {
