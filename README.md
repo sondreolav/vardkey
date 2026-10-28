@@ -12,7 +12,7 @@
 VardKey records the annual health check of a Bitcoin multisig setup, 2-of-3 by default: the keys,
 the yearly checklist, the follow-up alerts, and the full history, in a local SQLite database. It
 does not sign transactions, perform wallet operations, or store wallet secrets. The application
-source is this repository: <https://gitea.sondreolav.com/ai-bot/helsesjekk>.
+source is this repository: <https://gitea.sondreolav.com/ai-bot/vardkey>.
 
 The application reference — the HTTP API and the rules it enforces — is in
 [`docs/application.md`](docs/application.md). This file documents the StartOS package around it.
@@ -210,13 +210,11 @@ everything in that one file and contacts nothing outside the container.
    belongs to it.
 6. **The CSV export is plain CSV.** There is no XLSX export, and the application does not promise
    Excel compatibility.
-7. **The package id is `vardkey`, while the repository is `helsesjekk`.** The Gitea repository and
-   the project id keep the older name; only the product and the package were renamed.
-8. **The database is not encrypted.** The SQLite file sits in plain form on the `main` volume, so
+7. **The database is not encrypted.** The SQLite file sits in plain form on the `main` volume, so
    anyone who can read the volume or a backup can read every key profile and every saved check.
    StartOS's own disk encryption and volume access controls are what protect it; the application
    adds no encryption of its own.
-9. **Free text is screened locally, not comprehensively.** Every free-text field is checked by
+8. **Free text is screened locally, not comprehensively.** Every free-text field is checked by
    `secret_guard.py` before it is stored, so the unmistakable wallet-secret shapes are refused with
    `400`, but a bare 64-character hex string, a phrase in another language, or a secret split across
    several fields is not caught. The check makes no network call.
@@ -240,4 +238,5 @@ interfaces:
 actions: [delete-all-data, set-admin-password]
 tasks: [set-admin-password]
 health_checks: []
+donation_url: https://sondreolav.com/donations
 ```
