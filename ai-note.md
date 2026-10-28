@@ -11,15 +11,23 @@ Short working handover for the next model. Keep it short.
 
 ## Status
 
-- **Done and verified:** everything through §32.9 and §32.6. Schema version **13**. **534 green
-  tests.** The StartOS package is built, sideloaded and running on a StartOS 0.4.0 box; the package
-  version is still `0.1.0:0`.
-- **What is left:** **§32.5** — the raise to `1.0.0:0` with §18 step 12, once the user says so.
+- **Done and verified:** everything in §1–§32. Schema version **13**. **534 green tests.** The
+  StartOS package is built, sideloaded and running on a StartOS 0.4.0 box.
+- **The package version is `2026.10.28:0`**, and its git tag is `v2026.10.28_0`.
+- **What is left:** nothing. The specification is closed, and a new round starts only when the user
+  asks for one.
 - **A round stops when it is done.** Do not start the next item unless the user asks.
 - **Verified how:** the automated suite, the user's manual browser testing, and the install and test
   round on a StartOS 0.4.0 box. **The user runs the suite; the agent has no shell.**
 - **Tests:** `python3 -m unittest discover -s tests`. They run on a Windows copy at
   `C:\Users\<brukarnamn>\Downloads\helsesjekk`, so they must pass there as well as on Linux.
+- **The version scheme is date based**, `YYYY.MM.DD:revision`, and `UPDATING.md` carries the rule.
+  ExVer is **not** SemVer: its numeric portion takes any number of dot-separated components, and it
+  **normalizes numeric leading zeros**, so a single-digit month or day must be written without one —
+  `2026.1.5`, never `2026.01.05` — or the version string and the tag stop matching. The bump edits
+  `version` and `releaseNotes` in `startos/versions/current.ts` **in place**; the file name, the
+  `current` export and `startos/versions/index.ts` never change, and `startos/versions/` stays
+  otherwise empty because the application migrates its own schema.
 
 ## The wallet-secret guard (round 32-B)
 
@@ -325,7 +333,8 @@ volume, mounted at `/data`. No Postgres, no Redis, no external backend, no extra
   set. The application's own reference is `docs/application.md`, which `instructions.md` links to.
   `AGENTS.md` is the repo-specific agent context, and `CLAUDE.md` is the one-line `@AGENTS.md` import.
   All of them, plus `UPDATING.md` and the package i18n strings, were brought in step with the code in
-  §32.6; keep them there.
+  §32.6; keep them there. The repository is `https://gitea.sondreolav.com/ai-bot/vardkey`, and the old
+  `helsesjekk` name must not come back in a URL.
 
 ## Traps that already cost time — do not repeat
 
