@@ -22,6 +22,13 @@ repository root. The application is the Python source at the top level (`app.py`
   module from being left out; see the traps in `ai-note.md`.
 - **The application is pure Python standard library.** There is no `requirements.txt` and no
   package-installation step in the image.
+- **The package version is date based.** It lives in `startos/versions/current.ts` as
+  `YYYY.MM.DD:revision`, and the bump edits `version` and `releaseNotes` in place — `index.ts` and
+  the `current` export never change, and `startos/versions/` stays otherwise empty because the
+  application migrates its own schema. `UPDATING.md` carries the rule, including the trap that
+  ExVer normalizes numeric leading zeros, so a single-digit month or day is written without one
+  (`2026.1.5`, not `2026.01.05`). The git tag is the version with `:` replaced by `_` and a leading
+  `v` (`v2026.10.28_0`), pushed individually.
 - **The admin account is touched outside the HTTP API only by `maintenance.py`.** The two StartOS
   actions, `delete-all-data` and `set-admin-password`, run it in a `withTemp` subcontainer, and the
   generated password never travels from the host into the container, as an argument or on stdin:
