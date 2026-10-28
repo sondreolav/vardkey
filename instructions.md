@@ -2,7 +2,7 @@
 
 ## Documentation
 
-- [VardKey repository](https://gitea.sondreolav.com/ai-bot/vardkey) — the application source, its HTTP API reference, and the development notes.
+- [VardKey repository](https://github.com/sondreolav/vardkey) — the application source, its HTTP API reference, and the development notes.
 
 ## What you get on StartOS
 
