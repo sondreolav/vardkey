@@ -175,8 +175,10 @@ at `/data`. No Postgres, no Redis, no external backend, no extra container.
 - **Documentation layout.** `README.md` is the StartOS package README, with the guide's fixed heading
   set. `docs/spec.md` is the specification, `docs/application.md` the application and API reference,
   `instructions.md` the user quick start, and `AGENTS.md` the repo-specific agent context
-  (`CLAUDE.md` is the one-line `@AGENTS.md` import). The repository is
-  `https://gitea.sondreolav.com/ai-bot/vardkey`.
+  (`CLAUDE.md` is the one-line `@AGENTS.md` import). Development happens on
+  `https://gitea.sondreolav.com/ai-bot/vardkey` (the `origin` remote), and
+  `https://github.com/sondreolav/vardkey` is its public mirror; `AGENTS.md` says which links point
+  where and why. **Do not point the manifest or the README links back at Gitea.**
 
 ## Traps that already cost time — do not repeat
 
