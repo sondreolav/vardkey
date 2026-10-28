@@ -7,14 +7,14 @@ submission, so they are joined into a single cell as ``Label: value; Label:
 value``. The closures of the check are joined the same way, into the last
 column: a closure hangs on the check it closed through its ``check_id``, so a
 software alert closed by removing it from the settings is listed next to a
-rotation (sections 27 and 32.8 point 6).
+rotation (sections 27 and 32.8).
 
 Status values are written exactly as stored. The contact confirmation is one of
-the stored statuses (section 23.1), so it is written as text like every other
+the stored statuses (section 23), so it is written as text like every other
 status, while the yes/no columns keep their ``No``/``Yes`` wording.
 
 The two derived cloud columns are gone, together with the fields they described:
-a cloud key records only its availability (section 25.6).
+a cloud key records only its availability (section 25).
 
 The user-controlled text cells (the key name, the wallet software, the address
 path, the comments, and the closure list) are neutralized before they are
