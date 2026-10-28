@@ -414,12 +414,14 @@ volume, mounted at `/data`. No Postgres, no Redis, no external backend, no extra
   `type: "image/png"`.
 - **The favicon link sits next to the manifest link, and `/login` has no manifest.** `IconTests`
   asserts the exact string `<link rel="icon" type="image/svg+xml" href="/icon.svg">` on all six pages.
-- **`make x86` runs `prettier --check startos`, and the config is the SDK's own.** `.prettierrc` is the
+- **The prettier config is the SDK's own, and `make x86` does not run the check.** `.prettierrc` is the
   single line `"@start9labs/start-sdk/prettier.config.json"`, which is
   `{ trailingComma: "all", tabWidth: 2, semi: false, singleQuote: true }` — everything else is
-  prettier's default, so `printWidth` is 80 and `quoteProps` is `"as-needed"`. Write it the way
-  prettier would, or run
-  `npx prettier --config node_modules/@start9labs/start-sdk/prettier.config.json --write startos`.
+  prettier's default, so `printWidth` is 80 and `quoteProps` is `"as-needed"`. The SDK makefile
+  defines the check as `FORMAT_CHECK`, but `make x86` packs without it, so write the TypeScript the way
+  prettier would **and** run
+  `npx prettier --config node_modules/@start9labs/start-sdk/prettier.config.json --check startos`
+  before you hand the round back; `--write` fixes the files.
   In `startos/manifest/i18n.ts` a value that does not fit the line breaks after the colon, and a
   string with an apostrophe uses double quotes. **A property is measured together with its trailing
   comma**, so the limit is `printWidth − indent` — 78 columns for a top-level property, not 80.
