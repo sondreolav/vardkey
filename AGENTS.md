@@ -16,6 +16,13 @@ repository root. The application is the Python source at the top level (`app.py`
 - **There is no CI.** The packaging guide assumes GitHub Actions workflows. This repository is on
   Gitea, so there are no `.github/workflows/` and there must not be any. Build the `.s9pk` locally
   with `make`.
+- **Development happens on the self-hosted Gitea instance; GitHub is the public mirror.**
+  `origin` is `https://gitea.sondreolav.com/ai-bot/vardkey`, and `github` is
+  `https://github.com/sondreolav/vardkey`. The two repository URLs in
+  `startos/manifest/index.ts` (`packageRepo` and `upstreamRepo`) and the links in `README.md` and
+  `instructions.md` deliberately point at **GitHub**, because those are the ones a user of the
+  package sees, and the mirror is the copy that is meant to take that traffic. **Do not change them
+  back to Gitea.** Only a stable `main` is pushed to the mirror; work in progress stays on Gitea.
 - **The image is built by `Dockerfile`**, referenced as `dockerBuild: {}` in
   `startos/manifest/index.ts`, which makes the build context the repository root. Anything the
   `Dockerfile` does not `COPY` is not in the image. The `COPY *.py ./` line is what keeps a new
@@ -28,7 +35,7 @@ repository root. The application is the Python source at the top level (`app.py`
   application migrates its own schema. `UPDATING.md` carries the rule, including the trap that
   ExVer normalizes numeric leading zeros, so a single-digit month or day is written without one
   (`2026.1.5`, not `2026.01.05`). The git tag is the version with `:` replaced by `_` and a leading
-  `v` (`v2026.10.28_0`), pushed individually.
+  `v` (`v2026.10.28_0`), pushed individually — to both remotes.
 - **The admin account is touched outside the HTTP API only by `maintenance.py`.** The two StartOS
   actions, `delete-all-data` and `set-admin-password`, run it in a `withTemp` subcontainer, and the
   generated password never travels from the host into the container, as an argument or on stdin:
