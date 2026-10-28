@@ -5,8 +5,11 @@ export const manifest = setupManifest({
   id: 'vardkey',
   title: 'VardKey',
   license: 'GPL-3.0-only',
-  packageRepo: 'https://gitea.sondreolav.com/ai-bot/vardkey',
-  upstreamRepo: 'https://gitea.sondreolav.com/ai-bot/vardkey',
+  // Both point at the public GitHub mirror, not at the self-hosted Gitea
+  // instance that development happens on: these two links are shown in the
+  // StartOS UI, and the mirror is the copy that is meant to take that traffic.
+  packageRepo: 'https://github.com/sondreolav/vardkey',
+  upstreamRepo: 'https://github.com/sondreolav/vardkey',
   marketingUrl: 'https://sondreolav.com/vardkey',
   donationUrl: 'https://sondreolav.com/donations',
   description: { short, long },
