@@ -2,7 +2,7 @@
 
 ## Documentation
 
-- [VardKey repository](https://gitea.sondreolav.com/ai-bot/helsesjekk) — the application source, its HTTP API reference, and the development notes.
+- [VardKey repository](https://gitea.sondreolav.com/ai-bot/vardkey) — the application source, its HTTP API reference, and the development notes.
 
 ## What you get on StartOS
 
@@ -23,6 +23,8 @@ If you would rather not sign in through the browser — or if the password is lo
 The dashboard shows the keys with their next due date and any open alerts, plus an Attention card that names the earliest upcoming date, or the keys that have passed it. `Start annual health check` opens the check form, `History` lists the saved checks and carries the CSV export, `Settings` holds the wallet software list and the key rotation, and `Sign out` ends the session. All of it lives in the `Menu` button in the top bar, and the page you are already on is greyed out.
 
 The health check form has six sections, in this order: 01 Schedule, 02 Key, 03 Compatibility, 04 External research, 05 Contact confirmation, 06 Notes. One submission records one key, and the check date may be today or earlier — never a future date. A key with an open alert cannot be checked until that alert is closed.
+
+The history list carries one entry per saved check, with the date and the key it was recorded for, and a short status: `All OK` when the check raised nothing, `Needs follow-up` while something is still open, and `Follow-up closed` once everything that was raised has been closed. Opening a check shows the follow-up that was closed on it, with the source of each alert, so a key alert and a software alert of the same kind can be told apart.
 
 ### Actions & Config
 
