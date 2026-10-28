@@ -17,10 +17,10 @@ Appen skal **berre registrere resultat og historikk**. Han skal ikkje signere Bi
 
 - **§1–§18 er kravspecen og gjeld som han står.** Han skildrar appen slik han er no, ikkje slik han vart bygd.
 - **§19–§32 er historikk.** Alle rundane der er ferdige og verifiserte, og står no som éi line kvar. Reglane deira ligg i §1–§18 og i `ai-note.md`, som er handoveren; den fulle grunngjevinga ligg i git-historikken.
-- **§32 held berre det som står att:** §32.5 (hevinga av pakkeversjonen).
+- **§32 har ingenting att.** Den siste opne oppgåva, §32.5 (hevinga av pakkeversjonen), vart gjord saman med §32.6.
 - **Reglane under «Reglar som gjeld alle rundar» er bindande** for kvar framtidig endring.
 - Eit punkt utan avkryssingsboks er implementert og verifisert. `[ ]` markerer det som står att.
-- **Status:** alt til og med §32.9 og §32.6 er implementert og verifisert. Skjemaet er **versjon 13**, suiten er **534 grøne testar**, og pakkeversjonen står på `0.1.0:0`. Han blir ikkje heva før §32.5 er ferdig og brukaren seier ifrå. StartOS-pakka er bygd, sideloda og køyrd på ein eigen StartOS 0.4.0-boks.
+- **Status:** alt i §1–§32 er implementert og verifisert. Skjemaet er **versjon 13**, suiten er **534 grøne testar**, og pakkeversjonen er **`2026.10.28:0`** med taggen **`v2026.10.28_0`**. StartOS-pakka er bygd, sideloda og køyrd på ein eigen StartOS 0.4.0-boks.
 
 ---
 
@@ -373,7 +373,7 @@ Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og 
 - Test backup og test restore.
 - Verifiser at gamle health checks finst etter restore.
 
-**Merk:** alle punkta er køyrde og verifiserte på boksen, gjennom §16 StartOS-testen og §17. `startos/backups.ts` brukar `sdk.Backups.ofVolumes('main')`, og databasen ligg på `main`-volumet på `/data`. StartOS stoppar servicen medan ein backup går, så databasefila er ikkje under skriving når ho blir kopiert — ingen eigen SQLite-snapshot-krok trongst, og inga kjend avgrensing står att. Punkta skal køyrast på nytt når §32 er ferdig, sidan skjemaet og innlogginga har endra seg.
+**Merk:** alle punkta er køyrde og verifiserte på boksen, gjennom §16 StartOS-testen og §17. `startos/backups.ts` brukar `sdk.Backups.ofVolumes('main')`, og databasen ligg på `main`-volumet på `/data`. StartOS stoppar servicen medan ein backup går, så databasefila er ikkje under skriving når ho blir kopiert — ingen eigen SQLite-snapshot-krok trongst, og inga kjend avgrensing står att. Punkta skal køyrast på nytt før første release, sidan skjemaet og innlogginga har endra seg.
 
 ---
 
@@ -419,7 +419,7 @@ Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og 
 - Test innlogging og sesjon: første oppstart utan admin, rett og feil passord, `401` på API utan sesjon, omdirigering på sider, open `/health`, og eit manglande CSRF-token.
 - Test at eit fritekstfelt som ser ut som ei wallet-løyndom, blir avvist, at meldinga seier kva ho ser ut som, og at ingenting blir lagra eller eksportert.
 - Test at ein CSV-celle som byrjar med `=`, `+`, `-`, `@` eller eit kontrollteikn, blir eksportert som tekst, og at vanleg innhald er uendra.
-- Test oppsett av eit annet multisig-oppsett enn 2-av-3, modell/teneste per nøkkel, det daterte eksportnamnet, sletting av all data, og installasjon av PWA-en.
+- Test oppsett av eit annet multisig-oppsett enn 2-av-3, modell/teneste per nøkkel, det daterte eksportnamet, sletting av all data, og installasjon av PWA-en.
 - Test at `/robots.txt` blir svara, at kvar av dei seks sidene ber robots-metaen, og at kvart svar ber `X-Robots-Tag`.
 - Test menyen, at sida ein står på er gråa ut og ikkje kan klikkast, at eksporten har sin eigen seksjon på history-sida med noten under lenkja, og at både `View` og ei innsending landar på `#history-detail`.
 - Test at ein kontroll-dato i framtida blir avvist med `400`, og at dagen i dag og ein eldre dato går gjennom (§32.8).
@@ -440,7 +440,7 @@ Unngå: Postgres, Redis, ekstern backend, ekstern cloud-service for appdata, og 
 - Verifiser at `Set Admin Password` og `Delete all data` står i `Actions & Config` og verkar.
 - Verifiser at ein installerbar PWA kan leggjast til frå nettlesaren.
 
-**Merk:** alle er køyrde og verifiserte på boksen. `vardkey_x86_64.s9pk` vart sideloda og installert, servicen står som `Running`, helsesjekken melder «The web interface is ready», og `Open UI` opnar VardKey i nettlesaren på StartOS-adressa. Restart og restore heldt på dataa, og dei gamle health checkane fanst etter restore. Skal køyrast på nytt når §32 er ferdig.
+**Merk:** alle er køyrde og verifiserte på boksen. `vardkey_x86_64.s9pk` vart sideloda og installert, servicen står som `Running`, helsesjekken melder «The web interface is ready», og `Open UI` opnar VardKey i nettlesaren på StartOS-adressa. Restart og restore heldt på dataa, og dei gamle health checkane fanst etter restore. Skal køyrast på nytt før første release.
 
 ---
 
@@ -461,7 +461,7 @@ Før første release skal alle desse vere oppfylte:
 - Appen er passordbeskytta med ein adminbrukar.
 - All appdata kan nullstillast frå StartOS, medan adminbrukaren står att.
 
-**Merk:** alle punkta er køyrde og verifiserte på boksen. Kriterielista er oppfylt, men pakkeversjonen blir ikkje heva før §32 er ferdig — sjå §32.
+**Merk:** alle punkta er køyrde og verifiserte på boksen. Kriterielista er oppfylt, og pakkeversjonen er heva til `2026.10.28:0` (§32.5).
 
 ---
 
@@ -473,9 +473,9 @@ Utfør oppgåvene i denne rekkjefølgja og ikkje hopp fram til avanserte funksjo
 - 9. Implementer StartOS package.
 - 10. Implementer persistent storage og backup.
 - 11. Test restart og restore.
-- [ ] 12. Bygg endeleg `.s9pk` og gjer første release.
+- 12. Bygg endeleg `.s9pk` og gjer første release.
 
-**Merk:** steg 1–11 er ferdige. Steg 12 ventar på §32.
+**Merk:** steg 1–12 er ferdige. Steg 12 høyrde til same runden som §32.5.
 
 **Testar:** køyr `python3 -m unittest discover -s tests`. Suiten skal vere grøn både på Linux og på Windows-kopien.
 
@@ -526,15 +526,11 @@ Alle rundane under er implementerte og verifiserte. Reglane deira ligg i §1–�
 | §32.7 | Topplinje-menyen (`Dashboard`, `Start health check`, `Settings`, `History`, skiljelinje, `Sign out`) med sida ein står på gråa ut og `aria-current="page"`, og oppryddinga i dashbordet: `Configured setup`/`Your keys` og nøkkelteljaren bort, `Next check`-kortet inn i «Attention», tom varselliste utan plasshaldartekst, history-blokka bort, `Download CSV` og noten i sin eigen `Export`-seksjon på history-sida, ankeret `#history-detail`, og robots-sperra (`static/robots.txt`, robots-metaen på alle seks sidene og `X-Robots-Tag` på kvart svar). |
 | §32.8 | Steg A (punkt 3, 4 og 2), steg B (punkt 1) og steg C (punkt 6 og 5 saman, sidan begge kravde skjema 13): datogrensa på `checked_at`, den faste topplinja, innloggingslåsinga med `429`, oppgåva `Set Admin Password` som `startos/init/requireAdmin.ts` reiser og lukkar, KI-kjelda som kjem frå rada i `ai_security_checks`, og roteringa som legg til ei ny nøkkelrad med eit snapshot av namn, type og modell på kvar kontroll. Skjema **13**. Punkt 7, brukaren sin manuelle ende-til-ende-gjennomgang, vart køyrd på boksen og stadfesta; oppgåva held ikkje servisen tilbake, sjå §13 og §32.6. |
 | §32.9 | Kjelda til eit lukka varsel står no i `Follow-up closed` i CSV-en, som `<kjelde> — code: action (dato)`, og i ein eigen `Source`-kolonne i lukke-tabellen i historia. Historikk-kortet viser den noverande tilstanden i tre steg (`All OK`, `Needs follow-up`, `Follow-up closed`) gjennom det additive feltet `follow_up_open`, medan `needs_follow_up` held fram frosen. |
-| §32.6 | Dokumentasjonsdrifta: `README.md`, `docs/application.md`, `instructions.md`, `UPDATING.md` og `AGENTS.md` skildrar no appen og pakka slik dei faktisk er — handlingane, oppgåva, skjema 13, innloggingsvakta, eksporten, robots-sperra og dei valfrie tala — og kort- og langskildringa i `startos/manifest/i18n.ts` seier «eit multisig-oppsett, 2-av-3 som standard» på alle fem språka. |
+| §32.6 | Dokumentasjonsdrifta: `README.md`, `docs/application.md`, `instructions.md`, `UPDATING.md` og `AGENTS.md` skildrar no appen og pakka slik dei faktisk er — handlingane, oppgåva, skjema 13, innloggingsvakta, eksporten, robots-sperra og dei valfrie tala — og kort- og langskildringa i `startos/manifest/i18n.ts` seier «eit multisig-oppsett, 2-av-3 som standard» på alle fem språka. I same runde: alle `helsesjekk`-URLane vart `https://gitea.sondreolav.com/ai-bot/vardkey`, avgrensinga om at pakke-id og repo hadde ulike namn vart sletta, `UPDATING.md` fekk det datobaserte versjonsskjemaet, `donationUrl` kom inn i manifestet, og dei to §32.9-rettingane — kjelda i lukkinga og den tredje tilstanden på historikk-kortet — står i dokumenta. |
+| §32.5 | Hevinga av pakkeversjonen til `2026.10.28:0`, tag `v2026.10.28_0`, med release notes på alle fem språka, og `donationUrl: 'https://sondreolav.com/donations'` i manifestet. Inga skjemaendring, ingen nye endepunkt og ingen nye funksjonar; `startos/versions/` står framleis tomt, sidan appen migrerer skjemaet sitt sjølv. |
 
 ---
 
 # 32. Det som står att
 
-Berre **§32.5** står att, og han blir ikkje starta utan at brukaren ber om det. Resten av §32 er historikk og står i tabellen over.
-
-## 32.5 Hevinga av pakkeversjonen
-
-- Pakkeversjonen blir heva frå `0.1.0:0` til `1.0.0:0` når brukaren seier ifrå. §18 steg 12 («bygg endeleg `.s9pk` og gjer første release») høyrer til same runden.
-- Inga skjemaendring, ingen nye endepunkt og ingen nye funksjonar i denne runden. `startos/versions/` held fram tomt for datamigrasjonar, sidan appen migrerer skjemaet sitt sjølv.
+Ingenting. Alle rundane i §19–§32 er implementerte og verifiserte, og §32.5 — den siste som stod att — vart gjord saman med §32.6. Nye runder skal leggjast til i tabellen over som éi line kvar, og reglane deira skal skrivast inn i §1–§18.
