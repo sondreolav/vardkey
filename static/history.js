@@ -6,7 +6,7 @@ const detailTitle = document.querySelector("#history-detail-title");
 const detailBody = document.querySelector("#history-detail-body");
 const requestedId = new URLSearchParams(window.location.search).get("id");
 
-// The readable wording of every action that closes an alert (section 26). The
+// The readable wording of every action that closes an alert (section 26.4). The
 // dashboard and the form carry the same map, and it is duplicated here on
 // purpose, so the history can show the action that was carried out
 // (section 27).
@@ -106,7 +106,7 @@ function card(title, content) {
 function keyLabel(record) {
   // The name is read from the snapshot on the check, not from the key row, so a
   // rename or a rotation cannot change what an older record says (sections 9
-  // and 32.8).
+  // and 32.8 point 5).
   const labels = (record.key_checks || []).map(
     (entry) => `Key ${entry.key_number}: ${entry.name}`,
   );
@@ -125,7 +125,7 @@ function summaryEntries(record) {
     ["Software compatibility", record.software_compatibility_status],
     ["Software notes", record.software_comments],
     // The contact confirmation is a stored status, so it is shown as text
-    // (section 23).
+    // (section 23.1).
     ["Contact details confirmed", record.contact_info_verified],
     ["Comments", record.comments],
   ];
@@ -152,7 +152,7 @@ function keyEntries(keyCheck) {
     entries.push(["Seed backup verified", keyCheck.seed_backup_verified]);
   }
   // The user records the address path only; the verification result is derived
-  // by the server, so it is shown as a derived value (sections 9 and 25).
+  // by the server, so it is shown as a derived value (sections 9 and 25.1).
   entries.push(["Address path", keyCheck.address_path]);
   entries.push(["Address path verified (derived)", keyCheck.address_path_verified]);
   entries.push(["Comments", keyCheck.comments]);
@@ -173,7 +173,8 @@ function closedAlertsTable(closedAlerts) {
   // Every closure of the check is shown with the source of the alert it closed,
   // the code, the action written out as a readable label, and the date
   // (section 27). The source is what tells the key form and the software form
-  // of the same code apart, so it has a column of its own (section 32.9).
+  // of the same code apart, so it has a column of its own
+  // (section 32.9 point 1).
   if (!closedAlerts.length) {
     return emptyNote("No follow-up was closed on this check.");
   }
@@ -192,7 +193,7 @@ function revealDetail() {
   // The detail section is hidden until a check is opened, and a hidden element
   // has no box, so the browser cannot jump to #history-detail on its own. The
   // section is revealed first and the page moves to it afterwards
-  // (section 32.7).
+  // (section 32.7 follow-up point 3).
   detailSection.hidden = false;
   detailSection.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -220,7 +221,7 @@ function renderDetail(record) {
 function keyNamesText(check) {
   // The card names the key by its number and the name the check was recorded
   // with, read from the snapshot, so a rename or a rotation cannot change what
-  // an older record says (sections 32.2 and 32.8).
+  // an older record says (sections 32.2 point 14 and 32.8 point 5).
   const numbers = check.key_numbers || [];
   const names = check.key_names || [];
   if (!numbers.length) {
@@ -234,9 +235,9 @@ function keyNamesText(check) {
 function followUpText(check) {
   // The card reports the state of the check as it stands now, in three steps:
   // nothing was raised, something is still open, or everything that was raised
-  // is closed (section 32.9). needs_follow_up is frozen at save time, while
-  // follow_up_open follows the merged, unacknowledged alerts the dashboard
-  // shows, so an alert a newer check re-raised is the newer check's.
+  // is closed (section 32.9 point 2). needs_follow_up is frozen at save time,
+  // while follow_up_open follows the merged, unacknowledged alerts the
+  // dashboard shows, so an alert a newer check re-raised is the newer check's.
   if (!check.needs_follow_up) {
     return "All OK";
   }
@@ -267,7 +268,8 @@ function renderList(checks) {
     text.append(heading, meta);
 
     // The link carries the anchor of the detail section, so the browser lands on
-    // the check that was opened and not at the top of the page (section 32.7).
+    // the check that was opened and not at the top of the page
+    // (section 32.7 follow-up point 3).
     const link = document.createElement("a");
     link.className = "secondary-button";
     link.href = `/history?id=${check.id}#history-detail`;
