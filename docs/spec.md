@@ -12,8 +12,14 @@ example `export.py` cites §19 and §27, and `static/history.js` cites §26 and 
 never renumbered and never reused. New work gets a new section at the end, and its rules are written
 into §1–§18 rather than left in the new section.
 
+**A citation may also name a point inside a round**, such as §25.1, §26.4 or §31 point 1. Those
+point numbers are the ones the round had when it was written, and the history table below keeps only
+the round, so the round is what resolves today. They are left as they are for the same reason the
+section numbers are: renumbering them would break every other citation and lose the record of how the
+round was laid out.
+
 - **§1–§18 are binding** and describe the app as it is now, not as it was built.
-- **§19–§32 are history**, one line per round. The full reasoning is in the git history.
+- **§19–§33 are history**, one line per round. The full reasoning is in the git history.
 - A point without a checkbox is implemented and verified; `[ ]` marks what is still open.
 - **Status:** schema version **13**, **534 green tests**, package version **`2026.10.28:0`** (tag
   `v2026.10.28_0`), built, sideloaded and run on a StartOS 0.4.0 box.
@@ -808,7 +814,7 @@ more.
 | §32.9 | The source of a closed alert now appears in `Follow-up closed` in the CSV, as `<source> — code: action (date)`, and in a `Source` column of its own in the closure table in the history. The history card shows the current state in three steps (`All OK`, `Needs follow-up`, `Follow-up closed`) through the additive field `follow_up_open`, while `needs_follow_up` stays frozen. |
 | §32.6 | The documentation drift: `README.md`, `docs/application.md`, `instructions.md`, `UPDATING.md` and `AGENTS.md` now describe the app and the package as they actually are — the actions, the task, schema 13, the login gate, the export, the robots ban and the optional numbers — and the short and long description in `startos/manifest/i18n.ts` says "one multisig setup, 2-of-3 by default" in all five languages. In the same round: every `helsesjekk` URL became `https://gitea.sondreolav.com/ai-bot/vardkey`, the limitation about the package id and the repository having different names was deleted, `UPDATING.md` got the date-based version scheme, `donationUrl` went into the manifest, and the two §32.9 fixes — the source in the closure and the third state on the history card — are in the documents. |
 | §32.5 | The package version raised to `2026.10.28:0`, tag `v2026.10.28_0`, with release notes in all five languages, and `donationUrl: 'https://sondreolav.com/donations'` in the manifest. No schema change, no new endpoint and no new feature; `startos/versions/` stays empty, because the app migrates its own schema. |
-| §33 | The documentation cleanup: this file moved from `TODO.md` at the root to `docs/spec.md` and was written in English, with the section numbers kept stable because the code and the documents cite them. `BUG-RAPPORT-AI-AGENT.md` was deleted — every finding in it is closed, and its content is summarised in §32.4 and in `ai-note.md`. |
+| §33 | The documentation cleanup: this file moved from `TODO.md` at the root to `docs/spec.md` and was written in English, with the section numbers kept stable because the code and the documents cite them. `BUG-RAPPORT-AI-AGENT.md` was deleted — every finding in it is closed, and its content is summarised in §32.4 and in `ai-note.md`. The sub-point citations in the code and the tests were left as they are, and the paragraph above says what they mean. |
 
 ---
 
