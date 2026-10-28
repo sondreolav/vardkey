@@ -432,7 +432,7 @@ The history detail view and the CSV export list **every** closure of a check, wh
 
 The web server, validation, alert rules, export, and database use Python's standard library. The server serves only explicitly listed static assets. Keep application data local; never add fields for seed phrases, private keys, wallet passwords, cloud credentials, or contact details.
 
-The application UI, source code, comments, and technical documentation are in English. `TODO.md` is intentionally written in Norwegian, and it is the only document in the repository that is. The product name **VardKey** and the database file name **`data/vardkey.sqlite3`** are English, like the rest of the repository.
+The application UI, source code, comments, and technical documentation are in English, and so is every document in the repository, including the specification in `docs/spec.md`. The earlier Norwegian revision of that specification is in the git history. The product name **VardKey** and the database file name **`data/vardkey.sqlite3`** are English, like the rest of the repository.
 
 Stored status values are English. The seed backup result is `OK` or `PROBLEM`; software compatibility is `OK` or `PROBLEM` for a check that could be performed; the security statuses are `SECURE`, `PATCHED`, `VULNERABLE`, and `COMPROMISED`; the contact confirmation is `Confirmed current` or `Needs external update`. `NOT_ASSESSED` is only ever the derived `software_compatibility_status` of a key that could not be checked, and no other field offers or accepts it.
 
