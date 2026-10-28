@@ -16,22 +16,36 @@ The application's database schema has its own version (currently **13**), which 
 its own: the application migrates its schema itself on startup, so `startos/versions/` stays empty.
 A package change that did need one would put its `up`/`down` there, not in the application.
 
+## The version scheme
+
+The package version is **date based**: `YYYY.MM.DD:revision`, where the date is the day the package
+is released — not the day of the application change it carries — and the revision starts at `0` for
+the first build of that day. `2026.10.28:0` is the first release build of 28 October 2026, and a
+second, wrapper-only build the same day is `2026.10.28:1`, then `:2`, and so on.
+
+ExVer is not SemVer. Its numeric portion takes any number of dot-separated components, and ExVer
+**normalizes numeric leading zeros**, so write a single-digit month or day without a leading zero:
+`2026.1.5`, never `2026.01.05`. The version string in `current.ts` and the git tag have to be the
+same string, and `2026.10.28` has no leading zero to worry about.
+
 ## Applying the bump
 
 The package version lives in `startos/versions/current.ts` and follows ExVer. Because the package
-wraps our own application, there is no meaningful upstream portion to preserve; the downstream
-revision is what moves.
+wraps our own application, there is no meaningful upstream portion to preserve; the date and the
+revision are what move.
 
-1. Decide the new version. Use `0.1.0:1`, `0.1.0:2`, … for wrapper-only changes, and `1.0.0:0` when
-   the package reaches its first release (`TODO.md` section 30).
-2. Edit `version` and `releaseNotes` in `startos/versions/current.ts` **in place**. Do not rename
+1. Edit `version` and `releaseNotes` in `startos/versions/current.ts` **in place**. Do not rename
    the file, do not rename the `current` export, and do not touch `startos/versions/index.ts`. A
    new version file is only spun off when the version already in `current.ts` carries a migration
    whose `up` body does work — see the Versions page of the packaging guide.
-3. An application-only change needs no `Dockerfile` edit; the build picks the new source up from
-   the repository root. A change to the set of application files needs the matching `COPY` line.
-4. The git tag matches the version, with `:` replaced by `_` and a leading `v`: `0.1.0:1` becomes
-   `v0.1.0_1`. Push the tag individually.
+2. An application-only change needs no `Dockerfile` edit; the build picks the new source up from the
+   repository root. A change to the set of application files needs the matching `COPY` line.
+3. Write the release notes in every locale `current.ts` carries. They cover what changed since the
+   version the registry last served, and they are the only place that tells the user about a step an
+   update asks of them.
+4. The git tag matches the version, with `:` replaced by `_` and a leading `v`: `2026.10.28:0`
+   becomes `v2026.10.28_0`. Push the tag individually (`git push origin v2026.10.28_0`), not with
+   `git push --tags`.
 
 ## Downgrading
 
