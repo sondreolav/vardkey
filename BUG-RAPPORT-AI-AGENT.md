@@ -1,6 +1,6 @@
 # Bug- og sikkerheitsrapport for AI-agent
 
-**Prosjekt:** `ai-bot/helsesjekk` / VardKey  
+**Prosjekt:** `ai-bot/vardkey` / VardKey  
 **Dato:** 2026-10-13  
 **Mål:** Verifiser funna nedanfor, rett stadfesta feil med små og målretta endringar, legg til regresjonstestar og dokumenter testresultata.
 
@@ -36,8 +36,8 @@
 
 Den offentlege rotvisinga viser Markdown-filer og oppgir `Languages: Markdown 100%`, medan den nyaste `TODO.md` seier at appen inneheld mellom anna `app.py`, `auth.py`, `database.py`, `maintenance.py`, `tests/`, `static/`, `startos/`, `Dockerfile`, `Makefile` og `package.json`.
 
-- Repo: https://gitea.sondreolav.com/ai-bot/helsesjekk
-- Gjeldande krav/status: https://gitea.sondreolav.com/ai-bot/helsesjekk/src/branch/main/TODO.md
+- Repo: https://gitea.sondreolav.com/ai-bot/vardkey
+- Gjeldande krav/status: https://gitea.sondreolav.com/ai-bot/vardkey/src/branch/main/TODO.md
 
 Dette kan skuldast ei avgrensing i repo-visinga, feil branch eller at kjeldekode ikkje er committa. Det er ikkje forsvarleg å føresetje kva forklaring som er rett utan å kontrollere checkouten.
 
@@ -62,10 +62,10 @@ Ein rein clone av den tiltenkte branch-en inneheld alle filene som dokumentasjon
 Produktkravet seier at appen aldri skal spørje etter eller lagre seed phrase, private keys, PIN, passord eller wallet-hemmelegheiter (`TODO.md` § 2). Samstundes tillèt datamodellen fleire fritekstfelt, og spesifikasjonen seier at innhaldet ikkje blir skanna. `ENCRYPTION.md` dokumenterer at live SQLite-database ligg ukryptert på disken. Dermed kan ein brukar ved eit uhell lime inn ei seed phrase eller anna løyndom i eit kommentar-/notatfelt, og appen lagrar henne trass i forbodet.
 
 Relevante dokument:
-- https://gitea.sondreolav.com/ai-bot/helsesjekk/src/branch/main/TODO.md
-- https://gitea.sondreolav.com/ai-bot/helsesjekk/src/branch/main/DATA-MODEL.md
-- https://gitea.sondreolav.com/ai-bot/helsesjekk/src/branch/main/ENCRYPTION.md
-- https://gitea.sondreolav.com/ai-bot/helsesjekk/src/branch/main/PRIVACY.md
+- https://gitea.sondreolav.com/ai-bot/vardkey/src/branch/main/TODO.md
+- https://gitea.sondreolav.com/ai-bot/vardkey/src/branch/main/DATA-MODEL.md
+- https://gitea.sondreolav.com/ai-bot/vardkey/src/branch/main/ENCRYPTION.md
+- https://gitea.sondreolav.com/ai-bot/vardkey/src/branch/main/PRIVACY.md
 
 ### Arbeid
 
@@ -91,7 +91,7 @@ Relevante dokument:
 
 `TODO.md` § 31 introduserer adminpassord/sesjon, sletting av data og installerbar PWA. Same dokument seier eksplisitt at full manuell nettlesargjennomgang framleis står att: alternativt multisig-oppsett, innlogging, ein kontroll, datert eksport, sletting av data og PWA-installasjon; § 14, § 16 og § 17 skal òg køyrast på nytt. Dette er særleg viktig fordi autentisering og sletting påverkar tilgang og dataintegritet.
 
-Kjelde: https://gitea.sondreolav.com/ai-bot/helsesjekk/src/branch/main/TODO.md (særleg §§ 31 og «Kva som er testa for heile runden»).
+Kjelde: https://gitea.sondreolav.com/ai-bot/vardkey/src/branch/main/TODO.md (særleg §§ 31 og «Kva som er testa for heile runden»).
 
 ### Arbeid
 
@@ -118,9 +118,9 @@ Dokumenta gir to ulike kontraktar:
 - `DATA-MODEL.md` brukar dessutan eldre tabellnamn (`settings`, `setup`, `key`, `check`, `key_check`, `tool_check`) som ikkje samsvarar med dei seinare namna i TODO (`app_settings`, `keys`, `health_checks`, `key_checks`, `ai_security_checks`).
 
 Kjelder:
-- https://gitea.sondreolav.com/ai-bot/helsesjekk/src/branch/main/AI-STATUS.md
-- https://gitea.sondreolav.com/ai-bot/helsesjekk/src/branch/main/DATA-MODEL.md
-- https://gitea.sondreolav.com/ai-bot/helsesjekk/src/branch/main/TODO.md
+- https://gitea.sondreolav.com/ai-bot/vardkey/src/branch/main/AI-STATUS.md
+- https://gitea.sondreolav.com/ai-bot/vardkey/src/branch/main/DATA-MODEL.md
+- https://gitea.sondreolav.com/ai-bot/vardkey/src/branch/main/TODO.md
 
 ### Arbeid
 
