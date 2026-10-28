@@ -12,7 +12,7 @@
 VardKey records the annual health check of a Bitcoin multisig setup, 2-of-3 by default: the keys,
 the yearly checklist, the follow-up alerts, and the full history, in a local SQLite database. It
 does not sign transactions, perform wallet operations, or store wallet secrets. The application
-source is this repository: <https://gitea.sondreolav.com/ai-bot/vardkey>.
+source is this repository: <https://github.com/sondreolav/vardkey>.
 
 The application reference — the HTTP API and the rules it enforces — is in
 [`docs/application.md`](docs/application.md). This file documents the StartOS package around it.
