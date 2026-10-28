@@ -37,6 +37,16 @@ repository root. The application is the Python source at the top level (`app.py`
   is registered in `sdk.setupInit()` after the actions; on the box it shows as *recommended*, so it
   does not hold the service back. Its probe fails open.
 
+## Documentation
+
+- `docs/spec.md` is the specification. **Its section numbers are stable** — the code, the tests and
+  the other documents cite them — so a section is never renumbered and never reused. §1–§18 are
+  binding and describe the app as it is now; §19–§33 are history, one line per round.
+- `README.md` is the StartOS package README, with the packaging guide's fixed heading set.
+  `docs/application.md` is the application and API reference, `instructions.md` the user quick
+  start, and `UPDATING.md` the release procedure.
+- Everything in the repository is in English, including this file.
+
 ## Things that look right and are not
 
 - **Do not add a `USER` line to the `Dockerfile`.** The `main` volume is mounted at `/data` and
@@ -49,8 +59,8 @@ repository root. The application is the Python source at the top level (`app.py`
   `startos/main.ts` passes it as `PORT` to the daemon and uses it in the readiness URL, and
   `startos/interfaces.ts` binds it. Changing one alone leaves the readiness check permanently red.
 - **Do not add a second container, Postgres, Redis, an external backend, or external storage for
-  application data.** This is a standing prohibition, not a work item — see `TODO.md` sections 1
-  and 13.
+  application data.** This is a standing prohibition, not a work item — see `docs/spec.md` sections
+  1 and 13.
 
 ## Tests
 
