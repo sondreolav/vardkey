@@ -75,6 +75,11 @@ make x86        # or: make arm
 ```
 
 Building needs a StartOS packaging workspace — see the packaging guide's Environment Setup.
-`make x86` also runs `prettier --check startos` with the SDK's own config, so the TypeScript files
-under `startos/` have to be formatted the way prettier would write them. `make install` needs
-`host.default` in the workspace `.startos/config.yaml` and one `start-cli auth login`.
+
+The TypeScript under `startos/` has to be formatted the way prettier would write it. The SDK's
+makefile supplies prettier and defines the check as `FORMAT_CHECK` — `npx prettier --config
+node_modules/@start9labs/start-sdk/prettier.config.json --check startos` — but **`make x86` does not
+run it**, so run that command yourself; the `--write` form fixes the files.
+
+`make install` needs `host.default` in the workspace `.startos/config.yaml` and one
+`start-cli auth login`.
